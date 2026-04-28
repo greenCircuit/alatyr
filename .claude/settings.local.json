@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(podman ps *)",
+      "Bash(bash podman-run.sh)",
+      "Bash(podman exec *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
