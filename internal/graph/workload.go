@@ -7,13 +7,21 @@ import (
 )
 
 // BuildGraph fetches resources per namespace and correlates them into a Graph.
-func BuildGraph(namespaces []string) Graph {
+func BuildGraph(namespaces []string, client *k8s.Client) (Graph, error) {
 	nodesByNS := map[string][]WorkloadNode{}
 	for _, ns := range namespaces {
-		nodesByNS[ns] = buildWorkloadNodesForNS(ns)
+		nodes, err := buildWorkloadNodesForNS(ns, client)
+		if err != nil {
+			return Graph{}, err
+		}
+		nodesByNS[ns] = nodes
 	}
 
-	policies := fetchPolicies(namespaces)
+	policies, err := fetchPolicies(namespaces, client)
+	if err != nil {
+		return Graph{}, err
+	}
+
 	edges := buildEdges(nodesByNS, policies)
 
 	var allNodes []WorkloadNode
@@ -21,12 +29,16 @@ func BuildGraph(namespaces []string) Graph {
 		allNodes = append(allNodes, nsNodes...)
 	}
 
-	return Graph{Nodes: allNodes, Edges: edges}
+	return Graph{Nodes: allNodes, Edges: edges}, nil
 }
 
 // buildWorkloadNodesForNS fetches pods for a namespace and returns deduplicated WorkloadNodes.
-func buildWorkloadNodesForNS(ns string) []WorkloadNode {
-	pods := k8s.GetPods(ns)
+func buildWorkloadNodesForNS(ns string, client *k8s.Client) ([]WorkloadNode, error) {
+	pods, err := client.GetPods(ns)
+	if err != nil {
+		return nil, err
+	}
+
 	seen := map[string]bool{}
 	var nodes []WorkloadNode
 
@@ -46,16 +58,20 @@ func buildWorkloadNodesForNS(ns string) []WorkloadNode {
 		})
 	}
 
-	return nodes
+	return nodes, nil
 }
 
 // fetchPolicies fetches NetworkPolicies for all requested namespaces.
-func fetchPolicies(namespaces []string) []networkingv1.NetworkPolicy {
+func fetchPolicies(namespaces []string, client *k8s.Client) ([]networkingv1.NetworkPolicy, error) {
 	var policies []networkingv1.NetworkPolicy
 	for _, ns := range namespaces {
-		policies = append(policies, k8s.GetPolicies(ns)...)
+		nsPolicies, err := client.GetPolicies(ns)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, nsPolicies...)
 	}
-	return policies
+	return policies, nil
 }
 
 // ownerUID returns the UID of the pod's first owner, falling back to the pod's own UID.
@@ -81,56 +97,83 @@ func workloadLabel(pod corev1.Pod) string {
 }
 
 // buildEdges correlates NetworkPolicies against workload nodes and returns policy edges.
-func buildEdges(nodesByNS map[string][]WorkloadNode, policies []networkingv1.NetworkPolicy) {
+func buildEdges(nodesByNS map[string][]WorkloadNode, policies []networkingv1.NetworkPolicy) []PolicyEdge {
 	for _, policy := range policies {
 		srcNodes := getSourceNodes(policy, nodesByNS)
-		destNodesEgress := getSourceNodes(policy, nodesByNS) // get all nodes the policy allows egress
-		statusKeys := getStatusKeys(policy)
-		
+		var edges []PolicyEdge
+		egressTargets := getTargetEgressNodes(policy, nodesByNS)
+		ingressTargets := getTargetIngressNodes(policy, nodesByNS)
 
+		var edges []PolicyEdge
+		edges.append(edge, egressTargets)
+		edges.append(edge, ingressTargets)
+		for _, node := range srcNodes {
+			for _, edge := range edges {
+				edge.Source = node.Label
+			}
+		}
 	}
-	return nil
+	return edges
 }
 
-// find all workloads that network policies will be applied to
+// getSourceNodes finds all workload nodes the policy applies to via podSelector.
 func getSourceNodes(policy networkingv1.NetworkPolicy, nodes map[string][]WorkloadNode) []WorkloadNode {
-	ns := policy.Namespace
-	nsNodes := nodes[ns]
-	// policy matches all pods in ns
+	nsNodes := nodes[policy.Namespace]
 	if len(policy.Spec.PodSelector.MatchLabels) == 0 {
 		return nsNodes
 	}
-
-	return findNodeByLabel(policy.Labels, nsNodes)
+	return findNodeByLabel(policy.Spec.PodSelector.MatchLabels, nsNodes)
 }
 
 func getTargetEgressNodes(policy networkingv1.NetworkPolicy, nodes map[string][]WorkloadNode) []PolicyEdge {
 	var matches []PolicyEdge
-	if len(policy.Spec.Egress) != 0 {
-		for _, rule := range policy.Spec.Egress {                                                         
-			for _, peer := range rule.To {                                                                
-				if peer.PodSelector != nil {                                                              
-					ns := policy.Namespace
-					matches := findNodeByLabel(peer.PodSelector.MatchLabels, nodes[ns])
-					for _, match := range matches {
-
+	for _, rule := range policy.Spec.Egress {
+		for _, peer := range rule.To {
+			if peer.PodSelector != nil {
+				targets := findNodeByLabel(peer.PodSelector.MatchLabels, nodes[policy.Namespace])
+				for _, target := range targets {
+					edge := PolicyEdge{
+						Direction: DirectionEgress,
+						Namespace: policy.Namespace,
+						Target:    target.ID,
+						Level:     EdgeLevelWorkload,
 					}
-				}                                                                                         
+					matches = append(matches, edge)
+				}
 			}
-		}         
+		}
 	}
 	return matches
 }
 
+func getTargetIngressNodes(policy networkingv1.NetworkPolicy, nodes map[string][]WorkloadNode) []PolicyEdge {
+	var matches []PolicyEdge
+	for _, rule := range policy.Spec.Ingress {
+		for _, peer := range rule.From {
+			if peer.PodSelector != nil {
+				targets := findNodeByLabel(peer.PodSelector.MatchLabels, nodes[policy.Namespace])
+				for _, target := range targets {
+					edge := PolicyEdge{
+						Direction: DirectionIngress,
+						Namespace: policy.Namespace,
+						Target:    target.ID,
+						Level:     EdgeLevelWorkload,
+					}
+					matches = append(matches, edge)
+				}
+			}
+		}
+	}
+	return matches
+}
 
-// generic function to find to what workload policy is applied or that is the target workloads
-// find what nodes in list have specific label that came from network policy
-func findNodeByLabel(labels map[string]string, nodes []WorkloadNode) []WorkloadNode {
+// findNodeByLabel returns nodes whose labels contain all key-value pairs in the given label map.
+func findNodeByLabel(labelMap map[string]string, nodes []WorkloadNode) []WorkloadNode {
 	var matches []WorkloadNode
 	for _, node := range nodes {
 		matched := true
-		for labelKey, labelValue := range labels {
-			if node.Labels[labelKey] != labelValue {  // checks if label maps has the same keys values inside a node
+		for k, v := range labelMap {
+			if node.Labels[k] != v {
 				matched = false
 				break
 			}
@@ -142,7 +185,7 @@ func findNodeByLabel(labels map[string]string, nodes []WorkloadNode) []WorkloadN
 	return matches
 }
 
-// determineStatusKeys computes status badge keys for a workload node given the full policy set.
+// getStatusKeys computes status badge keys for a workload node given the full policy set.
 func getStatusKeys(node WorkloadNode, policies []networkingv1.NetworkPolicy) []StatusKey {
 	// TODO
 	return nil
