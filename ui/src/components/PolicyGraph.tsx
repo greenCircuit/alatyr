@@ -3,7 +3,6 @@ import cytoscape from 'cytoscape';
 // @ts-ignore
 import dagre from 'cytoscape-dagre';
 import { useGraphStore } from '../store/graphStore';
-import { namespaces, nodes as allNodes } from '../data/policies';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
 import DetailPanel from './DetailPanel';
 
@@ -17,7 +16,7 @@ const COV = {
 } as const;
 type CovType = keyof typeof COV;
 
-function computeCoverage(policyEdges: PolicyEdge[]): {
+function computeCoverage(policyEdges: PolicyEdge[], allNodes: WorkloadNode[]): {
   ns: Record<string, CovType>;
   workload: Set<string>;
 } {
@@ -39,7 +38,8 @@ function computeCoverage(policyEdges: PolicyEdge[]): {
   }
 
   const ns: Record<string, CovType> = {};
-  for (const n of namespaces) {
+  const derivedNS = [...new Set(allNodes.map((n) => n.namespace).filter(Boolean))];
+  for (const n of derivedNS) {
     ns[n] = nsWorkload.has(n) ? 'workload' : nsNamespace.has(n) ? 'namespace' : 'none';
   }
   return { ns, workload: wlCovered };
@@ -80,13 +80,15 @@ function buildElements(
   workloads: WorkloadNode[],
   policyEdges: PolicyEdge[],
   visibleNS: Set<string>,
+  allNodes: WorkloadNode[],
 ): cytoscape.ElementDefinition[] {
-  const coverage   = computeCoverage(policyEdges);
+  const coverage   = computeCoverage(policyEdges, allNodes);
   const bundles    = bundleEdges(policyEdges);
   const els: cytoscape.ElementDefinition[] = [];
 
   // Only add a namespace box if it has at least one visible workload
   const occupiedNS = new Set(workloads.filter((w) => w.namespace).map((w) => w.namespace));
+  const namespaces = [...new Set(allNodes.map((n) => n.namespace).filter(Boolean))];
 
   // Namespace compound (parent) nodes – must appear before their children
   for (const ns of namespaces) {
@@ -338,11 +340,15 @@ export default function PolicyGraph() {
   useEffect(() => { syncBadgePositions(); }, [badgeNodes, syncBadgePositions]);
 
   const {
+    allNodes,
     filteredNodes, filteredEdges, selectedNamespaces,
     selectedNodeTypes, searchQuery, showNamespaceEdges,
     selectedStatuses, toggleStatus,
     setSelectedNode, setSelectedEdges,
+    loadGraph, loading, error,
   } = useGraphStore();
+
+  useEffect(() => { loadGraph(); }, []);
 
   // Mount once: create Cytoscape instance and wire event handlers
   useEffect(() => {
@@ -418,7 +424,7 @@ export default function PolicyGraph() {
 
     const workloads   = filteredNodes();
     const policyEdges = filteredEdges();
-    const elements    = buildElements(workloads, policyEdges, selectedNamespaces);
+    const elements    = buildElements(workloads, policyEdges, selectedNamespaces, allNodes);
 
     cy.elements().remove();
     cy.add(elements);
@@ -447,10 +453,20 @@ export default function PolicyGraph() {
     layout.run();
   // filteredNodes/filteredEdges call get() internally; the listed deps cover all state that affects output
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges, selectedStatuses]);
+  }, [allNodes, selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges, selectedStatuses]);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: '#0d0f11' }}>
+      {loading && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, color: '#adb5bd' }}>
+          Loading graph…
+        </div>
+      )}
+      {error && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, color: '#dc3545' }}>
+          {error}
+        </div>
+      )}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Status badge overlay – graph-space coords, only CSS transform changes on pan/zoom */}

@@ -1,8 +1,14 @@
 import { create } from 'zustand';
-import { nodes as allNodes, edges as allEdges, namespaces } from '../data/policies';
+import { fetchGraph } from '../api/client';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
 
 interface GraphState {
+  allNodes:            WorkloadNode[];
+  allEdges:            PolicyEdge[];
+  availableNamespaces: string[];
+  loading:             boolean;
+  error:               string | null;
+
   selectedNamespaces: Set<string>;
   selectedNodeTypes:  Set<string>;
   selectedStatuses:   Set<StatusKey>;
@@ -11,6 +17,7 @@ interface GraphState {
   selectedEdges:      PolicyEdge[];
   searchQuery:        string;
 
+  loadGraph:            () => Promise<void>;
   toggleNamespace:      (ns: string) => void;
   toggleNodeType:       (type: string) => void;
   toggleStatus:         (key: StatusKey) => void;
@@ -26,13 +33,36 @@ interface GraphState {
 const ALL_TYPES = ['service', 'deployment', 'headless', 'external'];
 
 export const useGraphStore = create<GraphState>((set, get) => ({
-  selectedNamespaces: new Set(namespaces),
+  allNodes:            [],
+  allEdges:            [],
+  availableNamespaces: [],
+  loading:             false,
+  error:               null,
+
+  selectedNamespaces: new Set<string>(),
   selectedNodeTypes:  new Set(ALL_TYPES),
   selectedStatuses:   new Set<StatusKey>(),
   showNamespaceEdges: true,
-  selectedNode:  null,
-  selectedEdges: [],
-  searchQuery:   '',
+  selectedNode:       null,
+  selectedEdges:      [],
+  searchQuery:        '',
+
+  loadGraph: async () => {
+    set({ loading: true, error: null });
+    try {
+      const data = await fetchGraph();
+      const derived = [...new Set(data.nodes.map((n) => n.namespace).filter(Boolean))];
+      set({
+        allNodes:            data.nodes,
+        allEdges:            data.edges,
+        availableNamespaces: derived,
+        selectedNamespaces:  new Set(derived),
+        loading:             false,
+      });
+    } catch (e) {
+      set({ loading: false, error: String(e) });
+    }
+  },
 
   toggleNamespace: (ns) =>
     set((state) => {
@@ -63,13 +93,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   setSearchQuery:   (q)     => set({ searchQuery: q }),
 
   filteredNodes: () => {
-    const { selectedNamespaces, selectedNodeTypes, searchQuery, selectedStatuses } = get();
+    const { allNodes, selectedNamespaces, selectedNodeTypes, searchQuery, selectedStatuses } = get();
     const q = searchQuery.toLowerCase();
     return allNodes.filter((n) => {
       if (!(n.namespace === '' || selectedNamespaces.has(n.namespace))) return false;
       if (!selectedNodeTypes.has(n.type)) return false;
       if (q !== '' && !n.label.toLowerCase().includes(q) && !n.namespace.toLowerCase().includes(q)) return false;
-      // Status filter: externals have no statuses so always pass; others must match at least one
       if (selectedStatuses.size > 0 && n.type !== 'external') {
         if (!n.statuses?.some((s) => selectedStatuses.has(s))) return false;
       }
@@ -78,11 +107,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   filteredEdges: () => {
-    const { selectedNamespaces, showNamespaceEdges } = get();
+    const { allEdges, selectedNamespaces, showNamespaceEdges } = get();
     const visibleWorkloadIds = new Set(get().filteredNodes().map((n) => n.id));
-    // Only include a namespace group node if it has at least one visible workload
     const occupiedNS = new Set(
-      allNodes.filter((n) => visibleWorkloadIds.has(n.id) && n.namespace).map((n) => n.namespace)
+      get().allNodes.filter((n) => visibleWorkloadIds.has(n.id) && n.namespace).map((n) => n.namespace)
     );
     const visibleIds = new Set([
       ...visibleWorkloadIds,

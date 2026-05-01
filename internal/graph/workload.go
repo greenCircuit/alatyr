@@ -97,23 +97,26 @@ func workloadLabel(pod corev1.Pod) string {
 }
 
 // buildEdges correlates NetworkPolicies against workload nodes and returns policy edges.
+// TODO add bidiretionllity
 func buildEdges(nodesByNS map[string][]WorkloadNode, policies []networkingv1.NetworkPolicy) []PolicyEdge {
+	var allEdges []PolicyEdge
 	for _, policy := range policies {
 		srcNodes := getSourceNodes(policy, nodesByNS)
-		var edges []PolicyEdge
 		egressTargets := getTargetEgressNodes(policy, nodesByNS)
 		ingressTargets := getTargetIngressNodes(policy, nodesByNS)
 
-		var edges []PolicyEdge
-		edges.append(edge, egressTargets)
-		edges.append(edge, ingressTargets)
-		for _, node := range srcNodes {
-			for _, edge := range edges {
-				edge.Source = node.Label
+		for _, src := range srcNodes {
+			for _, e := range egressTargets {
+				e.Source = src.ID
+				allEdges = append(allEdges, e)
+			}
+			for _, e := range ingressTargets {
+				e.Source = src.ID
+				allEdges = append(allEdges, e)
 			}
 		}
 	}
-	return edges
+	return allEdges
 }
 
 // getSourceNodes finds all workload nodes the policy applies to via podSelector.

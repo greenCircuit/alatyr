@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { namespaces } from '../data/policies';
 import { useGraphStore } from '../store/graphStore';
 
 const NODE_TYPES = [
@@ -11,6 +10,7 @@ const NODE_TYPES = [
 
 export default function FilterPanel() {
   const {
+    availableNamespaces: namespaces,
     selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges,
     toggleNamespace, toggleNodeType, setSearchQuery, toggleNamespaceEdges,
   } = useGraphStore();

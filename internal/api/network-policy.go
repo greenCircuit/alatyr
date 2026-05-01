@@ -9,12 +9,16 @@ import (
 )
 
 func (s *Server) handleGraph(c echo.Context) error {
-	nsParam := c.QueryParam("namespaces")
-	if nsParam == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "namespaces query param required"})
+	var namespaces []string
+	if nsParam := c.QueryParam("namespaces"); nsParam != "" {
+		namespaces = strings.Split(nsParam, ",")
+	} else {
+		var err error
+		namespaces, err = s.client.GetNs()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
 	}
-
-	namespaces := strings.Split(nsParam, ",")
 
 	g, err := graph.BuildGraph(namespaces, s.client)
 	if err != nil {
