@@ -1,3 +1,21 @@
 tagFormat: "${version}"
 plugins:
   - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - - "@semantic-release/changelog"
+    - changelogFile: "CHANGELOG.md"
+  - - "@semantic-release/git"
+    - assets:
+        - "CHANGELOG.md"
+      message: "chore(release): ${nextRelease.version} [skip ci]"
+  - - "@semantic-release/gitlab"
+    - gitlabUrl: "${CI_SERVER_URL}"
+      assets:
+        - path: "CHANGELOG.md"
+          label: "Changelog"
+        - url: "${CI_PIPELINE_URL}"
+          label: "Pipeline"
+          type: "other"
+        - url: "${CI_REGISTRY_IMAGE}:${BUILD_VERSION}"
+          label: "Docker Image: ${CI_REGISTRY_IMAGE}:${BUILD_VERSION}"
+          type: "image"
