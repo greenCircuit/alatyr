@@ -16,6 +16,9 @@ include:
 
 release-dry-run:
   extends: .semantic-release-dry-run
+  variables:
+    GITLAB_TOKEN: "${CI_JOB_TOKEN}"
+
   before_script:
     - npm install semantic-release @semantic-release/exec @semantic-release/git @semantic-release/gitlab @semantic-release/changelog
 
