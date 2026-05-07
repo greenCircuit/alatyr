@@ -10,6 +10,8 @@ include:
     file: pipelines/security.yaml
   - project: home-lab/pipeline-catalog
     file: pipelines/build.yaml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/release.yaml
 
 release-dry-run:
   extends: .semantic-release-dry-run
