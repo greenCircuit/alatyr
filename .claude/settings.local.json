@@ -4,7 +4,8 @@
       "Bash(podman ps *)",
       "Bash(bash podman-run.sh)",
       "Bash(podman exec *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(curl -s \"http://localhost:8080/api/graph?namespaces=observability,gitlab\")"
     ]
   }
 }

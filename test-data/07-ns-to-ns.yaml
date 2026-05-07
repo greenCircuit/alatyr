@@ -1,0 +1,38 @@
+# Case 7: entire namespace ingress from entire namespace (empty podSelector = all pods in ns-b)
+# Expected graph edge: test-netpol-a (namespace node) --> every pod in test-netpol-b  (ingress, namespace)
+# The namespace node must be the SOURCE, not individual pods from test-netpol-a.
+# If individual pods from test-netpol-a appear as sources, the ns-only ingress branch is broken.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ns-to-ns-dst
+  namespace: test-netpol-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ns-to-ns-dst
+  template:
+    metadata:
+      labels:
+        app: ns-to-ns-dst
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ns-to-ns
+  namespace: test-netpol-b
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: test-netpol-a

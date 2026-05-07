@@ -34,6 +34,14 @@ func (c *Client) GetPods(ns string) ([]corev1.Pod, error) {
 	return list.Items, nil
 }
 
+func (c *Client) GetSvc(ns string) ([]corev1.Service, error) {
+	list, err := c.clientset.CoreV1().Services(ns).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
 func (c *Client) GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error) {
 	list, err := c.clientset.NetworkingV1().NetworkPolicies(ns).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -42,7 +50,7 @@ func (c *Client) GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error) {
 	return list.Items, nil
 }
 
-func (c *Client) GetNs() ([]string, error) {
+func (c *Client) GetNsNames() ([]string, error) {
 	list, err := c.clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -52,4 +60,13 @@ func (c *Client) GetNs() ([]string, error) {
 		names = append(names, ns.Name)
 	}
 	return names, nil
+}
+
+// get single ns object so can can convert it to node for object
+func (c *Client) GetNs(ns string) (corev1.Namespace, error) {
+	obj, err := c.clientset.CoreV1().Namespaces().Get(context.Background(), ns, metav1.GetOptions{})
+	if err != nil {
+		return corev1.Namespace{}, err
+	}
+	return *obj, nil
 }

@@ -5,4 +5,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# kubectl
+RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
+
+# k9s
+RUN curl -fsSL "https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz" \
+    | tar -xz -C /usr/local/bin k9s \
+    && chmod +x /usr/local/bin/k9s
+
 WORKDIR /app

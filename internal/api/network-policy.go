@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"main/internal/graph"
+	"graph/internal/graph"
 )
 
 func (s *Server) handleGraph(c echo.Context) error {
@@ -14,13 +14,13 @@ func (s *Server) handleGraph(c echo.Context) error {
 		namespaces = strings.Split(nsParam, ",")
 	} else {
 		var err error
-		namespaces, err = s.client.GetNs()
+		namespaces, err = s.client.GetNsNames()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 	}
 
-	g, err := graph.BuildGraph(namespaces, s.client)
+	g, err := graph.NewBuilder(s.client).BuildGraph(namespaces)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

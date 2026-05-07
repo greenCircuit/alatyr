@@ -2,14 +2,16 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/labstack/echo/v4"
-	"main/internal/api"
-	"main/internal/k8s"
+	"graph/internal/api"
+	"graph/internal/k8s"
 )
 
 func main() {
-	client, err := k8s.New("/etc/rancher/k3s/k3s.yaml")
+	kubeconfig := os.Getenv("KUBECONFIG")
+	client, err := k8s.New(kubeconfig)
 	if err != nil {
 		log.Fatalf("failed to create k8s client: %v", err)
 	}
@@ -18,6 +20,9 @@ func main() {
 
 	server := api.New(client)
 	server.RegisterRoutes(e)
+	if hasUI {
+		server.RegisterUI(e, uiFS)
+	}
 
 	log.Fatal(e.Start(":8080"))
 }

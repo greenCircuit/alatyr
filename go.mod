@@ -1,4 +1,4 @@
-module main
+module graph
 
 go 1.26.0
 
