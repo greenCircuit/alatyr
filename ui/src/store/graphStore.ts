@@ -16,6 +16,7 @@ interface GraphState {
   selectedNode:       WorkloadNode | null;
   selectedEdges:      PolicyEdge[];
   searchQuery:        string;
+  layoutAlgorithm:    string;
 
   loadGraph:            () => Promise<void>;
   toggleNamespace:      (ns: string) => void;
@@ -25,6 +26,7 @@ interface GraphState {
   setSelectedNode:      (node: WorkloadNode | null) => void;
   setSelectedEdges:     (edges: PolicyEdge[]) => void;
   setSearchQuery:       (q: string) => void;
+  setLayoutAlgorithm:   (algo: string) => void;
 
   filteredNodes: () => WorkloadNode[];
   filteredEdges: () => PolicyEdge[];
@@ -46,6 +48,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   selectedNode:       null,
   selectedEdges:      [],
   searchQuery:        '',
+  layoutAlgorithm:    'dagre',
 
   loadGraph: async () => {
     set({ loading: true, error: null });
@@ -88,9 +91,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   toggleNamespaceEdges: () =>
     set((s) => ({ showNamespaceEdges: !s.showNamespaceEdges })),
 
-  setSelectedNode:  (node)  => set({ selectedNode: node,  selectedEdges: [] }),
-  setSelectedEdges: (edges) => set({ selectedEdges: edges, selectedNode: null }),
-  setSearchQuery:   (q)     => set({ searchQuery: q }),
+  setSelectedNode:      (node)  => set({ selectedNode: node,  selectedEdges: [] }),
+  setSelectedEdges:     (edges) => set({ selectedEdges: edges, selectedNode: null }),
+  setSearchQuery:       (q)     => set({ searchQuery: q }),
+  setLayoutAlgorithm:   (algo)  => set({ layoutAlgorithm: algo }),
 
   filteredNodes: () => {
     const { allNodes, selectedNamespaces, selectedNodeTypes, searchQuery, selectedStatuses } = get();

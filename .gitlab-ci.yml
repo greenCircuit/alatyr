@@ -1,15 +1,76 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure
-# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
-# Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
 stages:
-- test
+  - test
+  - build
+  - security
+  - release
 
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/security.yaml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/build.yaml
 
-# test:
-  # stage: test
-  # image:
-  # script: 
+release-dry-run:
+  extends: .semantic-release-dry-run
+
+lint:
+  stage: test
+  image: pipelinecomponents/flake8:latest
+  script:
+    - flake8 .
+  allow_failure: true
+
+go-lint:
+  stage: test
+  image: golangci/golangci-lint:latest
+  script:
+    - golangci-lint run ./...
+  allow_failure: true
+
+go-test:
+  stage: test
+  image: golang:1.24
+  script:
+    - go test ./...
+
+img-base:
+  extends: .create_image
+  variables:
+    FILE_PATH: "Dockerfile"
+
+# Security scans
+semgrep-sast:
+  stage: security
+
+trivy-dependency-scan:
+  stage: security
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs . --scanners vuln --exit-code 1 --severity HIGH,CRITICAL
+
+dockerfile-check:
+  stage: security
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy config . --exit-code 1 --severity HIGH,CRITICAL
+
+git-leaks:
+  stage: security
+  extends: .secrets_scan
+
+try-image-scan:
+  stage: security
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image ${CI_REGISTRY_IMAGE}:latest --exit-code 1 --severity HIGH,CRITICAL
+  allow_failure: true
+
+create-release: 
+  extends: .publish-release

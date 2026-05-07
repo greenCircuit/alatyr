@@ -13,7 +13,9 @@
     "@types/bootstrap": "^5.2.10",
     "bootstrap": "^5.3.8",
     "cytoscape": "^3.33.2",
+    "cytoscape-cola": "^2.5.1",
     "cytoscape-dagre": "^2.5.0",
+    "cytoscape-fcose": "^2.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "zustand": "^5.0.12"

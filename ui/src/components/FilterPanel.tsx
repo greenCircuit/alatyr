@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGraphStore } from '../store/graphStore';
 
-const NODE_TYPES = [
-  { key: 'service',    label: 'Workload + svc' },
-  { key: 'deployment', label: 'Deploy (no svc)' },
-  { key: 'headless',   label: 'Headless' },
-  { key: 'external',   label: 'External' },
+const LAYOUTS = [
+  { value: 'dagre',       label: 'Dagre (hierarchical)' },
+  { value: 'fcose',       label: 'fCoSE (compound)' },
+  { value: 'cola',        label: 'Cola (force)' },
+  { value: 'cose',        label: 'CoSE (force)' },
+  { value: 'breadthfirst', label: 'Breadth-first' },
+  { value: 'grid',        label: 'Grid' },
+  { value: 'circle',      label: 'Circle' },
 ];
 
 export default function FilterPanel() {
   const {
     availableNamespaces: namespaces,
-    selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges,
-    toggleNamespace, toggleNodeType, setSearchQuery, toggleNamespaceEdges,
+    selectedNamespaces, searchQuery, layoutAlgorithm,
+    toggleNamespace, setSearchQuery, setLayoutAlgorithm,
   } = useGraphStore();
 
   const [nsOpen, setNsOpen] = useState(false);
@@ -57,6 +60,18 @@ export default function FilterPanel() {
         onChange={(e) => setSearchQuery(e.target.value)}
         style={{ width: 160 }}
       />
+
+      {/* Layout selector */}
+      <select
+        className="form-select form-select-sm bg-dark text-light border-secondary"
+        style={{ width: 170 }}
+        value={layoutAlgorithm}
+        onChange={(e) => setLayoutAlgorithm(e.target.value)}
+      >
+        {LAYOUTS.map(({ value, label }) => (
+          <option key={value} value={value}>{label}</option>
+        ))}
+      </select>
 
       {/* Namespace multiselect dropdown */}
       <div className="position-relative" ref={nsDropdownRef}>
@@ -109,38 +124,6 @@ export default function FilterPanel() {
         )}
       </div>
 
-      {/* Node type filters */}
-      <div className="d-flex align-items-center gap-1 flex-wrap">
-        <span className="text-secondary me-1" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>Types:</span>
-        {NODE_TYPES.map(({ key, label }) => (
-          <div key={key} className="form-check form-check-inline mb-0">
-            <input
-              className="form-check-input"
-              type="checkbox"
-              id={`type-${key}`}
-              checked={selectedNodeTypes.has(key)}
-              onChange={() => toggleNodeType(key)}
-            />
-            <label className="form-check-label text-light" htmlFor={`type-${key}`} style={{ fontSize: 12 }}>
-              {label}
-            </label>
-          </div>
-        ))}
-      </div>
-
-      {/* Namespace-level edges toggle */}
-      <div className="form-check form-switch mb-0">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          id="edge-ns"
-          checked={showNamespaceEdges}
-          onChange={toggleNamespaceEdges}
-        />
-        <label className="form-check-label text-light" htmlFor="edge-ns" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-          <span style={{ color: '#e67e22' }}>╌</span> NS edges
-        </label>
-      </div>
     </div>
   );
 }

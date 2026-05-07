@@ -2,11 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 // @ts-ignore
 import dagre from 'cytoscape-dagre';
+// @ts-ignore
+import cola from 'cytoscape-cola';
+// @ts-ignore
+import fcose from 'cytoscape-fcose';
 import { useGraphStore } from '../store/graphStore';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
 import DetailPanel from './DetailPanel';
 
 cytoscape.use(dagre);
+cytoscape.use(cola);
+cytoscape.use(fcose);
 
 // ── Coverage colors (encode policy coverage, not namespace identity) ──────────
 const COV = {
@@ -171,9 +177,11 @@ const STYLE: any[] = [
       'text-halign':      'center',
       'color':            '#e9ecef',
       'font-size':        10,
-      'width':            90,
-      'height':           38,
+      'width':            160,
+      'height':           84,
       'shape':            'roundrectangle',
+      'text-wrap':        'wrap',
+      'text-max-width':   '150px',
       'text-margin-y':    0,
     },
   },
@@ -346,6 +354,7 @@ export default function PolicyGraph() {
     selectedStatuses, toggleStatus,
     setSelectedNode, setSelectedEdges,
     loadGraph, loading, error,
+    layoutAlgorithm,
   } = useGraphStore();
 
   useEffect(() => { loadGraph(); }, []);
@@ -430,15 +439,29 @@ export default function PolicyGraph() {
     cy.add(elements);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const layout = cy.layout({
-      name:          'dagre',
-      rankDir:       'LR',
-      padding:       60,
-      spacingFactor: 1.4,
-      nodeSep:       50,
-      rankSep:       110,
-      animate:       false,
-    } as any);
+    const layoutOptions: any =
+      layoutAlgorithm === 'dagre' ? {
+        name: 'dagre', rankDir: 'LR', padding: 60,
+        spacingFactor: 1.4, nodeSep: 50, rankSep: 110, animate: false,
+      } :
+      layoutAlgorithm === 'cola' ? {
+        name: 'cola', padding: 60, animate: false,
+        nodeSpacing: 40, edgeLength: 150,
+      } :
+      layoutAlgorithm === 'fcose' ? {
+        name: 'fcose', padding: 60, animate: false,
+        idealEdgeLength: 150, nodeRepulsion: 8000,
+      } :
+      layoutAlgorithm === 'cose' ? {
+        name: 'cose', padding: 60, animate: false,
+        nodeRepulsion: 8000, idealEdgeLength: 150,
+      } :
+      layoutAlgorithm === 'breadthfirst' ? {
+        name: 'breadthfirst', padding: 60, animate: false, directed: true,
+      } :
+      { name: layoutAlgorithm, padding: 60, animate: false };
+
+    const layout = cy.layout(layoutOptions);
 
     layout.one('layoutstop', () => {
       setBadgeNodes(
@@ -453,7 +476,7 @@ export default function PolicyGraph() {
     layout.run();
   // filteredNodes/filteredEdges call get() internally; the listed deps cover all state that affects output
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allNodes, selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges, selectedStatuses]);
+  }, [allNodes, selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges, selectedStatuses, layoutAlgorithm]);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: '#0d0f11' }}>
