@@ -22,7 +22,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 # ── Stage 3: Final image ──────────────────────────────────────────────────────
 FROM alpine:3.22
 
-RUN apk addgroup -S app && adduser -S -G app app
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S app && adduser -S -G app app
 
 COPY --from=go-builder --chown=app:app /netpol-viz /usr/local/bin/netpol-viz
 
