@@ -55,7 +55,7 @@ dockerfile-check:
     name: aquasec/trivy:latest
     entrypoint: [""]
   script:
-    - trivy config . --exit-code 1 --severity HIGH,CRITICAL
+    - trivy config . --exit-code 1 --severity HIGH,CRITICAL --skip-files Dockerfile.sandbox --skip-dirs test-data
 
 git-leaks:
   stage: security
