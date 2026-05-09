@@ -10,10 +10,10 @@ import (
 )
 
 type Server struct {
-	client *k8s.Client
+	client k8s.KubernetesClient
 }
 
-func New(client *k8s.Client) *Server {
+func New(client k8s.KubernetesClient) *Server {
 	return &Server{client: client}
 }
 

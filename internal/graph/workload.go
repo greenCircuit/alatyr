@@ -6,10 +6,10 @@ import (
 )
 
 type Builder struct {
-	client *k8s.Client
+	client k8s.KubernetesClient
 }
 
-func NewBuilder(client *k8s.Client) *Builder {
+func NewBuilder(client k8s.KubernetesClient) *Builder {
 	return &Builder{client: client}
 }
 

@@ -10,6 +10,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+type KubernetesClient interface {
+	GetPods(ns string) ([]corev1.Pod, error)
+	GetSvc(ns string) ([]corev1.Service, error)
+	GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error)
+	GetNsNames() ([]string, error)
+	GetNs(ns string) (corev1.Namespace, error)
+}
+
 type Client struct {
 	clientset *kubernetes.Clientset
 }
