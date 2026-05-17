@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,6 +77,13 @@ func (c *DemoClient) parseFile(data []byte) error {
 			}
 			c.pods[d.Namespace] = append(c.pods[d.Namespace], deploymentToPod(d))
 
+		case "Pod":
+			var pod corev1.Pod
+			if err := json.Unmarshal(jsonBytes, &pod); err != nil {
+				return err
+			}
+			c.pods[pod.Namespace] = append(c.pods[pod.Namespace], pod)
+
 		case "NetworkPolicy":
 			var np networkingv1.NetworkPolicy
 			if err := json.Unmarshal(jsonBytes, &np); err != nil {
@@ -122,6 +130,10 @@ func deploymentToPod(d appsv1.Deployment) corev1.Pod {
 
 func (c *DemoClient) GetPods(ns string) ([]corev1.Pod, error) {
 	return c.pods[ns], nil
+}
+
+func (c *DemoClient) GetCronJobs(ns string) ([]batchv1.CronJob, error) {
+	return nil, nil
 }
 
 func (c *DemoClient) GetSvc(ns string) ([]corev1.Service, error) {

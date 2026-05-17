@@ -1,20 +1,32 @@
 import { useGraphStore } from '../store/graphStore';
 import type { PolicyEdge } from '../data/policies';
+import { formatPort } from '../data/policies';
+import s from './DetailPanel.module.css';
 
 function PolicyRow({ p }: { p: PolicyEdge }) {
   return (
-    <div className="border border-secondary rounded p-2 mb-2" style={{ fontSize: 11 }}>
-      <div className="d-flex justify-content-between align-items-start mb-1">
-        <span className="fw-semibold text-light" style={{ wordBreak: 'break-all' }}>{p.policyName}</span>
-        <span className={`badge ms-1 flex-shrink-0 ${p.level === 'namespace' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+    <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
+      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <div className="fw-semibold text-light text-break">{p.policyName}</div>
+        <span className={`badge flex-shrink-0 ${p.level === 'namespace' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
           {p.level}
         </span>
       </div>
-      <div className="text-secondary mb-1">ns: {p.namespace} · {p.direction}</div>
-      <div className="d-flex flex-wrap gap-1">
-        {p.ports?.map((pt) => (
-          <span key={pt.port} className="badge bg-info text-dark">{pt.port}/{pt.protocol}</span>
-        )) ?? <span className="text-secondary">all ports</span>}
+      <div className="mb-1">
+        <div className="text-secondary">Namespace</div>
+        <div>{p.namespace}</div>
+      </div>
+      <div className="mb-1">
+        <div className="text-secondary">Direction</div>
+        <div>{p.direction}</div>
+      </div>
+      <div>
+        <div className="text-secondary">Ports</div>
+        <div className="d-flex flex-column align-items-start gap-1 mt-1">
+          {p.ports?.map((pt, i) => (
+            <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
+          )) ?? <div>all ports</div>}
+        </div>
       </div>
     </div>
   );
@@ -28,11 +40,7 @@ export default function DetailPanel() {
   const close = () => { setSelectedNode(null); setSelectedEdges([]); };
 
   return (
-    <div
-      className="position-absolute bg-dark text-light border border-secondary rounded shadow"
-      style={{ top: 12, right: 12, width: 290, maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', zIndex: 10 }}
-    >
-      {/* header */}
+    <div className={`text-light border border-secondary rounded shadow ${s.panel}`}>
       <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom border-secondary">
         <span className="fw-bold small">
           {selectedNode
@@ -43,42 +51,36 @@ export default function DetailPanel() {
       </div>
 
       <div className="p-3">
-        {/* workload detail */}
         {selectedNode && (
-          <table className="table table-sm table-dark table-borderless mb-0">
-            <tbody>
-              <tr>
-                <td className="text-secondary" style={{ width: 80 }}>Name</td>
-                <td className="fw-semibold">{selectedNode.label}</td>
-              </tr>
-              <tr>
-                <td className="text-secondary">Namespace</td>
-                <td>{selectedNode.namespace || '—'}</td>
-              </tr>
-              <tr>
-                <td className="text-secondary">Type</td>
-                <td>{selectedNode.type}</td>
-              </tr>
-              <tr>
-                <td className="text-secondary">Labels</td>
-                <td>
-                  {Object.entries(selectedNode.labels).map(([k, v]) => (
-                    <span key={k} className="badge bg-secondary me-1 mb-1" style={{ fontSize: '0.7rem' }}>
-                      {k}={v}
-                    </span>
-                  ))}
-                  {Object.keys(selectedNode.labels).length === 0 && '—'}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="d-flex flex-column gap-2">
+            <div>
+              <div className="text-secondary">Name</div>
+              <div className="fw-semibold text-break">{selectedNode.label}</div>
+            </div>
+            <div>
+              <div className="text-secondary">Namespace</div>
+              <div>{selectedNode.namespace || '—'}</div>
+            </div>
+            <div>
+              <div className="text-secondary">Type</div>
+              <div>{selectedNode.type}</div>
+            </div>
+            <div>
+              <div className="text-secondary">Labels</div>
+              <div className="d-flex flex-column align-items-start gap-1 mt-1">
+                {Object.entries(selectedNode.labels).map(([k, v]) => (
+                  <span key={k} className={`badge bg-secondary ${s.badgeSm}`}>{k}={v}</span>
+                ))}
+                {Object.keys(selectedNode.labels).length === 0 && '—'}
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* edge / bundle detail */}
         {selectedEdges.length > 0 && (
           <>
             {selectedEdges.length > 1 && (
-              <div className="text-secondary mb-2" style={{ fontSize: 11 }}>
+              <div className={`text-secondary mb-2 ${s.smallText}`}>
                 {selectedEdges.length} policies on this connection
               </div>
             )}

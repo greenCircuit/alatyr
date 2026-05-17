@@ -1,10 +1,9 @@
-//go:build embed
-
 package main
 
 import "embed"
 
-//go:embed ui/dist
+//go:embed all:ui/dist
 var uiFS embed.FS
 
-const hasUI = true
+//go:embed test-data
+var demoDataFS embed.FS

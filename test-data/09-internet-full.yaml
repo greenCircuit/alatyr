@@ -1,0 +1,42 @@
+# Case 9: bidirectional internet exposure — public-gateway allows 0.0.0.0/0 in and out
+# Expected badge: internet-full (collapsed from internet-ingress + internet-egress)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-gateway
+  namespace: test-netpol-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: public-gateway
+  template:
+    metadata:
+      labels:
+        app: public-gateway
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-gateway-internet
+  namespace: test-netpol-a
+spec:
+  podSelector:
+    matchLabels:
+      app: public-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0

@@ -1,0 +1,205 @@
+# Pods scraped from real observability namespace. Job-owned pods (Succeeded) omitted —
+# the live client filters them. Each pod's ownerReferences let the workload dedup logic
+# collapse replicas onto the right parent (StatefulSet/ReplicaSet/DaemonSet).
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alertmanager-observability-kube-prometh-alertmanager-0
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-kube-prometh-alertmanager
+    app.kubernetes.io/name: alertmanager
+    alertmanager: observability-kube-prometh-alertmanager
+  ownerReferences:
+    - kind: StatefulSet
+      name: alertmanager-observability-kube-prometh-alertmanager
+      uid: a53f4dee-abb3-4af4-9b20-a16d72e8daca
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-gatus-hr-69fc7b9d74-78k87
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-gatus-hr
+    app.kubernetes.io/name: gatus
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-gatus-hr-69fc7b9d74
+      uid: fec379a3-99d0-4585-9059-4e02e3909ddf
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-kube-prometh-operator-5b95857866-6x2f6
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-kube-prometheus-stack
+    app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator
+    app.kubernetes.io/component: prometheus-operator
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-kube-prometh-operator-5b95857866
+      uid: ebf01448-9323-4267-b226-039af5283edd
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-kube-prometheus-stack-kube-state-metrics-75762b2l
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-kube-prometheus-stack
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: metrics
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-kube-prometheus-stack-kube-state-metrics-7574dcc44
+      uid: 56b0ec86-4524-4a3a-844d-f01a3b8217c1
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-kube-prometheus-stack-prometheus-node-exportnn98k
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-kube-prometheus-stack
+    app.kubernetes.io/name: prometheus-node-exporter
+    app.kubernetes.io/component: metrics
+  ownerReferences:
+    - kind: DaemonSet
+      name: observability-kube-prometheus-stack-prometheus-node-exporter
+      uid: 4bc9178f-31f4-4550-bfba-3334c4cdf0fd
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-loki-stack-0
+  namespace: observability
+  labels:
+    app: loki
+    name: observability-loki-stack
+    release: observability-loki-stack
+  ownerReferences:
+    - kind: StatefulSet
+      name: observability-loki-stack
+      uid: b8ba88ef-cecf-43cf-85fe-8454ff65e74d
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-loki-stack-grafana-647bd7d5b4-qb82b
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-loki-stack
+    app.kubernetes.io/name: grafana
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-loki-stack-grafana-647bd7d5b4
+      uid: 6fb28b00-9d1c-409a-af36-22bd24550d5c
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-loki-stack-promtail-57rk7
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-loki-stack
+    app.kubernetes.io/name: promtail
+  ownerReferences:
+    - kind: DaemonSet
+      name: observability-loki-stack-promtail
+      uid: 598b791b-152d-4d2a-82e8-10113e64cc21
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-opensearch-dashboards-86cb974495-xhg8j
+  namespace: observability
+  labels:
+    app: opensearch-dashboards
+    release: observability-opensearch-dashboards
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-opensearch-dashboards-86cb974495
+      uid: ca85e1a5-b913-4a37-a5af-8e4069245d04
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: observability-uptime-kuma-77764489fc-6hk6m
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-uptime-kuma
+    app.kubernetes.io/name: uptime-kuma
+  ownerReferences:
+    - kind: ReplicaSet
+      name: observability-uptime-kuma-77764489fc
+      uid: 4aca8ce5-cd24-4040-9fc6-019f7e94abd6
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: opensearch-cluster-master-0
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-opensearch
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/component: opensearch-cluster-master
+  ownerReferences:
+    - kind: StatefulSet
+      name: opensearch-cluster-master
+      uid: 3d9aed44-7d49-4299-8264-ce324bfeee18
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-observability-kube-prometh-prometheus-0
+  namespace: observability
+  labels:
+    app.kubernetes.io/instance: observability-kube-prometh-prometheus
+    app.kubernetes.io/name: prometheus
+    prometheus: observability-kube-prometh-prometheus
+  ownerReferences:
+    - kind: StatefulSet
+      name: prometheus-observability-kube-prometh-prometheus
+      uid: b68bd25c-f135-4023-9598-aaae02938ed9
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: waypoint-5fcb866cd7-vtft4
+  namespace: observability
+  labels:
+    gateway.networking.k8s.io/gateway-name: waypoint
+    service.istio.io/canonical-name: waypoint
+  ownerReferences:
+    - kind: ReplicaSet
+      name: waypoint-5fcb866cd7
+      uid: abae552e-c418-49da-8879-296c314c9983
+status:
+  phase: Running

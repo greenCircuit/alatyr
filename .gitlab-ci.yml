@@ -28,7 +28,17 @@ go-test:
   stage: test
   image: golang:1.26
   script:
-    - go test ./...
+    - go test ./... -cover
+
+ui-test:
+  stage: test
+  image: node:22-alpine
+  cache:
+    key: ui-npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - ui/node_modules/
+  script:
+    - cd ui && npm ci && npm run test:coverage
 
 img-base:
   extends: .create_image

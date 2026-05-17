@@ -6,10 +6,13 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"graph/internal/api"
+	"graph/internal/config"
 	"graph/internal/k8s"
 )
 
 func main() {
+	config.MustLoad(os.Getenv("CONFIG_PATH"))
+
 	var client k8s.KubernetesClient
 	if os.Getenv("DEMO_MODE") == "true" {
 		demo, err := k8s.NewDemoClient(demoDataFS, "test-data")
@@ -29,9 +32,7 @@ func main() {
 
 	server := api.New(client)
 	server.RegisterRoutes(e)
-	if hasUI {
-		server.RegisterUI(e, uiFS)
-	}
+	server.RegisterUI(e, uiFS)
 
 	log.Fatal(e.Start(":8080"))
 }

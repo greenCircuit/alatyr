@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +13,7 @@ import (
 
 type KubernetesClient interface {
 	GetPods(ns string) ([]corev1.Pod, error)
+	GetCronJobs(ns string) ([]batchv1.CronJob, error)
 	GetSvc(ns string) ([]corev1.Service, error)
 	GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error)
 	GetNsNames() ([]string, error)
@@ -42,6 +44,15 @@ func (c *Client) GetPods(ns string) ([]corev1.Pod, error) {
 	return list.Items, nil
 }
 
+
+func (c *Client) GetCronJobs(ns string) ([]batchv1.CronJob, error) {
+	list, err := c.clientset.BatchV1().CronJobs(ns).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
 func (c *Client) GetSvc(ns string) ([]corev1.Service, error) {
 	list, err := c.clientset.CoreV1().Services(ns).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -57,6 +68,7 @@ func (c *Client) GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error) {
 	}
 	return list.Items, nil
 }
+
 
 func (c *Client) GetNsNames() ([]string, error) {
 	list, err := c.clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
