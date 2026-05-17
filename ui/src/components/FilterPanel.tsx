@@ -1,5 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGraphStore } from '../store/graphStore';
+import type { StatusKey } from '../data/policies';
+
+const STATUS_LABELS: Record<StatusKey, string> = {
+  'air-gapped':        'Air-gapped (deny-all)',
+  'cross-namespace':   'Cross-namespace',
+  'internet-egress':   'Internet egress',
+  'internet-ingress':  'Internet ingress',
+  'internet-full':     'Internet full (bi-directional)',
+  'lan-egress':        'LAN egress',
+  'lan-ingress':       'LAN ingress',
+  'lan-full':          'LAN full (bi-directional)',
+  'api-server-egress': 'API server egress',
+  'ns-egress-access':  'NS egress access',
+  'ns-ingress-access': 'NS ingress access',
+  'ns-full-access':    'NS full access',
+};
 
 const LAYOUTS = [
   { value: 'dagre',       label: 'Dagre (hierarchical)' },
@@ -14,14 +30,21 @@ const LAYOUTS = [
 export default function FilterPanel() {
   const {
     availableNamespaces: namespaces,
+    availableStatusKeys,
     selectedNamespaces, searchQuery, layoutAlgorithm,
+    selectedStatuses, toggleStatus,
+    showConnectedNamespaces, toggleConnectedNamespaces,
+    aggregateByNamespace, toggleAggregateByNamespace,
     toggleNamespace, setSearchQuery, setLayoutAlgorithm,
+    loadGraph, loading,
   } = useGraphStore();
 
-  const [nsOpen, setNsOpen] = useState(false);
-  const nsDropdownRef = useRef<HTMLDivElement>(null);
+  const [nsOpen,     setNsOpen]     = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const nsDropdownRef     = useRef<HTMLDivElement>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close namespace dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     if (!nsOpen) return;
     const handler = (e: MouseEvent) => {
@@ -31,6 +54,16 @@ export default function FilterPanel() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [nsOpen]);
+
+  useEffect(() => {
+    if (!statusOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node))
+        setStatusOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [statusOpen]);
 
   const nsCount   = selectedNamespaces.size;
   const nsLabel   = nsCount === namespaces.length
@@ -72,6 +105,17 @@ export default function FilterPanel() {
           <option key={value} value={value}>{label}</option>
         ))}
       </select>
+
+      {/* Refresh */}
+      <button
+        className="btn btn-sm btn-outline-secondary"
+        onClick={() => loadGraph()}
+        disabled={loading}
+        title="Refresh data"
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        ↻&nbsp;{loading ? 'Loading…' : 'Refresh'}
+      </button>
 
       {/* Namespace multiselect dropdown */}
       <div className="position-relative" ref={nsDropdownRef}>
@@ -117,6 +161,76 @@ export default function FilterPanel() {
                 />
                 <label className="form-check-label text-light" htmlFor={`ns-dd-${ns}`} style={{ fontSize: 13 }}>
                   {ns}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* NS aggregate view toggle */}
+      <button
+        className={`btn btn-sm ${aggregateByNamespace ? 'btn-warning' : 'btn-outline-secondary'}`}
+        onClick={toggleAggregateByNamespace}
+        title="Collapse all workloads into namespace nodes to see NS-to-NS policy flow"
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        ▣ NS view
+      </button>
+
+      {/* Show connected namespaces toggle */}
+      <button
+        className={`btn btn-sm ${showConnectedNamespaces ? 'btn-warning' : 'btn-outline-secondary'}`}
+        onClick={toggleConnectedNamespaces}
+        title="Also show namespaces connected to the selected ones"
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        ⇄ Connections
+      </button>
+
+      {/* Status key multiselect dropdown */}
+      <div className="position-relative" ref={statusDropdownRef}>
+        <button
+          className={`btn btn-sm ${selectedStatuses.size > 0 ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+          type="button"
+          onClick={() => setStatusOpen((o) => !o)}
+        >
+          {selectedStatuses.size === 0 ? 'Filter by status' : `${selectedStatuses.size} status filter${selectedStatuses.size > 1 ? 's' : ''}`}
+        </button>
+
+        {statusOpen && (
+          <div
+            className="position-absolute bg-dark border border-secondary rounded shadow p-2"
+            style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 200 }}
+          >
+            <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
+              <button
+                className="btn btn-link btn-sm p-0 text-secondary"
+                style={{ fontSize: 11 }}
+                onClick={() => availableStatusKeys.forEach((k) => { if (!selectedStatuses.has(k)) toggleStatus(k); })}
+              >
+                all
+              </button>
+              <button
+                className="btn btn-link btn-sm p-0 text-secondary"
+                style={{ fontSize: 11 }}
+                onClick={() => availableStatusKeys.forEach((k) => { if (selectedStatuses.has(k)) toggleStatus(k); })}
+              >
+                none
+              </button>
+            </div>
+
+            {availableStatusKeys.map((key) => (
+              <div key={key} className="form-check mb-1">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`status-dd-${key}`}
+                  checked={selectedStatuses.has(key)}
+                  onChange={() => toggleStatus(key)}
+                />
+                <label className="form-check-label text-light" htmlFor={`status-dd-${key}`} style={{ fontSize: 13 }}>
+                  {STATUS_LABELS[key]}
                 </label>
               </div>
             ))}

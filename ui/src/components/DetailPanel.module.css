@@ -1,0 +1,18 @@
+.panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: auto;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  z-index: 10;
+  background: #1a1e22ee;
+}
+
+.smallText {
+  font-size: 11px;
+}
+
+.badgeSm {
+  font-size: 0.7rem;
+}

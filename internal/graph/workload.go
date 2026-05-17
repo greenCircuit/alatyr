@@ -1,8 +1,10 @@
 package graph
 
 import (
-	networkingv1 "k8s.io/api/networking/v1"
 	"graph/internal/k8s"
+	"sync"
+
+	networkingv1 "k8s.io/api/networking/v1"
 )
 
 type Builder struct {
@@ -15,49 +17,69 @@ func NewBuilder(client k8s.KubernetesClient) *Builder {
 
 // front end will call this function and list of ns are passed as params
 func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
-	// gather all workloads
-	nodesByNS := map[string][]WorkloadNode{}
+	labelIndexByNS := map[string]map[string][]*WorkloadNode{}
+	policiesByNS := map[string][]networkingv1.NetworkPolicy{}	
+	var allNodes []WorkloadNode								// what will return to frontend
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+
 	for _, ns := range namespaces {
-		nodes, err := b.buildWorkloadNodesForNS(ns)
-		if err != nil {
-			return Graph{}, err
-		}
-		nodesByNS[ns] = nodes
+		wg.Add(1)
+		go func(ns string) {
+			defer wg.Done()
+
+			nodes, err := b.buildWorkloadNodesForNS(ns)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil { firstErr = err }
+				mu.Unlock()
+				return
+			}
+			nsPolicies, err := b.client.GetPolicies(ns)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil { firstErr = err }
+				mu.Unlock()
+				return
+			}
+
+			for position := range nodes {
+				matchPolicies := getNodePolicies(nodes[position], nsPolicies)
+				nodes[position].Statuses = buildStatusKeys(matchPolicies)
+			}
+
+			// build index outside the lock — read-only on local nodes slice
+			// should not modify nodes after this
+			labelIndex := buildWorkloadIndex(nodes)
+
+			mu.Lock()
+			labelIndexByNS[ns] = labelIndex
+			policiesByNS[ns] = nsPolicies
+			// updating status keys since know nodes and polices for entire ns  
+			allNodes = append(allNodes, nodes...)
+			mu.Unlock()
+		}(ns)
 	}
 
-	// get all k8s policies
-	policies, err := b.fetchPolicies(namespaces)
-	if err != nil {
-		return Graph{}, err
+	wg.Wait()
+
+	if firstErr != nil {
+		return Graph{}, firstErr
 	}
 
-	edges := buildEdges(nodesByNS, policies)
 
-	var allNodes []WorkloadNode
-	for _, nsNodes := range nodesByNS {
-		allNodes = append(allNodes, nsNodes...)
-	}
+	// flattening nodes structure with already been fetched, so don't need to refetch them again
+	var allPolicies []networkingv1.NetworkPolicy                                                                                       
+	for _, ns := range namespaces {                                                                                                    
+		allPolicies = append(allPolicies, policiesByNS[ns]...)                                                                         
+	} 
 
+
+	edges := buildEdges(labelIndexByNS, allPolicies)
+
+
+	// return stuff for front end
 	return Graph{Nodes: allNodes, Edges: edges}, nil
 }
 
-func (b *Builder) fetchPolicies(namespaces []string) ([]networkingv1.NetworkPolicy, error) {
-	var policies []networkingv1.NetworkPolicy
-	for _, ns := range namespaces {
-		nsPolicies, err := b.client.GetPolicies(ns)
-		if err != nil {
-			return nil, err
-		}
-		policies = append(policies, nsPolicies...)
-	}
-	return policies, nil
-}
-
-
-
-
-// getStatusKeys computes status badge keys for a workload node given the full policy set.
-func getStatusKeys(node WorkloadNode, policies []networkingv1.NetworkPolicy) []StatusKey {
-	// TODO
-	return nil
-}

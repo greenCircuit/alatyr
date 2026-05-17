@@ -1,0 +1,39 @@
+# Case 12: combined badges — workload is air-gapped from internet but allowed cross-ns egress
+# Expected badges: air-gapped (no internet path) + cross-namespace (egress to ns-b)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locked-bridge
+  namespace: test-netpol-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locked-bridge
+  template:
+    metadata:
+      labels:
+        app: locked-bridge
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: locked-bridge-cross-ns
+  namespace: test-netpol-a
+spec:
+  podSelector:
+    matchLabels:
+      app: locked-bridge
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: test-netpol-b

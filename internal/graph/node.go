@@ -19,22 +19,7 @@ const (
 	NodeTypeDeployment NodeType = "deployment" // pod/deployment with no service exposure
 	NodeTypeHeadless   NodeType = "headless"   // headless service (direct pod addressing)
 	NodeTypeExternal   NodeType = "external"   // traffic origin outside the cluster
-	NodeTypeNamespace  NodeType = "namespace"  // traffic targets entire ns 
+	NodeTypeNamespace  NodeType = "namespace"  // traffic targets entire ns
+	NodeTypeCronJob    NodeType = "cronjob"    // cronjob — shown when actively running
 )
 
-
-// StatusKey mirrors the UI's StatusKey union type — computed by the backend,
-// rendered by the UI as icon badges on workload nodes.
-type StatusKey string
-
-const (
-	StatusInternetIngress  StatusKey = "internet-ingress"
-	StatusInternetEgress   StatusKey = "internet-egress"
-	StatusNoPolicy         StatusKey = "no-policy"
-	StatusIsolated         StatusKey = "isolated"
-	StatusOrphanedSelector StatusKey = "orphaned-selector"
-	StatusCrossNamespace   StatusKey = "cross-namespace"
-	StatusDNSMissing       StatusKey = "dns-missing"
-	StatusKubeAPIAccess    StatusKey = "kube-api-access"
-	StatusIngressExposed   StatusKey = "ingress-exposed"
-)

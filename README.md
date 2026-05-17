@@ -1,93 +1,128 @@
 # network-policy-visualizer
 
+A read-only visualizer for Kubernetes NetworkPolicy coverage. Point it at a cluster, get a graph of which workloads can talk to which — and, more importantly, which workloads have **no policy at all** and are wide open.
 
+![Full graph](docs/fullGraph.png)
 
-## Getting started
+## What it shows
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+A live graph rendered from your cluster's pods, services, and NetworkPolicies. Two layers of information:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+**Status badges** mark each workload's effective security posture. All badges are computed from the union of every policy that selects the workload — the rules are evaluated, not just listed.
 
-## Add your files
+| Badge | Status key | When it fires |
+|---|---|---|
+| `WAN⇆` | `internet-full` | Internet reachable in both directions. **Also fires on workloads with no policy** — default-open means the pod can reach `0.0.0.0/0` both ways. This is the "unprotected" case. |
+| `WAN↑` | `internet-egress` | Ingress locked, but egress can reach `0.0.0.0/0` |
+| `WAN↓` | `internet-ingress` | Egress locked, but ingress allows traffic from `0.0.0.0/0` |
+| `LAN⇆` / `LAN↑` / `LAN↓` | `lan-*` | Explicit `ipBlock` peer targets a private LAN outside the cluster (not `0.0.0.0/0`, not pod/service CIDR, not the API server) |
+| `API↑` | `api-server-egress` | Explicit `ipBlock` peer matches a configured Kubernetes API-server CIDR |
+| `⊘` | `air-gapped` | Both ingress and egress are locked **and** no internet / LAN / API-server escape hatch exists |
+| `⇆` | `cross-namespace` | A peer's `namespaceSelector` targets a namespace other than the workload's own |
+| `NS⇆` / `NS↑` / `NS↓` | `ns-full-access` / `ns-egress-access` / `ns-ingress-access` | A policy peer is a catch-all that matches every pod in the same namespace (empty `podSelector`, no `namespaceSelector` or same-ns selector) |
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+A workload with **no badges at all** is a degenerate case — it has policies that lock both directions but no escape hatches were detected, yet the air-gapped check didn't fire. Usually means custom IP rules the classifier doesn't recognise. The badges to hunt for in practice are `WAN⇆` on workloads you didn't expect to be public.
 
+**Edges** show what each policy actually permits:
+
+- Workload → workload (specific pod selectors on both ends)
+- Workload → namespace (catch-all peer collapses to the namespace node)
+- Workload → CIDR (`ipBlock` peers)
+- Direction-aware arrows (ingress / egress / both)
+- Multiple policies between the same pair are bundled with a count
+
+![Selected node](docs/selectNode.png)
+
+## Why it matters
+
+NetworkPolicy is the only built-in way to lock down pod-to-pod traffic in Kubernetes, but reading the YAML rarely tells you what's actually exposed:
+
+- Policies are **additive** — multiple rules stack, so one file rarely tells the whole story.
+- A workload with **zero policies is wide open by default**. `kubectl get networkpolicies` only lists policies, never the workloads that lack them. The gap is invisible.
+- Peers mix podSelectors, namespaceSelectors, ipBlocks, and `0.0.0.0/0`-with-`except` lists. Easy to misread "looks locked down" for "actually locked down".
+- Cross-namespace intent is opaque — a policy in ns-A allowing ns-B traffic only makes sense if you have both namespaces' labels open in another tab.
+
+This tool puts the whole picture on one screen.
+
+### Footguns it surfaces
+
+Anyone who's run more than one cluster has hit at least half of these. The visualizer is designed to make each one visible at a glance.
+
+- **Default-open is backwards.** A pod with no policy can talk to anything, anywhere — there's no warning, no audit event, nothing in any dashboard. The graph flags every such workload with the `WAN⇆` (internet-full) badge — that's the headline signal.
+- **`podSelector: {}` means *everything*, not nothing.** People write empty selectors intending "match nothing" and accidentally allow the whole namespace. Shows up as a fat edge from the namespace box.
+- **`0.0.0.0/0` egress doesn't isolate intra-cluster traffic.** Every pod in every namespace is inside that CIDR — "allow internet" silently means "allow everything" unless an `except` list is set. Internet badges only fire when the rule is unambiguously external.
+- **DNS is the silent killer of egress lockdowns.** Lock egress without allowing `kube-system` UDP 53 and every outbound hostname dies. The graph shows the missing edge.
+- **Effective reachability is the OR of every selector.** A workload may be selected by three policies, each contributing partial rules. Nobody resolves this reliably by reading YAML. The tool does the resolution and renders the result.
+
+## When you'd actually use it
+
+**"I inherited this cluster — what's exposed?"**
+You're new on the team. Helm-installed everything looks fine in `kubectl get pods`. Open the visualizer, switch to a workload namespace, and every pod wearing the `WAN⇆` badge is reachable from the public internet — or, more often, has no policy at all and defaults to it. Those are the ones to ask about first.
+
+**"The Helm chart said it has network policies — does it really?"**
+Most upstream charts only ship policies for a handful of components. The visualizer shows which workloads in the chart's namespace ended up covered and which the chart silently skipped. "Loki has an ingress policy, Grafana doesn't" without reading a single YAML.
+
+**"Security is asking what can reach the internet."**
+Filter on the `WAN⇆` / `WAN↑` badges. Every workload that can reach `0.0.0.0/0` egress lights up. Screenshot, send. No grepping policy YAMLs across namespaces.
+
+**"A pod got compromised — what could it have reached?"**
+Click the workload. The detail panel lists every outbound edge: which pods, which namespaces, which CIDRs, on which ports. Faster than reconstructing it from policy files during an incident.
+
+**"I'm about to add a deny-all default policy — will anything break?"**
+Run the tool against the current cluster first. Anything currently showing `WAN⇆` without an obvious reason — that is, relying on default-open — is what will break. Lock those down explicitly before flipping the default.
+
+**"I want to verify tenants can't reach each other."**
+Aggregate-by-namespace view collapses each ns into one node. Cross-namespace edges between tenant namespaces are immediately visible — or, ideally, absent.
+
+**"I changed a policy — did it do what I expected?"**
+Refresh. Compare badges and edges before and after. No need to mentally simulate the selector resolution.
+
+---
+
+## Quick start
+
+Against your live cluster:
+
+```bash
+go build -o graph .
+KUBECONFIG=~/.kube/config ./graph
+# UI → http://localhost:8080
 ```
-cd existing_repo
-git remote add origin http://gitlab.dev.local/home-lab/network-policy-visualizer.git
-git branch -M main
-git push -uf origin main
+
+The binary embeds the built UI — single static binary, no separate frontend deploy. Read-only on your cluster (it only `LIST`s pods, services, and NetworkPolicies).
+
+Demo mode (no cluster required):
+
+```bash
+DEMO_MODE=true ./graph
 ```
 
-## Integrate with your tools
+Loads sample data from embedded `test-data/` — includes a real `observability` namespace dump showing partial NetworkPolicy coverage as it actually appears in production.
 
-- [ ] [Set up project integrations](http://gitlab.dev.local/home-lab/network-policy-visualizer/-/settings/integrations)
+## RBAC
 
-## Collaborate with your team
+Minimum permissions:
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```yaml
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list"]
+```
 
-## Test and Deploy
+## Development
 
-Use the built-in continuous integration in GitLab.
+```bash
+go test ./...                          # unit tests for graph logic (no cluster needed)
+cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api → :8080
+```
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently. No watches, no caching layer — every request hits the API server fresh, so the picture is always live.
 
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+For deeper detail see [`docs/architecture.md`](docs/architecture.md) and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).

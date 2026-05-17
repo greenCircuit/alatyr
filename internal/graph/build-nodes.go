@@ -1,6 +1,9 @@
 package graph
 
+
 import (
+	"graph/internal/utils"
+
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -11,7 +14,8 @@ func (b *Builder) buildWorkloadNodesForNS(ns string) ([]WorkloadNode, error) {
 		return nil, err
 	}
 
-	svc, err := b.client.GetSvc(ns)
+
+	cronJobs, err := b.client.GetCronJobs(ns)
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +23,28 @@ func (b *Builder) buildWorkloadNodesForNS(ns string) ([]WorkloadNode, error) {
 	seen := map[string]bool{}
 	var nodes []WorkloadNode
 
+	for _, cj := range cronJobs {
+		uid := string(cj.UID)
+		if seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		nodes = append(nodes, WorkloadNode{
+			ID:        uid,
+			Label:     cj.Name,
+			Namespace: cj.Namespace,
+			Type:      NodeTypeCronJob,
+			Labels:    cj.Spec.JobTemplate.Spec.Template.Labels,
+		})
+	}
+
 	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if len(pod.OwnerReferences) > 0 && pod.OwnerReferences[0].Kind == "Job" {
+			continue
+		}
 		uid := ownerUID(pod)
 		if seen[uid] {
 			continue
@@ -34,22 +59,6 @@ func (b *Builder) buildWorkloadNodesForNS(ns string) ([]WorkloadNode, error) {
 			Labels:    pod.Labels,
 		})
 	}
-
-	// add services that have no matching pod workload node
-	var svcNodes []WorkloadNode
-	for _, s := range svc {
-		res := findNodeByLabel(s.Spec.Selector, nodes)
-		if len(res) == 0 {
-			svcNodes = append(svcNodes, WorkloadNode{
-				ID:        string(s.UID),
-				Label:     s.Name,
-				Namespace: s.Namespace,
-				Type:      NodeTypeService,
-				Labels:    s.Labels,
-			})
-		}
-	}
-	nodes = append(nodes, svcNodes...)
 
 	// add namespace node
 	nsObj, err := b.client.GetNs(ns)
@@ -70,32 +79,38 @@ func (b *Builder) buildWorkloadNodesForNS(ns string) ([]WorkloadNode, error) {
 	return nodes, nil
 }
 
-// generate all nodes for ns
-func getNsNodes(namespaces []corev1.Namespace) []WorkloadNode {
-	var nsNodes []WorkloadNode
-	for _, ns := range namespaces {
-		nsNodes = append(nsNodes, WorkloadNode{
-			ID:        string(ns.UID),
-			Label:     ns.Name,
-			Namespace: ns.Namespace,
-			Type:      NodeTypeNamespace,
-			Labels:    ns.Labels,
-		})
-	}
-	return nsNodes
-}
-
 // getSourceNodes finds all workload nodes the policy applies to via podSelector.
 // An empty podSelector (catch-all) is collapsed to the namespace node to avoid N² edges.
-func getSourceNodes(policy networkingv1.NetworkPolicy, nodes map[string][]WorkloadNode) []WorkloadNode {
+func getSourceNodes(policy networkingv1.NetworkPolicy, nodes map[string]map[string][]*WorkloadNode) []*WorkloadNode {
 	nsNodes := nodes[policy.Namespace]
 	if isCatchAll(policy.Spec.PodSelector.MatchLabels, len(policy.Spec.PodSelector.MatchExpressions)) {
 		if nsNode := findNSNode(nsNodes); nsNode != nil {
-			return []WorkloadNode{*nsNode}
+			return []*WorkloadNode{nsNode}
 		}
 	}
-	return findNodeByLabel(policy.Spec.PodSelector.MatchLabels, nsNodes)
+	return indexLabelMatch(policy.Spec.PodSelector.MatchLabels, nsNodes)
 }
+
+// find all policies for a single node, need so can show badges on node
+func getNodePolicies(node WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
+	var matches []networkingv1.NetworkPolicy
+	for _, policy := range policies {
+		sel := policy.Spec.PodSelector
+		catchAll := isCatchAll(sel.MatchLabels, len(sel.MatchExpressions))
+		if node.Type == NodeTypeNamespace {
+			if catchAll {
+				matches = append(matches, policy)
+			}
+			continue
+		}
+		if utils.IsLabelMach(sel.MatchLabels, node.Labels) {
+			matches = append(matches, policy)
+		}
+	}
+	return matches
+}
+
+
 
 func ownerUID(pod corev1.Pod) string {
 	if len(pod.OwnerReferences) > 0 {
@@ -105,10 +120,10 @@ func ownerUID(pod corev1.Pod) string {
 }
 
 func workloadLabel(pod corev1.Pod) string {
-	if name, ok := pod.Labels["app.kubernetes.io/name"]; ok {
+	if name, ok := pod.Labels["app"]; ok {
 		return name
 	}
-	if name, ok := pod.Labels["app"]; ok {
+	if name, ok := pod.Labels["app.kubernetes.io/name"]; ok {
 		return name
 	}
 	if len(pod.OwnerReferences) > 0 {
@@ -117,19 +132,20 @@ func workloadLabel(pod corev1.Pod) string {
 	return pod.Name
 }
 
-func findNodeByLabel(labelMap map[string]string, nodes []WorkloadNode) []WorkloadNode {
-	var matches []WorkloadNode
-	for _, node := range nodes {
-		matched := true
-		for k, v := range labelMap {
-			if node.Labels[k] != v {
-				matched = false
-				break
-			}
-		}
-		if matched {
-			matches = append(matches, node)
+func makeLabelIndexKey(key string, value string) string {
+	return key + "=" + value
+}
+
+// buildWorkloadIndex builds a flat label index for fast selector matching.
+// Pointers reference the caller's slice — do not append to nodes after this returns.
+func buildWorkloadIndex(nodes []WorkloadNode) map[string][]*WorkloadNode {
+	index := make(map[string][]*WorkloadNode, len(nodes))
+	for pos := range nodes {
+		node := &nodes[pos]
+		for key, value := range node.Labels {
+			entry := makeLabelIndexKey(key, value)
+			index[entry] = append(index[entry], node)
 		}
 	}
-	return matches
+	return index
 }

@@ -19,6 +19,7 @@ func New(client k8s.KubernetesClient) *Server {
 
 func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/graph", s.handleGraph)
+	e.GET("/api/cluster-state", s.handleClusterState)
 }
 
 func (s *Server) RegisterUI(e *echo.Echo, uiFS fs.FS) {
