@@ -4,13 +4,14 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"graph/internal/graph"
+	"graph/internal/models"
+	"graph/internal/policy/k8spolicy"
 )
 
 // returning this so UI loads data without needing graph
 type ClusterState struct {
-	AvailableNs		[]string			`json:"availableNs"`
-	StatusKeys		[]graph.StatusKey	`json:"statusKeys"`
+	AvailableNs []string           `json:"availableNs"`
+	StatusKeys  []models.StatusKey `json:"statusKeys"`
 }
 
 func (s *Server) handleClusterState(c echo.Context) error {
@@ -18,12 +19,10 @@ func (s *Server) handleClusterState(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	data := ClusterState {
+	data := ClusterState{
 		AvailableNs: allNameSpaces,
-		StatusKeys: graph.GetStatusKeys(),
-	 }
-	// data.availableNs = allNameSpaces
-	// data.statusKeys = []graph.StatusKey{}
+		StatusKeys:  k8spolicy.GetStatusKeys(),
+	}
 
 	return c.JSON(http.StatusOK, data)
 }

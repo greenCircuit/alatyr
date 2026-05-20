@@ -1,4 +1,4 @@
-package graph
+package models
 
 
 // WorkloadNode mirrors the UI WorkloadNode interface.

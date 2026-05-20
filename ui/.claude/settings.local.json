@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:5173/src/main.tsx)",
+      "Bash(curl -s http://localhost:5173/src/App.tsx)",
+      "Bash(curl -s http://localhost:5173/api/cluster-state -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/api/graph -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/api/graph)",
+      "Bash(python3)",
+      "Bash(git *)",
+      "Bash(python3 *)"
+    ]
+  }
+}

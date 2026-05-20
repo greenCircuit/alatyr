@@ -1,8 +1,11 @@
 package graph
 
 import (
-	"graph/internal/k8s"
 	"sync"
+
+	"graph/internal/k8s"
+	"graph/internal/models"
+	"graph/internal/policy/k8spolicy"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -17,9 +20,9 @@ func NewBuilder(client k8s.KubernetesClient) *Builder {
 
 // front end will call this function and list of ns are passed as params
 func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
-	labelIndexByNS := map[string]map[string][]*WorkloadNode{}
-	policiesByNS := map[string][]networkingv1.NetworkPolicy{}	
-	var allNodes []WorkloadNode								// what will return to frontend
+	labelIndexByNS := map[string]map[string][]*models.WorkloadNode{}
+	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
+	var allNodes []models.WorkloadNode
 	var mu sync.Mutex
 	var firstErr error
 	var wg sync.WaitGroup
@@ -32,21 +35,25 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 			nodes, err := b.buildWorkloadNodesForNS(ns)
 			if err != nil {
 				mu.Lock()
-				if firstErr == nil { firstErr = err }
+				if firstErr == nil {
+					firstErr = err
+				}
 				mu.Unlock()
 				return
 			}
 			nsPolicies, err := b.client.GetPolicies(ns)
 			if err != nil {
 				mu.Lock()
-				if firstErr == nil { firstErr = err }
+				if firstErr == nil {
+					firstErr = err
+				}
 				mu.Unlock()
 				return
 			}
 
 			for position := range nodes {
 				matchPolicies := getNodePolicies(nodes[position], nsPolicies)
-				nodes[position].Statuses = buildStatusKeys(matchPolicies)
+				nodes[position].Statuses = k8spolicy.BuildStatusKeys(matchPolicies)
 			}
 
 			// build index outside the lock — read-only on local nodes slice
@@ -56,7 +63,6 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 			mu.Lock()
 			labelIndexByNS[ns] = labelIndex
 			policiesByNS[ns] = nsPolicies
-			// updating status keys since know nodes and polices for entire ns  
 			allNodes = append(allNodes, nodes...)
 			mu.Unlock()
 		}(ns)
@@ -68,18 +74,13 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 		return Graph{}, firstErr
 	}
 
+	var allPolicies []networkingv1.NetworkPolicy
+	for _, ns := range namespaces {
+		allPolicies = append(allPolicies, policiesByNS[ns]...)
+	}
 
-	// flattening nodes structure with already been fetched, so don't need to refetch them again
-	var allPolicies []networkingv1.NetworkPolicy                                                                                       
-	for _, ns := range namespaces {                                                                                                    
-		allPolicies = append(allPolicies, policiesByNS[ns]...)                                                                         
-	} 
+	tuples := k8spolicy.BuildAllowTuples(labelIndexByNS, allPolicies)
+	edges := foldTuplesToEdges(tuples, allNodes)
 
-
-	edges := buildEdges(labelIndexByNS, allPolicies)
-
-
-	// return stuff for front end
 	return Graph{Nodes: allNodes, Edges: edges}, nil
 }
-

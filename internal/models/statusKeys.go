@@ -1,4 +1,4 @@
-package graph
+package models
 
 // StatusKey mirrors the UI's StatusKey union type — computed by the backend,
 // rendered by the UI as icon badges on workload nodes.

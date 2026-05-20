@@ -6,7 +6,8 @@
       "Bash(podman exec *)",
       "Bash(npx tsc *)",
       "Bash(curl -s \"http://localhost:8080/api/graph?namespaces=observability,gitlab\")",
-      "Bash(go test *)"
+      "Bash(go test *)",
+      "WebFetch(domain:k8studio.io)"
     ]
   }
 }
