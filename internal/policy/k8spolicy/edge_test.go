@@ -4,12 +4,27 @@ import (
 	"testing"
 
 	"graph/internal/models"
+	"graph/internal/utils"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
+
+// buildFixtureIndex constructs a label index for test data.
+// Mirrors graph.buildWorkloadIndex but inlined here to avoid a graph→k8spolicy→graph cycle.
+func buildFixtureIndex(nodes []models.WorkloadNode) map[string][]*models.WorkloadNode {
+	index := map[string][]*models.WorkloadNode{}
+	for position := range nodes {
+		node := &nodes[position]
+		for key, value := range node.Labels {
+			entry := utils.MakeLabelIndexKey(key, value)
+			index[entry] = append(index[entry], node)
+		}
+	}
+	return index
+}
 
 var (
 	nodeFrontend = models.WorkloadNode{ID: "frontend-uid", Labels: map[string]string{"app": "frontend"}, Namespace: "default"}
@@ -19,14 +34,14 @@ var (
 
 func buildTestIndex(nodes []models.WorkloadNode) map[string]map[string][]*models.WorkloadNode {
 	return map[string]map[string][]*models.WorkloadNode{
-		"default": buildWorkloadIndex(nodes),
+		"default": buildFixtureIndex(nodes),
 	}
 }
 
 func buildMultiNSIndex(nodesByNS map[string][]models.WorkloadNode) map[string]map[string][]*models.WorkloadNode {
 	result := map[string]map[string][]*models.WorkloadNode{}
 	for ns, nodes := range nodesByNS {
-		result[ns] = buildWorkloadIndex(nodes)
+		result[ns] = buildFixtureIndex(nodes)
 	}
 	return result
 }

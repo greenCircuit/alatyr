@@ -80,6 +80,84 @@ func (b *Builder) buildWorkloadNodesForNS(ns string) ([]models.WorkloadNode, err
 	return nodes, nil
 }
 
+func (b *Builder) buildNsIndex(ns string) (models.NSIndex, error) {
+	var nsIndex models.NSIndex
+	pods, err := b.client.GetPods(ns)
+	if err != nil {
+		return nsIndex, err
+	}
+
+
+	cronJobs, err := b.client.GetCronJobs(ns)
+	if err != nil {
+		return nsIndex, err
+	}
+
+	seen := map[string]bool{}
+	var nodes []models.WorkloadNode
+
+	for _, cj := range cronJobs {
+		uid := string(cj.UID)
+		if seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		nodes = append(nodes, models.WorkloadNode{
+			ID:        uid,
+			Label:     cj.Name,
+			Namespace: cj.Namespace,
+			Type:      models.NodeTypeCronJob,
+			Labels:    cj.Spec.JobTemplate.Spec.Template.Labels,
+		})
+	}
+
+	for _, pod := range pods {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if len(pod.OwnerReferences) > 0 && pod.OwnerReferences[0].Kind == "Job" {
+			continue
+		}
+		uid := ownerUID(pod)
+		if seen[uid] {
+			continue
+		}
+		seen[uid] = true
+
+		nodes = append(nodes, models.WorkloadNode{
+			ID:        uid,
+			Label:     workloadLabel(pod),
+			Namespace: pod.Namespace,
+			Type:      models.NodeTypeDeployment,
+			Labels:    pod.Labels,
+		})
+	}
+
+	// add namespace node
+	nsObj, err := b.client.GetNs(ns)
+	if err != nil {
+		return nsIndex, err
+	}
+
+	nsNode := models.WorkloadNode{
+		ID:        "ns-" + nsObj.Name,
+		Label:     nsObj.Name,
+		Namespace: nsObj.Namespace,
+		Type:      models.NodeTypeNamespace,
+		Labels:    nsObj.Labels,
+	}
+
+	nodes = append(nodes, nsNode)
+
+	nodeIndex := buildWorkloadIndex(nodes)
+
+	nsIndex.Workloads = nodes
+	nsIndex.LabelIndex = nodeIndex
+	nsIndex.NSNode = &nsNode
+
+	return nsIndex, nil
+}
+
 // find all policies for a single node, need so can show badges on node
 func getNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
 	var matches []networkingv1.NetworkPolicy
@@ -121,18 +199,16 @@ func workloadLabel(pod corev1.Pod) string {
 	return pod.Name
 }
 
-func makeLabelIndexKey(key string, value string) string {
-	return key + "=" + value
-}
-
 // buildWorkloadIndex builds a flat label index for fast selector matching.
+// Called once per namespace during graph construction; engines receive the
+// pre-built index and never rebuild.
 // Pointers reference the caller's slice — do not append to nodes after this returns.
 func buildWorkloadIndex(nodes []models.WorkloadNode) map[string][]*models.WorkloadNode {
 	index := make(map[string][]*models.WorkloadNode, len(nodes))
-	for pos := range nodes {
-		node := &nodes[pos]
+	for position := range nodes {
+		node := &nodes[position]
 		for key, value := range node.Labels {
-			entry := makeLabelIndexKey(key, value)
+			entry := utils.MakeLabelIndexKey(key, value)
 			index[entry] = append(index[entry], node)
 		}
 	}

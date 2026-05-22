@@ -28,20 +28,21 @@ type PolicySource interface {
 	// AllowTuples returns explicit allow rules expanded to
 	// pod-level tuples. Only meaningful for workloads with
 	// Coverage == DefaultDeny.
-	AllowTuples(nodes []models.WorkloadNode) []AllowTuple
+	AllowRules(nodes []models.WorkloadNode) []Rule
 
 	// DenyTuples returns explicit deny rules (Istio DENY action, etc.).
 	// Subtracted from the intersection result regardless of which
 	// source allowed the tuple.
-	DenyTuples(nodes []models.WorkloadNode) []AllowTuple
+	DenyRules(nodes []models.WorkloadNode) []Rule
 
 	// StatusKeys reports per-workload diagnostics owned by this source.
 	// Aggregated by the graph layer onto WorkloadNode.Statuses.
 	StatusKeys(nodes []models.WorkloadNode) []StatusKeyAssignment
 }
 
-type AllowTuple struct {
-	SrcID, DstID string
+type Rule struct {
+	SrcID		 string
+	DstID 		 string
 	Port         models.Port
 	Direction    models.Direction
 	Contributors []PolicyRef

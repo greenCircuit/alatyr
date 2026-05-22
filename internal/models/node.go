@@ -23,3 +23,8 @@ const (
 	NodeTypeCronJob    NodeType = "cronjob"    // cronjob — shown when actively running
 )
 
+type NSIndex struct {
+      NSNode     *WorkloadNode
+      LabelIndex map[string][]*WorkloadNode  // workloads only
+      Workloads  []WorkloadNode             // ← NEW: flat slice, no NS node
+  }

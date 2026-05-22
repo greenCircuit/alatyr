@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"graph/internal/models"
+	"graph/internal/utils"
 )
 
 // buildWorkloadIndex
@@ -13,7 +14,7 @@ func TestBuildWorkloadIndex_SingleLabel(t *testing.T) {
 		{ID: "a", Labels: map[string]string{"app": "web"}},
 	}
 	idx := buildWorkloadIndex(nodes)
-	bucket := idx[makeLabelIndexKey("app", "web")]
+	bucket := idx[utils.MakeLabelIndexKey("app", "web")]
 	if len(bucket) != 1 || bucket[0].ID != "a" {
 		t.Errorf("expected node a in bucket, got %v", bucket)
 	}
@@ -24,10 +25,10 @@ func TestBuildWorkloadIndex_MultiLabel(t *testing.T) {
 		{ID: "a", Labels: map[string]string{"app": "web", "env": "prod"}},
 	}
 	idx := buildWorkloadIndex(nodes)
-	if len(idx[makeLabelIndexKey("app", "web")]) != 1 {
+	if len(idx[utils.MakeLabelIndexKey("app", "web")]) != 1 {
 		t.Error("expected node in app=web bucket")
 	}
-	if len(idx[makeLabelIndexKey("env", "prod")]) != 1 {
+	if len(idx[utils.MakeLabelIndexKey("env", "prod")]) != 1 {
 		t.Error("expected node in env=prod bucket")
 	}
 }
@@ -38,7 +39,7 @@ func TestBuildWorkloadIndex_SharedBucket(t *testing.T) {
 		{ID: "b", Labels: map[string]string{"app": "api"}},
 	}
 	idx := buildWorkloadIndex(nodes)
-	bucket := idx[makeLabelIndexKey("app", "api")]
+	bucket := idx[utils.MakeLabelIndexKey("app", "api")]
 	if len(bucket) != 2 {
 		t.Errorf("expected 2 nodes in shared bucket, got %d", len(bucket))
 	}
