@@ -1,6 +1,8 @@
 package k8spolicy
 
 import (
+	"context"
+
 	"graph/internal/k8s"
 	"graph/internal/models"
 	"graph/internal/policy"
@@ -12,89 +14,83 @@ import (
 
 const sourceName = "k8s"
 
-type Builder struct {
+type source struct {
 	client k8s.KubernetesClient
 }
-func NewBuilder(client k8s.KubernetesClient) *Builder {
-	return &Builder{client: client}
+
+func New(client k8s.KubernetesClient) *source {
+	return &source{client: client}
 }
 
-// get all networking policies
-func (b *Builder) getPolicies(spaces []string) (map[string][]networkingv1.NetworkPolicy, error){
+func (s *source) getPolicies(namespaces []string) (map[string][]networkingv1.NetworkPolicy, error) {
 	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
-	for _, ns :=range spaces {
-			
-		nsPolicies, err := b.client.GetPolicies(ns)
-		policiesByNS[ns] = nsPolicies
+	for _, ns := range namespaces {
+		nsPolicies, err := s.client.GetPolicies(ns)
 		if err != nil {
 			return nil, err
 		}
+		policiesByNS[ns] = nsPolicies
 	}
 	return policiesByNS, nil
 }
 
-
-// what is called in graph module and provide all module
-func (b *Builder) GenerateK8sEntrypoint(clusterNsIndex map[string]models.NSIndex) {
-	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
-	// index will provide all namespaces
-	for ns :=range clusterNsIndex {
-		nsPolicies, _ := b.client.GetPolicies(ns)
-		policiesByNS[ns] = nsPolicies
+func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) policy.EvaluationResult {
+	policiesByNS, _ := s.getPolicies(namespaces)
+	return policy.EvaluationResult{
+		Allow: buildAllowRules(index, policiesByNS),
 	}
 }
 
-// BuildAllowTuples expands every NetworkPolicy into pod-level AllowTuples.
-// One tuple per (src, dst, port, direction, policy-rule).
-func BuildAllowTuples(nodesNsIndex map[string]map[string][]*models.WorkloadNode, policies []networkingv1.NetworkPolicy) []policy.AllowTuple {
-	var allTuples []policy.AllowTuple
-	for _, networkPolicy := range policies {
-		srcNodes := getSourceNodes(networkPolicy, nodesNsIndex)
-		egressPartials := getTargetEgressTuples(networkPolicy, nodesNsIndex)
-		ingressPartials := getTargetIngressTuples(networkPolicy, nodesNsIndex)
+// buildAllowRules expands every NetworkPolicy into pod-level allow rules.
+// One rule per (src, dst, port, direction, policy-rule).
+func buildAllowRules(index map[string]models.NSIndex, policiesByNS map[string][]networkingv1.NetworkPolicy) []policy.Rule {
+	var allRules []policy.Rule
+	for _, policies := range policiesByNS {
+		for _, networkPolicy := range policies {
+			srcNodes := getSourceNodes(networkPolicy, index)
+			egressRules := expandEgressRules(networkPolicy, index)
+			ingressRules := expandIngressRules(networkPolicy, index)
 
-		for _, srcNode := range srcNodes {
-			for _, tuple := range egressPartials {
-				tuple.SrcID = srcNode.ID
-				allTuples = append(allTuples, tuple)
-			}
-			for _, tuple := range ingressPartials {
-				// ingress: the applied-to workload is the destination, peer is the source
-				tuple.SrcID = tuple.DstID
-				tuple.DstID = srcNode.ID
-				allTuples = append(allTuples, tuple)
+			for _, srcNode := range srcNodes {
+				for _, rule := range egressRules {
+					rule.SrcID = srcNode.ID
+					allRules = append(allRules, rule)
+				}
+				for _, rule := range ingressRules {
+					rule.SrcID = rule.DstID
+					rule.DstID = srcNode.ID
+					allRules = append(allRules, rule)
+				}
 			}
 		}
 	}
-	return allTuples
+	return allRules
 }
 
-// look at all nodes
-func getTargetEgressTuples(networkPolicy networkingv1.NetworkPolicy, nodes map[string]map[string][]*models.WorkloadNode) []policy.AllowTuple {
-	var out []policy.AllowTuple
+func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []policy.Rule {
+	var out []policy.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.To {
-			out = append(out, generateTuples(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, nodes)...)
+			out = append(out, expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)...)
 		}
 	}
 	return out
 }
 
-// look at all nodes
-func getTargetIngressTuples(networkPolicy networkingv1.NetworkPolicy, nodes map[string]map[string][]*models.WorkloadNode) []policy.AllowTuple {
-	var out []policy.AllowTuple
+func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []policy.Rule {
+	var out []policy.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.From {
-			out = append(out, generateTuples(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, nodes)...)
+			out = append(out, expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)...)
 		}
 	}
 	return out
 }
 
 // convertPorts translates rule-level NetworkPolicyPort entries into models.Port.
-// Empty input returns nil — generateTuples expands nil into a single all-ports tuple.
+// Empty input returns nil — expandPeerRules expands nil into a single all-ports rule.
 func convertPorts(rulePorts []networkingv1.NetworkPolicyPort) []models.Port {
 	if len(rulePorts) == 0 {
 		return nil
@@ -120,9 +116,9 @@ func convertPorts(rulePorts []networkingv1.NetworkPolicyPort) []models.Port {
 	return out
 }
 
-// generateTuples produces one tuple per (peer-match × port).
-// Returned tuples have SrcID empty — BuildAllowTuples fills it from the policy's selected workloads.
-func generateTuples(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, nodesIndex map[string]map[string][]*models.WorkloadNode) []policy.AllowTuple {
+// expandPeerRules produces one rule per (peer-match × port).
+// Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
+func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []policy.Rule {
 	var dstIDs []string
 
 	// namespace only
@@ -130,23 +126,23 @@ func generateTuples(policyName, policyNamespace string, ruleIndex int, direction
 		if isCatchAll(peer.NamespaceSelector.MatchLabels, len(peer.NamespaceSelector.MatchExpressions)) {
 			return nil
 		}
-		for _, nsNodes := range nodesIndex {
-			nsNode := findNSNode(nsNodes)
-			if nsNode == nil || !utils.LabelsMatch(peer.NamespaceSelector.MatchLabels, nsNode.Labels) {
+		for _, nsIndex := range index {
+			if nsIndex.NSNode == nil || !utils.LabelsMatch(peer.NamespaceSelector.MatchLabels, nsIndex.NSNode.Labels) {
 				continue
 			}
-			dstIDs = append(dstIDs, nsNode.ID)
+			dstIDs = append(dstIDs, nsIndex.NSNode.ID)
 		}
 	}
 
 	// pod selector only — same namespace
 	if peer.PodSelector != nil && peer.NamespaceSelector == nil {
+		nsIndex := index[policyNamespace]
 		if isCatchAll(peer.PodSelector.MatchLabels, len(peer.PodSelector.MatchExpressions)) {
-			if nsNode := findNSNode(nodesIndex[policyNamespace]); nsNode != nil {
-				dstIDs = append(dstIDs, nsNode.ID)
+			if nsIndex.NSNode != nil {
+				dstIDs = append(dstIDs, nsIndex.NSNode.ID)
 			}
 		} else {
-			for _, target := range utils.IndexLabelMatch(peer.PodSelector.MatchLabels, nodesIndex[policyNamespace]) {
+			for _, target := range utils.IndexLabelMatch(peer.PodSelector.MatchLabels, nsIndex.LabelIndex) {
 				dstIDs = append(dstIDs, target.ID)
 			}
 		}
@@ -156,20 +152,19 @@ func generateTuples(policyName, policyNamespace string, ruleIndex int, direction
 	if peer.PodSelector != nil && peer.NamespaceSelector != nil {
 		catchAllPod := isCatchAll(peer.PodSelector.MatchLabels, len(peer.PodSelector.MatchExpressions))
 		catchAllNS := isCatchAll(peer.NamespaceSelector.MatchLabels, len(peer.NamespaceSelector.MatchExpressions))
-		for _, nsNodes := range nodesIndex {
-			nsNode := findNSNode(nsNodes)
+		for _, nsIndex := range index {
 			if !catchAllNS {
-				if nsNode == nil || !utils.LabelsMatch(peer.NamespaceSelector.MatchLabels, nsNode.Labels) {
+				if nsIndex.NSNode == nil || !utils.LabelsMatch(peer.NamespaceSelector.MatchLabels, nsIndex.NSNode.Labels) {
 					continue
 				}
 			}
 			if catchAllPod {
-				if nsNode != nil {
-					dstIDs = append(dstIDs, nsNode.ID)
+				if nsIndex.NSNode != nil {
+					dstIDs = append(dstIDs, nsIndex.NSNode.ID)
 				}
 				continue
 			}
-			for _, target := range utils.IndexLabelMatch(peer.PodSelector.MatchLabels, nsNodes) {
+			for _, target := range utils.IndexLabelMatch(peer.PodSelector.MatchLabels, nsIndex.LabelIndex) {
 				dstIDs = append(dstIDs, target.ID)
 			}
 		}
@@ -192,10 +187,10 @@ func generateTuples(policyName, policyNamespace string, ruleIndex int, direction
 		effectivePorts = []models.Port{{Protocol: "TCP"}}
 	}
 
-	out := make([]policy.AllowTuple, 0, len(dstIDs)*len(effectivePorts))
+	out := make([]policy.Rule, 0, len(dstIDs)*len(effectivePorts))
 	for _, dstID := range dstIDs {
 		for _, port := range effectivePorts {
-			out = append(out, policy.AllowTuple{
+			out = append(out, policy.Rule{
 				DstID:        dstID,
 				Port:         port,
 				Direction:    direction,
@@ -226,27 +221,17 @@ func GetNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPo
 	return matches
 }
 
-func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, nodes map[string]map[string][]*models.WorkloadNode) []*models.WorkloadNode {
-	nsNodes := nodes[networkPolicy.Namespace]
+func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
+	nsIndex := index[networkPolicy.Namespace]
 	if isCatchAll(networkPolicy.Spec.PodSelector.MatchLabels, len(networkPolicy.Spec.PodSelector.MatchExpressions)) {
-		if nsNode := findNSNode(nsNodes); nsNode != nil {
-			return []*models.WorkloadNode{nsNode}
+		if nsIndex.NSNode != nil {
+			return []*models.WorkloadNode{nsIndex.NSNode}
 		}
+		return nil
 	}
-	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsNodes)
+	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
 }
 
 func isCatchAll(matchLabels map[string]string, nExpressions int) bool {
 	return len(matchLabels) == 0 && nExpressions == 0
-}
-
-func findNSNode(labelIndex map[string][]*models.WorkloadNode) *models.WorkloadNode {
-	for _, nodes := range labelIndex {
-		for _, node := range nodes {
-			if node.Type == models.NodeTypeNamespace {
-				return node
-			}
-		}
-	}
-	return nil
 }
