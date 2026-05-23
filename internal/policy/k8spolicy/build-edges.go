@@ -41,6 +41,7 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 	}
 }
 
+
 // buildAllowRules expands every NetworkPolicy into pod-level allow rules.
 // One rule per (src, dst, port, direction, policy-rule).
 func buildAllowRules(index map[string]models.NSIndex, policiesByNS map[string][]networkingv1.NetworkPolicy) []policy.Rule {
