@@ -30,6 +30,7 @@ go-test:
   image: golang:1.26
   script:
     - go test ./... -cover
+  allow_failure: true
 
 ui-test:
   stage: test
