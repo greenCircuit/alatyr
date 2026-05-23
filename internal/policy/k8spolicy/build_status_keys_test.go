@@ -4,10 +4,18 @@ import (
 	"testing"
 
 	"graph/internal/models"
+	"graph/internal/policy"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// deriveStatusKeys exercises the engine's full status-key pipeline
+// (buildPolicyStatus → policy.DeriveStatusKeys) so tests assert against
+// final keys without depending on the deleted BuildStatusKeys facade.
+func deriveStatusKeys(policies []networkingv1.NetworkPolicy) []models.StatusKey {
+	return policy.DeriveStatusKeys(buildPolicyStatus(policies))
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +63,7 @@ func hasStatus(keys []models.StatusKey, want models.StatusKey) bool {
 
 // No policies → workload is fully open: collapsed into StatusInternetFull.
 func TestBuildStatusKeys_NoPolicies(t *testing.T) {
-	got := BuildStatusKeys(nil)
+	got := deriveStatusKeys(nil)
 	if !hasStatus(got, models.StatusInternetFull) {
 		t.Error("expected StatusInternetFull when no policies")
 	}
@@ -70,7 +78,7 @@ func TestBuildStatusKeys_DenyAll(t *testing.T) {
 		[]networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
 		nil, nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusIsolated) {
 		t.Error("expected StatusIsolated for deny-all policy")
 	}
@@ -88,7 +96,7 @@ func TestBuildStatusKeys_OnlyIngressLocked(t *testing.T) {
 		[]networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 		nil, nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetEgress) {
 		t.Error("expected StatusInternetEgress when only ingress is locked")
 	}
@@ -106,7 +114,7 @@ func TestBuildStatusKeys_OnlyEgressLocked(t *testing.T) {
 		[]networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
 		nil, nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetIngress) {
 		t.Error("expected StatusInternetIngress when only egress is locked")
 	}
@@ -121,7 +129,7 @@ func TestBuildStatusKeys_OnlyEgressLocked(t *testing.T) {
 // Implicit PolicyTypes (unset) with no egress rules → only ingress locked.
 func TestBuildStatusKeys_ImplicitIngressOnly(t *testing.T) {
 	networkPolicy := makeNetworkPolicy("ns-a", nil, nil, nil)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetEgress) {
 		t.Error("expected StatusInternetEgress: implicit policy locks ingress only, egress remains open")
 	}
@@ -135,7 +143,7 @@ func TestBuildStatusKeys_ImplicitBothLocked(t *testing.T) {
 	networkPolicy := makeNetworkPolicy("ns-a", nil, nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo()},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusIsolated) {
 		t.Error("expected StatusIsolated: implicit policy with egress rules locks both directions")
 	}
@@ -148,7 +156,7 @@ func TestBuildStatusKeys_InternetEgress(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(ipBlockPeer("0.0.0.0/0"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetEgress) {
 		t.Error("expected StatusInternetEgress for 0.0.0.0/0 egress rule")
 	}
@@ -164,7 +172,7 @@ func TestBuildStatusKeys_InternetIngress(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(ipBlockPeer("0.0.0.0/0"))},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetIngress) {
 		t.Error("expected StatusInternetIngress for 0.0.0.0/0 ingress rule")
 	}
@@ -180,7 +188,7 @@ func TestBuildStatusKeys_PrivateCIDR_LanNotInternet(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(ipBlockPeer("10.0.0.0/8"))},
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(ipBlockPeer("10.0.0.0/8"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusInternetEgress) {
 		t.Error("unexpected StatusInternetEgress for private CIDR")
 	}
@@ -202,7 +210,7 @@ func TestBuildStatusKeys_CrossNSEgress(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(nsSelectorPeer("ns-b"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusCrossNamespace) {
 		t.Error("expected StatusCrossNamespace for egress to different namespace")
 	}
@@ -215,7 +223,7 @@ func TestBuildStatusKeys_CrossNSIngress(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(nsSelectorPeer("ns-b"))},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusCrossNamespace) {
 		t.Error("expected StatusCrossNamespace for ingress from different namespace")
 	}
@@ -228,7 +236,7 @@ func TestBuildStatusKeys_SameNSSelectorNotCrossNS(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(nsSelectorPeer("ns-a"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusCrossNamespace) {
 		t.Error("unexpected StatusCrossNamespace: namespace selector points to same namespace")
 	}
@@ -238,7 +246,7 @@ func TestBuildStatusKeys_SameNSSelectorNotCrossNS(t *testing.T) {
 func TestBuildStatusKeys_MultiplePoliciesAccumulate(t *testing.T) {
 	ingressPolicy := makeNetworkPolicy("ns-a", []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}, nil, nil)
 	egressPolicy := makeNetworkPolicy("ns-a", []networkingv1.PolicyType{networkingv1.PolicyTypeEgress}, nil, nil)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{ingressPolicy, egressPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{ingressPolicy, egressPolicy})
 	if !hasStatus(got, models.StatusIsolated) {
 		t.Error("expected StatusIsolated when ingress and egress are locked by separate policies")
 	}
@@ -251,7 +259,7 @@ func TestBuildStatusKeys_IsolatedAndCrossNS(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(nsSelectorPeer("ns-b"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusIsolated) {
 		t.Error("expected StatusIsolated: no internet paths even with cross-NS egress")
 	}
@@ -281,7 +289,7 @@ func TestBuildStatusKeys_InnerNsEgress_NilSelectors(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(emptyPeer())},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("expected StatusNamespaceEgress: nil podSelector + nil namespaceSelector = all pods in ns")
 	}
@@ -297,7 +305,7 @@ func TestBuildStatusKeys_InnerNsEgress_SameNsSelector(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(sameNsPeer("ns-a"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("expected StatusNamespaceEgress: nil podSelector + same-ns namespaceSelector")
 	}
@@ -313,7 +321,7 @@ func TestBuildStatusKeys_InnerNsEgress_WithPodSelector_NoNsAccess(t *testing.T) 
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(peer)},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("unexpected StatusNamespaceEgress: podSelector is set so not all-pods access")
 	}
@@ -326,7 +334,7 @@ func TestBuildStatusKeys_InnerNsIngress_NilSelectors(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(emptyPeer())},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceIngress) {
 		t.Error("expected StatusNamespaceIngress: nil podSelector + nil namespaceSelector = all pods in ns")
 	}
@@ -342,7 +350,7 @@ func TestBuildStatusKeys_InnerNsIngress_SameNsSelector(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(sameNsPeer("ns-a"))},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceIngress) {
 		t.Error("expected StatusNamespaceIngress: nil podSelector + same-ns namespaceSelector")
 	}
@@ -358,7 +366,7 @@ func TestBuildStatusKeys_InnerNsIngress_WithPodSelector_NoNsAccess(t *testing.T)
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(peer)},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusNamespaceIngress) {
 		t.Error("unexpected StatusNamespaceIngress: podSelector is set so not all-pods access")
 	}
@@ -371,7 +379,7 @@ func TestBuildStatusKeys_InnerNs_FullAccess(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(emptyPeer())},
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(emptyPeer())},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceFull) {
 		t.Error("expected StatusNamespaceFull: both ingress and egress to all same-ns pods")
 	}
@@ -390,7 +398,7 @@ func TestBuildStatusKeys_IPBlockEgress_NoInnerNsAccess(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(ipBlockPeer("192.168.1.0/24"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("unexpected StatusNamespaceEgress: ipBlock peer should not imply intra-namespace access")
 	}
@@ -403,7 +411,7 @@ func TestBuildStatusKeys_IPBlockIngress_NoInnerNsAccess(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(ipBlockPeer("192.168.1.0/24"))},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusNamespaceIngress) {
 		t.Error("unexpected StatusNamespaceIngress: ipBlock peer should not imply intra-namespace access")
 	}
@@ -417,7 +425,7 @@ func TestBuildStatusKeys_EmptyPodSelectorStructEgress_InnerNsAccess(t *testing.T
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(peer)},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("expected StatusNamespaceEgress: empty podSelector struct is catch-all same-ns")
 	}
@@ -431,7 +439,7 @@ func TestBuildStatusKeys_EmptyPodSelectorStructIngress_InnerNsAccess(t *testing.
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(peer)},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusNamespaceIngress) {
 		t.Error("expected StatusNamespaceIngress: empty podSelector struct is catch-all same-ns")
 	}
@@ -446,7 +454,7 @@ func TestBuildStatusKeys_LanEgressOnly(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(ipBlockPeer("192.168.5.0/24"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusLanEgress) {
 		t.Error("expected StatusLanEgress for private CIDR egress")
 	}
@@ -465,7 +473,7 @@ func TestBuildStatusKeys_LanIngressOnly(t *testing.T) {
 		[]networkingv1.NetworkPolicyIngressRule{ingressFrom(ipBlockPeer("172.16.0.0/12"))},
 		nil,
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusLanIngress) {
 		t.Error("expected StatusLanIngress for private CIDR ingress")
 	}
@@ -481,7 +489,7 @@ func TestBuildStatusKeys_CatchAllIsInternetNotLan(t *testing.T) {
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(ipBlockPeer("0.0.0.0/0"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if !hasStatus(got, models.StatusInternetEgress) {
 		t.Error("expected StatusInternetEgress for 0.0.0.0/0")
 	}
@@ -497,7 +505,7 @@ func TestBuildStatusKeys_InnerNsEgress_DifferentNs_NoCrossNsEgressAccess(t *test
 		nil,
 		[]networkingv1.NetworkPolicyEgressRule{egressTo(nsSelectorPeer("ns-b"))},
 	)
-	got := BuildStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
+	got := deriveStatusKeys([]networkingv1.NetworkPolicy{networkPolicy})
 	if hasStatus(got, models.StatusNamespaceEgress) {
 		t.Error("unexpected StatusNamespaceEgress: namespaceSelector points to different namespace")
 	}

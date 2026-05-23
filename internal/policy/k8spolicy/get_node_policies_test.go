@@ -1,4 +1,4 @@
-package graph
+package k8spolicy
 
 import (
 	"testing"

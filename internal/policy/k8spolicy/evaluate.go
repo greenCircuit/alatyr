@@ -21,6 +21,16 @@ func New(client k8s.KubernetesClient) *source {
 	return &source{client: client}
 }
 
+func (s *source) Name() string {
+	return sourceName
+}
+
+// Coverage is a stub — k8s NetworkPolicy applies to every pod-bearing
+// workload. Refine later if needed (e.g. node-type gating).
+func (s *source) Coverage(node *models.WorkloadNode, dir models.Direction) policy.CoverageMode {
+	return policy.CoverageDefaultAllow
+}
+
 func (s *source) getPolicies(namespaces []string) (map[string][]networkingv1.NetworkPolicy, error) {
 	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
 	for _, ns := range namespaces {
@@ -36,33 +46,19 @@ func (s *source) getPolicies(namespaces []string) (map[string][]networkingv1.Net
 func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) policy.EvaluationResult {
 	policiesByNS, _ := s.getPolicies(namespaces)
 
+	policyStatuses := map[string]models.PolicyStatus{}
+	for _, ns := range namespaces {
+		for nodeID, status := range generatePolicyStatusAssignment(index[ns].Workloads, policiesByNS[ns]) {
+			policyStatuses[nodeID] = status
+		}
+	}
 
 	return policy.EvaluationResult{
-		Allow: buildAllowRules(index, policiesByNS),
+		Allow:          buildAllowRules(index, policiesByNS),
+		PolicyStatuses: policyStatuses,
 	}
 }
 
-
-
-// GetNodePolicies returns all NetworkPolicies that select the given workload node
-// via PodSelector. Namespace nodes only match catch-all selectors.
-func GetNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
-	var matches []networkingv1.NetworkPolicy
-	for _, networkPolicy := range policies {
-		podSelector := networkPolicy.Spec.PodSelector
-		catchAll := isCatchAll(podSelector.MatchLabels, len(podSelector.MatchExpressions))
-		if node.Type == models.NodeTypeNamespace {
-			if catchAll {
-				matches = append(matches, networkPolicy)
-			}
-			continue
-		}
-		if utils.LabelsMatch(podSelector.MatchLabels, node.Labels) {
-			matches = append(matches, networkPolicy)
-		}
-	}
-	return matches
-}
 
 func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
 	nsIndex := index[networkPolicy.Namespace]

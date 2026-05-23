@@ -6,7 +6,7 @@ import (
 	"graph/internal/utils"
 
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
+	// networkingv1 "k8s.io/api/networking/v1"
 )
 
 func (b *Builder) buildWorkloadNodesForNS(ns string) ([]models.WorkloadNode, error) {
@@ -159,23 +159,23 @@ func (b *Builder) buildNsIndex(ns string) (models.NSIndex, error) {
 }
 
 // find all policies for a single node, need so can show badges on node
-func getNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
-	var matches []networkingv1.NetworkPolicy
-	for _, networkPolicy := range policies {
-		podSelector := networkPolicy.Spec.PodSelector
-		catchAll := len(podSelector.MatchLabels) == 0 && len(podSelector.MatchExpressions) == 0
-		if node.Type == models.NodeTypeNamespace {
-			if catchAll {
-				matches = append(matches, networkPolicy)
-			}
-			continue
-		}
-		if utils.IsLabelMach(podSelector.MatchLabels, node.Labels) {
-			matches = append(matches, networkPolicy)
-		}
-	}
-	return matches
-}
+// func getNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
+	// var matches []networkingv1.NetworkPolicy
+	// for _, networkPolicy := range policies {
+		// podSelector := networkPolicy.Spec.PodSelector
+		// catchAll := len(podSelector.MatchLabels) == 0 && len(podSelector.MatchExpressions) == 0
+		// if node.Type == models.NodeTypeNamespace {
+			// if catchAll {
+				// matches = append(matches, networkPolicy)
+			// }
+			// continue
+		// }
+		// if utils.IsLabelMach(podSelector.MatchLabels, node.Labels) {
+			// matches = append(matches, networkPolicy)
+		// }
+	// }
+	// return matches
+// }
 
 
 

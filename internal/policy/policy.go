@@ -23,9 +23,9 @@ type PolicySource interface {
 }
 
 type EvaluationResult struct {
-	Allow      []Rule
-	Deny       []Rule
-	StatusKeys []StatusKeyAssignment
+	Allow          []Rule
+	Deny           []Rule
+	PolicyStatuses map[string]models.PolicyStatus // workloadID → per-engine PolicyStatus
 }
 
 type Rule struct {
@@ -50,8 +50,3 @@ const (
 	CoverageDefaultDeny
 	CoverageNotApplicable
 )
-
-type StatusKeyAssignment struct {
-	WorkloadID string
-	Key        models.StatusKey
-}

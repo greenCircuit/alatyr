@@ -3,9 +3,10 @@ package api
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
 	"graph/internal/models"
-	"graph/internal/policy/k8spolicy"
+	"graph/internal/policy"
+
+	"github.com/labstack/echo/v4"
 )
 
 // returning this so UI loads data without needing graph
@@ -21,7 +22,7 @@ func (s *Server) handleClusterState(c echo.Context) error {
 	}
 	data := ClusterState{
 		AvailableNs: allNameSpaces,
-		StatusKeys:  k8spolicy.GetStatusKeys(),
+		StatusKeys:  policy.AllStatusKeys(),
 	}
 
 	return c.JSON(http.StatusOK, data)
