@@ -89,32 +89,6 @@ func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[stri
 	return out
 }
 
-// convertPorts translates rule-level NetworkPolicyPort entries into models.Port.
-// Empty input returns nil — expandPeerRules expands nil into a single all-ports rule.
-func convertPorts(rulePorts []networkingv1.NetworkPolicyPort) []models.Port {
-	if len(rulePorts) == 0 {
-		return nil
-	}
-	out := make([]models.Port, 0, len(rulePorts))
-	for _, rulePort := range rulePorts {
-		port := models.Port{Protocol: "TCP"}
-		if rulePort.Protocol != nil {
-			port.Protocol = string(*rulePort.Protocol)
-		}
-		if rulePort.Port != nil {
-			if rulePort.Port.Type == intstr.String {
-				port.Name = rulePort.Port.StrVal
-			} else {
-				port.Port = int(rulePort.Port.IntVal)
-			}
-		}
-		if rulePort.EndPort != nil {
-			port.EndPort = int(*rulePort.EndPort)
-		}
-		out = append(out, port)
-	}
-	return out
-}
 
 // expandPeerRules produces one rule per (peer-match × port).
 // Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
@@ -234,4 +208,31 @@ func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]m
 
 func isCatchAll(matchLabels map[string]string, nExpressions int) bool {
 	return len(matchLabels) == 0 && nExpressions == 0
+}
+
+// convertPorts translates rule-level NetworkPolicyPort entries into models.Port.
+// Empty input returns nil — expandPeerRules expands nil into a single all-ports rule.
+func convertPorts(rulePorts []networkingv1.NetworkPolicyPort) []models.Port {
+	if len(rulePorts) == 0 {
+		return nil
+	}
+	out := make([]models.Port, 0, len(rulePorts))
+	for _, rulePort := range rulePorts {
+		port := models.Port{Protocol: "TCP"}
+		if rulePort.Protocol != nil {
+			port.Protocol = string(*rulePort.Protocol)
+		}
+		if rulePort.Port != nil {
+			if rulePort.Port.Type == intstr.String {
+				port.Name = rulePort.Port.StrVal
+			} else {
+				port.Port = int(rulePort.Port.IntVal)
+			}
+		}
+		if rulePort.EndPort != nil {
+			port.EndPort = int(*rulePort.EndPort)
+		}
+		out = append(out, port)
+	}
+	return out
 }

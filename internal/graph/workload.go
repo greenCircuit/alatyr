@@ -55,5 +55,6 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 	result := k8spolicy.New(b.client).Evaluate(context.Background(), namespaces, indexByNS)
 	edges := foldTuplesToEdges(result.Allow, allNodes)
 
+	
 	return Graph{Nodes: allNodes, Edges: edges}, nil
 }
