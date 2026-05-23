@@ -1,13 +1,12 @@
 package graph
 
 import (
+	"context"
 	"sync"
 
 	"graph/internal/k8s"
 	"graph/internal/models"
 	"graph/internal/policy/k8spolicy"
-
-	networkingv1 "k8s.io/api/networking/v1"
 )
 
 type Builder struct {
@@ -18,10 +17,8 @@ func NewBuilder(client k8s.KubernetesClient) *Builder {
 	return &Builder{client: client}
 }
 
-// front end will call this function and list of ns are passed as params
 func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
-	labelIndexByNS := map[string]map[string][]*models.WorkloadNode{}
-	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
+	indexByNS := map[string]models.NSIndex{}
 	var allNodes []models.WorkloadNode
 	var mu sync.Mutex
 	var firstErr error
@@ -32,7 +29,7 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 		go func(ns string) {
 			defer wg.Done()
 
-			nodes, err := b.buildWorkloadNodesForNS(ns)
+			nsIndex, err := b.buildNsIndex(ns)
 			if err != nil {
 				mu.Lock()
 				if firstErr == nil {
@@ -41,29 +38,10 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 				mu.Unlock()
 				return
 			}
-			nsPolicies, err := b.client.GetPolicies(ns)
-			if err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-				}
-				mu.Unlock()
-				return
-			}
-
-			for position := range nodes {
-				matchPolicies := getNodePolicies(nodes[position], nsPolicies)
-				nodes[position].Statuses = k8spolicy.BuildStatusKeys(matchPolicies)
-			}
-
-			// build index outside the lock — read-only on local nodes slice
-			// should not modify nodes after this
-			labelIndex := buildWorkloadIndex(nodes)
 
 			mu.Lock()
-			labelIndexByNS[ns] = labelIndex
-			policiesByNS[ns] = nsPolicies
-			allNodes = append(allNodes, nodes...)
+			indexByNS[ns] = nsIndex
+			allNodes = append(allNodes, nsIndex.Workloads...)
 			mu.Unlock()
 		}(ns)
 	}
@@ -74,13 +52,8 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 		return Graph{}, firstErr
 	}
 
-	var allPolicies []networkingv1.NetworkPolicy
-	for _, ns := range namespaces {
-		allPolicies = append(allPolicies, policiesByNS[ns]...)
-	}
-
-	tuples := k8spolicy.BuildAllowTuples(labelIndexByNS, allPolicies)
-	edges := foldTuplesToEdges(tuples, allNodes)
+	result := k8spolicy.New(b.client).Evaluate(context.Background(), namespaces, indexByNS)
+	edges := foldTuplesToEdges(result.Allow, allNodes)
 
 	return Graph{Nodes: allNodes, Edges: edges}, nil
 }
