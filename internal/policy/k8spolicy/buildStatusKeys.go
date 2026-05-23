@@ -10,7 +10,6 @@ import (
 // BuildStatusKeys computes status badges for a node given all policies that select it.
 // NetworkPolicy rules are additive (OR), so all policies are scanned before deciding.
 // Assumes every namespace has the auto-injected `kubernetes.io/metadata.name` label
-// (k8s 1.21+) — cross-NS detection uses it directly.
 func BuildStatusKeys(policies []networkingv1.NetworkPolicy) []models.StatusKey {
 
 	var result []models.StatusKey
