@@ -17,6 +17,7 @@ include:
 release-dry-run:
   extends: .semantic-release-dry-run
 
+# TESTS
 go-lint:
   stage: test
   image: golangci/golangci-lint:latest
@@ -40,10 +41,38 @@ ui-test:
   script:
     - cd ui && npm ci && npm run test:coverage
 
+# BUILD
 img-base:
   extends: .create_image
   variables:
     FILE_PATH: "Dockerfile"
+
+build-ui:
+  image: docker.io/node:22-alpine
+  stage: build
+  script: |
+    cd ui
+    npm ci
+    npm run build
+  artifacts:
+    paths:
+    - ui/dist/*
+    when: on_success
+    expire_in: 10 days
+
+# build ui with embedded binary
+build-binary:
+  needs: ["build-ui"]
+  image: docker.io/node:22-alpine
+  stage: build
+  script: |
+    go build .
+
+  artifacts:
+    paths:
+      - graph
+    when: on_success
+    expire_in: 10 days
 
 # Security scans
 semgrep-sast:
