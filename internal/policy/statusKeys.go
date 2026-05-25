@@ -59,6 +59,10 @@ func DeriveStatusKeys(policyStatus models.PolicyStatus) []models.StatusKey {
 		result = append(result, models.StatusNamespaceIngress)
 	}
 
+	if policyStatus.HasL7 {
+		result = append(result, models.StatusL7Applied)
+	}
+
 	return result
 }
 
@@ -103,6 +107,9 @@ func IntersectPolicyStatus(perEngine []models.PolicyStatus) models.PolicyStatus 
 		// lock fields: OR (any engine locking restricts)
 		result.EgressLocked = result.EgressLocked || status.EgressLocked
 		result.IngressLocked = result.IngressLocked || status.IngressLocked
+
+		// L7 presence: OR (any engine applying L7 surfaces the badge)
+		result.HasL7 = result.HasL7 || status.HasL7
 	}
 	return result
 }

@@ -9,6 +9,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
 
 type KubernetesClient interface {
@@ -18,6 +20,11 @@ type KubernetesClient interface {
 	GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error)
 	GetNsNames() ([]string, error)
 	GetNs(ns string) (corev1.Namespace, error)
+
+	// GetAuthorizationPolicies fetches Istio security.istio.io/v1
+	// AuthorizationPolicy objects in the namespace. Real client uses
+	// istio.io/client-go (versioned clientset).
+	GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error)
 }
 
 type Client struct {
@@ -89,4 +96,13 @@ func (c *Client) GetNs(ns string) (corev1.Namespace, error) {
 		return corev1.Namespace{}, err
 	}
 	return *obj, nil
+}
+
+// GetAuthorizationPolicies fetches Istio AuthorizationPolicies for a namespace.
+// TODO: wire up istio.io/client-go versioned clientset (separate from
+// kubernetes.Clientset) and list .SecurityV1().AuthorizationPolicies(ns).
+// Returning nil for now means the Istio engine sees no policies in
+// real-cluster mode until the engine is wired up.
+func (c *Client) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
+	return nil, nil
 }

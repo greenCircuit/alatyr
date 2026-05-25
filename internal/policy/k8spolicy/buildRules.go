@@ -33,6 +33,17 @@ func buildAllowRules(index map[string]models.NSIndex, policiesByNS map[string][]
 	return allRules
 }
 
+func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
+	nsIndex := index[networkPolicy.Namespace]
+	if isCatchAll(networkPolicy.Spec.PodSelector.MatchLabels, len(networkPolicy.Spec.PodSelector.MatchExpressions)) {
+		if nsIndex.NSNode != nil {
+			return []*models.WorkloadNode{nsIndex.NSNode}
+		}
+		return nil
+	}
+	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
+}
+
 func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []policy.Rule {
 	var out []policy.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {

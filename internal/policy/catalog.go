@@ -20,5 +20,6 @@ func AllStatusKeys() []models.StatusKey {
 		models.StatusNamespaceEgress,
 		models.StatusNamespaceIngress,
 		models.StatusNamespaceFull,
+		models.StatusL7Applied,
 	}
 }

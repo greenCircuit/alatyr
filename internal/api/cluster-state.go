@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"graph/internal/graph"
 	"graph/internal/models"
 	"graph/internal/policy"
 
@@ -11,8 +12,9 @@ import (
 
 // returning this so UI loads data without needing graph
 type ClusterState struct {
-	AvailableNs []string           `json:"availableNs"`
-	StatusKeys  []models.StatusKey `json:"statusKeys"`
+	AvailableNs    []string           `json:"availableNs"`
+	StatusKeys     []models.StatusKey `json:"statusKeys"`
+	PolicySources  []string           `json:"policySources"`
 }
 
 func (s *Server) handleClusterState(c echo.Context) error {
@@ -20,9 +22,17 @@ func (s *Server) handleClusterState(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	sources := graph.PolicySources(s.client)
+	sourceNames := make([]string, 0, len(sources))
+	for _, src := range sources {
+		sourceNames = append(sourceNames, src.Name())
+	}
+
 	data := ClusterState{
-		AvailableNs: allNameSpaces,
-		StatusKeys:  policy.AllStatusKeys(),
+		AvailableNs:   allNameSpaces,
+		StatusKeys:    policy.AllStatusKeys(),
+		PolicySources: sourceNames,
 	}
 
 	return c.JSON(http.StatusOK, data)

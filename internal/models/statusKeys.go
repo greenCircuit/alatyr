@@ -17,6 +17,7 @@ const (
 	StatusNamespaceEgress  StatusKey = "ns-egress-access"
 	StatusNamespaceIngress StatusKey = "ns-ingress-access"
 	StatusNamespaceFull    StatusKey = "ns-full-access"
+	StatusL7Applied        StatusKey = "l7-applied"
 )
 
 // statuses that polices provide to build status keys
@@ -28,7 +29,8 @@ type PolicyStatus struct {
 	LanEgress          bool 
 	LanIngress         bool 
 	ApiServerEgress    bool 
-	CrossNS            bool 
-	InnerNsEgress      bool 
-	InnerNsIngress     bool 
+	CrossNS            bool
+	InnerNsEgress      bool
+	InnerNsIngress     bool
+	HasL7              bool // any selecting policy uses L7 matchers (hosts/methods/paths)
 }

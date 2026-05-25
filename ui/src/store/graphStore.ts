@@ -4,16 +4,19 @@ import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
 
 interface GraphState {
-  allNodes:             WorkloadNode[];
-  allEdges:             PolicyEdge[];
-  availableNamespaces:  string[];
-  availableStatusKeys:  StatusKey[];
-  loading:              boolean;
-  error:                string | null;
+  allNodes:               WorkloadNode[];
+  allEdges:               PolicyEdge[];
+  availableNamespaces:    string[];
+  availableStatusKeys:    StatusKey[];
+  availablePolicySources: string[];
+  loading:                boolean;
+  error:                  string | null;
 
   selectedNamespaces:      Set<string>;
   selectedNodeTypes:       Set<string>;
   selectedStatuses:        Set<StatusKey>;
+  selectedPolicySources:   Set<string>;
+  selectedActions:         Set<number>; // 0 = allow, 1 = deny
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   aggregateByNamespace:    boolean;
@@ -27,6 +30,8 @@ interface GraphState {
   toggleNamespace:             (ns: string) => void;
   toggleNodeType:              (type: string) => void;
   toggleStatus:                (key: StatusKey) => void;
+  togglePolicySource:          (src: string) => void;
+  toggleAction:                (action: number) => void;
   toggleNamespaceEdges:        () => void;
   toggleConnectedNamespaces:   () => void;
   toggleAggregateByNamespace:  () => void;
@@ -40,18 +45,22 @@ interface GraphState {
 }
 
 const ALL_TYPES = ['service', 'deployment', 'headless', 'external', 'cronjob'];
+const ALL_ACTIONS = [0, 1];
 
 export const useGraphStore = create<GraphState>((set, get) => ({
-  allNodes:            [],
-  allEdges:            [],
-  availableNamespaces:  [],
-  availableStatusKeys:  [],
-  loading:              false,
-  error:                null,
+  allNodes:               [],
+  allEdges:               [],
+  availableNamespaces:    [],
+  availableStatusKeys:    [],
+  availablePolicySources: [],
+  loading:                false,
+  error:                  null,
 
   selectedNamespaces:      new Set<string>(),
   selectedNodeTypes:       new Set(ALL_TYPES),
   selectedStatuses:        new Set<StatusKey>(),
+  selectedPolicySources:   new Set<string>(),
+  selectedActions:         new Set<number>(ALL_ACTIONS),
   showNamespaceEdges:      true,
   showConnectedNamespaces: false,
   aggregateByNamespace:    false,
@@ -64,9 +73,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     try {
       const state = await fetchClusterState();
       set({
-        availableNamespaces: state.availableNs,
-        availableStatusKeys: state.statusKeys,
-        selectedNamespaces:  new Set(state.availableNs),
+        availableNamespaces:    state.availableNs,
+        availableStatusKeys:    state.statusKeys,
+        availablePolicySources: state.policySources,
+        selectedNamespaces:     new Set(state.availableNs),
+        selectedPolicySources:  new Set(state.policySources),
       });
     } catch (e) {
       set({ error: String(e) });
@@ -106,6 +117,20 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       const next = new Set(state.selectedStatuses);
       next.has(key) ? next.delete(key) : next.add(key);
       return { selectedStatuses: next, selectedNode: null, selectedEdges: [] };
+    }),
+
+  togglePolicySource: (src) =>
+    set((state) => {
+      const next = new Set(state.selectedPolicySources);
+      next.has(src) ? next.delete(src) : next.add(src);
+      return { selectedPolicySources: next, selectedNode: null, selectedEdges: [] };
+    }),
+
+  toggleAction: (action) =>
+    set((state) => {
+      const next = new Set(state.selectedActions);
+      next.has(action) ? next.delete(action) : next.add(action);
+      return { selectedActions: next, selectedNode: null, selectedEdges: [] };
     }),
 
   toggleNamespaceEdges: () =>

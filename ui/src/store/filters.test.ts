@@ -16,7 +16,7 @@ const edge = (
   source: string,
   target: string,
   level: PolicyEdge['level'] = 'workload',
-): PolicyEdge => ({ id, source, target, level, direction: 'egress', policyName: id, namespace: 'test' });
+): PolicyEdge => ({ id, source, target, level, direction: 'egress', policyName: id, namespace: 'test', policySource: 'k8s' });
 
 const ALL_TYPES = new Set(['service', 'deployment', 'headless', 'external']);
 
@@ -26,6 +26,8 @@ function state(overrides: Partial<FilterState>): FilterState {
     allEdges: [],
     selectedNamespaces: new Set(),
     selectedNodeTypes: ALL_TYPES,
+    selectedPolicySources: new Set(['k8s', 'istio']),
+    selectedActions: new Set([0, 1]),
     showNamespaceEdges: true,
     showConnectedNamespaces: false,
     searchQuery: '',

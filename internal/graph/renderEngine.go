@@ -17,11 +17,16 @@ func renderEdges(rules []policy.Rule, nodes []models.WorkloadNode) []PolicyEdge 
 		}
 	}
 
+	// edgeKey includes policySource so identically-named policies from
+	// different engines (e.g. k8s "allow-ingress" + istio "allow-ingress")
+	// stay as separate edges instead of collapsing.
 	type edgeKey struct {
 		srcID, dstID    string
 		direction       models.Direction
 		policyName      string
 		policyNamespace string
+		policySource    string
+		action          policy.RuleAction
 	}
 
 	grouped := map[edgeKey]*PolicyEdge{}
@@ -33,20 +38,27 @@ func renderEdges(rules []policy.Rule, nodes []models.WorkloadNode) []PolicyEdge 
 				direction:       rule.Direction,
 				policyName:      ref.Name,
 				policyNamespace: ref.Namespace,
+				policySource:    ref.Source,
+				action:          rule.Action,
 			}
 			edge, exists := grouped[key]
 			if !exists {
 				edge = &PolicyEdge{
-					Source:     rule.SrcID,
-					Target:     rule.DstID,
-					Direction:  rule.Direction,
-					PolicyName: ref.Name,
-					Namespace:  ref.Namespace,
-					Level:      edgeLevelFor(rule.SrcID, rule.DstID, nsNodeIDs),
+					Source:       rule.SrcID,
+					Target:       rule.DstID,
+					Direction:    rule.Direction,
+					PolicyName:   ref.Name,
+					Namespace:    ref.Namespace,
+					Level:        edgeLevelFor(rule.SrcID, rule.DstID, nsNodeIDs),
+					PolicySource: ref.Source,
+					Action:       rule.Action,
 				}
 				grouped[key] = edge
 			}
 			edge.Ports = appendUniquePort(edge.Ports, rule.Port)
+			if rule.L7Match != nil {
+				edge.L7Matches = appendUniqueL7(edge.L7Matches, *rule.L7Match)
+			}
 		}
 	}
 
@@ -71,6 +83,39 @@ func appendUniquePort(ports []models.Port, candidate models.Port) []models.Port 
 		}
 	}
 	return append(ports, candidate)
+}
+
+// appendUniqueL7 deduplicates L7Match blocks across rules that fold into the
+// same edge. Fan-out per port (case 9) attaches the same L7 set to N rules;
+// without dedup the detail panel would show N copies of identical L7 data.
+func appendUniqueL7(existing []policy.L7Match, candidate policy.L7Match) []policy.L7Match {
+	for _, block := range existing {
+		if l7Equal(block, candidate) {
+			return existing
+		}
+	}
+	return append(existing, candidate)
+}
+
+func l7Equal(a, b policy.L7Match) bool {
+	return stringsEqual(a.Hosts, b.Hosts) &&
+		stringsEqual(a.Methods, b.Methods) &&
+		stringsEqual(a.Paths, b.Paths) &&
+		stringsEqual(a.NotHosts, b.NotHosts) &&
+		stringsEqual(a.NotMethods, b.NotMethods) &&
+		stringsEqual(a.NotPaths, b.NotPaths)
+}
+
+func stringsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for index := range a {
+		if a[index] != b[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // updateStatusKeys populates every workload's effective Statuses (intersection

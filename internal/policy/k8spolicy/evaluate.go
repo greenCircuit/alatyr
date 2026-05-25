@@ -6,7 +6,6 @@ import (
 	"graph/internal/k8s"
 	"graph/internal/models"
 	"graph/internal/policy"
-	"graph/internal/utils"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -59,17 +58,6 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 	}
 }
 
-
-func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
-	nsIndex := index[networkPolicy.Namespace]
-	if isCatchAll(networkPolicy.Spec.PodSelector.MatchLabels, len(networkPolicy.Spec.PodSelector.MatchExpressions)) {
-		if nsIndex.NSNode != nil {
-			return []*models.WorkloadNode{nsIndex.NSNode}
-		}
-		return nil
-	}
-	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
-}
 
 func isCatchAll(matchLabels map[string]string, nExpressions int) bool {
 	return len(matchLabels) == 0 && nExpressions == 0

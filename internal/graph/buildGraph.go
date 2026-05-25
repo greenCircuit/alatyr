@@ -7,6 +7,7 @@ import (
 	"graph/internal/k8s"
 	"graph/internal/models"
 	"graph/internal/policy"
+	"graph/internal/policy/istio"
 	"graph/internal/policy/k8spolicy"
 )
 
@@ -17,11 +18,18 @@ type Builder struct {
 
 func NewBuilder(client k8s.KubernetesClient) *Builder {
 	return &Builder{
-		client: client,
-		sources: []policy.PolicySource{
-			k8spolicy.New(client),
-			// istio.New(client),  // future
-		},
+		client:  client,
+		sources: PolicySources(client),
+	}
+}
+
+// PolicySources is the canonical list of engines registered with the graph
+// builder. Exposed so the cluster-state endpoint can enumerate engine names
+// for the UI filter without duplicating the construction list.
+func PolicySources(client k8s.KubernetesClient) []policy.PolicySource {
+	return []policy.PolicySource{
+		k8spolicy.New(client),
+		istio.New(client),
 	}
 }
 
@@ -70,6 +78,7 @@ func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
 	for _, source := range b.sources {
 		result := source.Evaluate(context.Background(), namespaces, indexByNS)
 		allRules = append(allRules, result.Allow...)
+		allRules = append(allRules, result.Deny...)
 		for nodeID, status := range result.PolicyStatuses {
 			if statusBySourcePerNode[nodeID] == nil {
 				statusBySourcePerNode[nodeID] = map[string]models.PolicyStatus{}

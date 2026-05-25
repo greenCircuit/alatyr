@@ -1,0 +1,57 @@
+# Case 4: cross-namespace ALLOW from istio-mesh-b to istio-mesh-a.
+# Expected graph edge: cross-mesh-src (mesh-b) --> cross-mesh-dst (mesh-a)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cross-mesh-src
+  namespace: istio-mesh-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cross-mesh-src
+  template:
+    metadata:
+      labels:
+        app: cross-mesh-src
+    spec:
+      serviceAccountName: cross-mesh-src-sa
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cross-mesh-dst
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cross-mesh-dst
+  template:
+    metadata:
+      labels:
+        app: cross-mesh-dst
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-from-mesh-b
+  namespace: istio-mesh-a
+spec:
+  selector:
+    matchLabels:
+      app: cross-mesh-dst
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "istio-mesh-b"

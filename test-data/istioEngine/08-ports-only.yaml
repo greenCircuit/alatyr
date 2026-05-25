@@ -1,0 +1,64 @@
+# Case 8: AuthorizationPolicy ALLOW gated on L4 ports only.
+# Expected: allow edge ports-client --> ports-server with ports 8080/9090
+# attached. No L7 matchers — pure L3/L4 edge.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ports-client
+  namespace: istio-mesh-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ports-client
+  template:
+    metadata:
+      labels:
+        app: ports-client
+    spec:
+      containers:
+        - name: app
+          image: curlimages/curl:latest
+          command: ["sleep", "infinity"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ports-server
+  namespace: istio-mesh-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ports-server
+  template:
+    metadata:
+      labels:
+        app: ports-server
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+          ports:
+            - containerPort: 8080
+            - containerPort: 9090
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ports-8080-9090
+  namespace: istio-mesh-b
+spec:
+  selector:
+    matchLabels:
+      app: ports-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "istio-mesh-b"
+      to:
+        - operation:
+            ports: ["8080", "9090"]

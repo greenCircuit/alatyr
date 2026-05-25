@@ -3,10 +3,20 @@
   top: 12px;
   right: 12px;
   width: auto;
+  max-width: min(720px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   z-index: 10;
   background: #1a1e22ee;
+}
+
+/* Multi-policy grid: side-by-side cards when an edge carries multiple
+   policies. minmax sets minimum readable card width; the panel widens up to
+   max-width above to fit additional columns. */
+.policyGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
 }
 
 .smallText {
@@ -15,4 +25,36 @@
 
 .badgeSm {
   font-size: 0.7rem;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.statusBadgeSymbol {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/* label-value row: short fields side-by-side, compact. Label followed by
+   colon (in markup), single space, then value. No column alignment across rows. */
+.fieldRow {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.fieldLabel {
+  color: #6c757d;
 }
