@@ -1,0 +1,57 @@
+# Case 1: AuthorizationPolicy ALLOW from a specific service account principal.
+# Expected graph edge: authz-allow-src --> authz-allow-dst  (ingress, workload)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz-allow-src
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz-allow-src
+  template:
+    metadata:
+      labels:
+        app: authz-allow-src
+    spec:
+      serviceAccountName: authz-allow-src-sa
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz-allow-dst
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz-allow-dst
+  template:
+    metadata:
+      labels:
+        app: authz-allow-dst
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: authz-allow-from-src
+  namespace: istio-mesh-a
+spec:
+  selector:
+    matchLabels:
+      app: authz-allow-dst
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/istio-mesh-a/sa/authz-allow-src-sa"

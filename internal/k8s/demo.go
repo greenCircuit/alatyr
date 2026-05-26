@@ -13,39 +13,47 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
+
+	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
 
 type DemoClient struct {
-	namespaces map[string]corev1.Namespace
-	pods       map[string][]corev1.Pod
-	services   map[string][]corev1.Service
-	policies   map[string][]networkingv1.NetworkPolicy
+	namespaces           map[string]corev1.Namespace
+	pods                 map[string][]corev1.Pod
+	services             map[string][]corev1.Service
+	policies             map[string][]networkingv1.NetworkPolicy
+	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
 }
 
 func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 	c := &DemoClient{
-		namespaces: map[string]corev1.Namespace{},
-		pods:       map[string][]corev1.Pod{},
-		services:   map[string][]corev1.Service{},
-		policies:   map[string][]networkingv1.NetworkPolicy{},
+		namespaces:           map[string]corev1.Namespace{},
+		pods:                 map[string][]corev1.Pod{},
+		services:             map[string][]corev1.Service{},
+		policies:             map[string][]networkingv1.NetworkPolicy{},
+		authorizationPolicies: map[string][]*istiosec.AuthorizationPolicy{},
 	}
 
-	entries, err := fs.ReadDir(dataFS, dir)
-	if err != nil {
-		return nil, fmt.Errorf("reading demo data dir: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
-			continue
-		}
-		data, err := fs.ReadFile(dataFS, dir+"/"+entry.Name())
+	// Walk the tree so per-engine subdirs (test-data/k8sEngine,
+	// test-data/istioEngine, ...) are all picked up.
+	walkErr := fs.WalkDir(dataFS, dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", entry.Name(), err)
+			return err
 		}
-		if err := c.parseFile(data); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", entry.Name(), err)
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			return nil
 		}
+		data, readErr := fs.ReadFile(dataFS, path)
+		if readErr != nil {
+			return fmt.Errorf("reading %s: %w", path, readErr)
+		}
+		if parseErr := c.parseFile(data); parseErr != nil {
+			return fmt.Errorf("parsing %s: %w", path, parseErr)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("walking demo data tree: %w", walkErr)
 	}
 	return c, nil
 }
@@ -90,6 +98,13 @@ func (c *DemoClient) parseFile(data []byte) error {
 				return err
 			}
 			c.policies[np.Namespace] = append(c.policies[np.Namespace], np)
+
+		case "AuthorizationPolicy":
+			authzPolicy := &istiosec.AuthorizationPolicy{}
+			if err := json.Unmarshal(jsonBytes, authzPolicy); err != nil {
+				return err
+			}
+			c.authorizationPolicies[authzPolicy.Namespace] = append(c.authorizationPolicies[authzPolicy.Namespace], authzPolicy)
 		}
 	}
 	return nil
@@ -158,4 +173,8 @@ func (c *DemoClient) GetNs(ns string) (corev1.Namespace, error) {
 		return corev1.Namespace{}, fmt.Errorf("namespace %q not found in demo data", ns)
 	}
 	return obj, nil
+}
+
+func (c *DemoClient) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
+	return c.authorizationPolicies[ns], nil
 }

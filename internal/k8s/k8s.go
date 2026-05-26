@@ -9,6 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	istiosec "istio.io/client-go/pkg/apis/security/v1"
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 type KubernetesClient interface {
@@ -18,10 +21,16 @@ type KubernetesClient interface {
 	GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error)
 	GetNsNames() ([]string, error)
 	GetNs(ns string) (corev1.Namespace, error)
+
+	// GetAuthorizationPolicies fetches Istio security.istio.io/v1
+	// AuthorizationPolicy objects in the namespace. Real client uses
+	// istio.io/client-go (versioned clientset).
+	GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error)
 }
 
 type Client struct {
-	clientset *kubernetes.Clientset
+	clientset      *kubernetes.Clientset
+	istioClientset istioclient.Interface // interface so tests can plug in a fake clientset
 }
 
 func New(kubeconfigPath string) (*Client, error) {
@@ -33,7 +42,11 @@ func New(kubeconfigPath string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{clientset: clientset}, nil
+	istioCS, err := istioclient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{clientset: clientset, istioClientset: istioCS}, nil
 }
 
 func (c *Client) GetPods(ns string) ([]corev1.Pod, error) {
@@ -89,4 +102,16 @@ func (c *Client) GetNs(ns string) (corev1.Namespace, error) {
 		return corev1.Namespace{}, err
 	}
 	return *obj, nil
+}
+
+// GetAuthorizationPolicies fetches Istio AuthorizationPolicies for a namespace
+// via the versioned istio clientset. Returns a pointer slice so downstream
+// code can pass elements around without copying proto types (which embed
+// sync.Mutex and trip the copylocks vet check).
+func (c *Client) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
+	list, err := c.istioClientset.SecurityV1().AuthorizationPolicies(ns).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
 }

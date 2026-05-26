@@ -15,6 +15,7 @@ const STATUS_LABELS: Record<StatusKey, string> = {
   'ns-egress-access':  'NS egress access',
   'ns-ingress-access': 'NS ingress access',
   'ns-full-access':    'NS full access',
+  'l7-applied':        'L7 applied',
 };
 
 const LAYOUTS = [
@@ -27,12 +28,17 @@ const LAYOUTS = [
   { value: 'circle',      label: 'Circle' },
 ];
 
+const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
+
 export default function FilterPanel() {
   const {
     availableNamespaces: namespaces,
     availableStatusKeys,
+    availablePolicySources,
     selectedNamespaces, searchQuery, layoutAlgorithm,
     selectedStatuses, toggleStatus,
+    selectedPolicySources, togglePolicySource,
+    selectedActions, toggleAction,
     showConnectedNamespaces, toggleConnectedNamespaces,
     aggregateByNamespace, toggleAggregateByNamespace,
     toggleNamespace, setSearchQuery, setLayoutAlgorithm,
@@ -41,8 +47,12 @@ export default function FilterPanel() {
 
   const [nsOpen,     setNsOpen]     = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [actionOpen, setActionOpen] = useState(false);
   const nsDropdownRef     = useRef<HTMLDivElement>(null);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const sourceDropdownRef = useRef<HTMLDivElement>(null);
+  const actionDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -64,6 +74,26 @@ export default function FilterPanel() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [statusOpen]);
+
+  useEffect(() => {
+    if (!sourceOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(e.target as Node))
+        setSourceOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [sourceOpen]);
+
+  useEffect(() => {
+    if (!actionOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (actionDropdownRef.current && !actionDropdownRef.current.contains(e.target as Node))
+        setActionOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [actionOpen]);
 
   const nsCount   = selectedNamespaces.size;
   const nsLabel   = nsCount === namespaces.length
@@ -231,6 +261,99 @@ export default function FilterPanel() {
                 />
                 <label className="form-check-label text-light" htmlFor={`status-dd-${key}`} style={{ fontSize: 13 }}>
                   {STATUS_LABELS[key]}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Policy source multiselect (engines: k8s, istio, ...) */}
+      <div className="position-relative" ref={sourceDropdownRef}>
+        <button
+          className={`btn btn-sm ${selectedPolicySources.size < availablePolicySources.length ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+          type="button"
+          onClick={() => setSourceOpen((o) => !o)}
+        >
+          {selectedPolicySources.size === availablePolicySources.length
+            ? 'All engines'
+            : selectedPolicySources.size === 0
+              ? 'No engines'
+              : `${selectedPolicySources.size} / ${availablePolicySources.length} engines`}
+        </button>
+
+        {sourceOpen && (
+          <div
+            className="position-absolute bg-dark border border-secondary rounded shadow p-2"
+            style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 160 }}
+          >
+            <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
+              <button
+                className="btn btn-link btn-sm p-0 text-secondary"
+                style={{ fontSize: 11 }}
+                onClick={() => availablePolicySources.forEach((src) => { if (!selectedPolicySources.has(src)) togglePolicySource(src); })}
+              >
+                all
+              </button>
+              <button
+                className="btn btn-link btn-sm p-0 text-secondary"
+                style={{ fontSize: 11 }}
+                onClick={() => availablePolicySources.forEach((src) => { if (selectedPolicySources.has(src)) togglePolicySource(src); })}
+              >
+                none
+              </button>
+            </div>
+
+            {availablePolicySources.map((src) => (
+              <div key={src} className="form-check mb-1">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`src-dd-${src}`}
+                  checked={selectedPolicySources.has(src)}
+                  onChange={() => togglePolicySource(src)}
+                />
+                <label className="form-check-label text-light" htmlFor={`src-dd-${src}`} style={{ fontSize: 13 }}>
+                  {src}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Action multiselect (allow / deny) */}
+      <div className="position-relative" ref={actionDropdownRef}>
+        <button
+          className={`btn btn-sm ${selectedActions.size < 2 ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+          type="button"
+          onClick={() => setActionOpen((o) => !o)}
+        >
+          {selectedActions.size === 2
+            ? 'Allow + Deny'
+            : selectedActions.has(0)
+              ? 'Allow only'
+              : selectedActions.has(1)
+                ? 'Deny only'
+                : 'None'}
+        </button>
+
+        {actionOpen && (
+          <div
+            className="position-absolute bg-dark border border-secondary rounded shadow p-2"
+            style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 140 }}
+          >
+            {[0, 1].map((action) => (
+              <div key={action} className="form-check mb-1">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`action-dd-${action}`}
+                  checked={selectedActions.has(action)}
+                  onChange={() => toggleAction(action)}
+                />
+                <label className="form-check-label text-light" htmlFor={`action-dd-${action}`} style={{ fontSize: 13 }}>
+                  {ACTION_LABEL[action]}
                 </label>
               </div>
             ))}

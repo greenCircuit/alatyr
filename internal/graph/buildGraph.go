@@ -1,0 +1,98 @@
+package graph
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"graph/internal/k8s"
+	"graph/internal/models"
+	"graph/internal/policy"
+	"graph/internal/policy/istio"
+	"graph/internal/policy/k8spolicy"
+)
+
+type Builder struct {
+	client  k8s.KubernetesClient
+	sources []policy.PolicySource
+}
+
+func NewBuilder(client k8s.KubernetesClient) *Builder {
+	return &Builder{
+		client:  client,
+		sources: PolicySources(client),
+	}
+}
+
+// PolicySources is the canonical list of engines registered with the graph
+// builder. Exposed so the cluster-state endpoint can enumerate engine names
+// for the UI filter without duplicating the construction list.
+func PolicySources(client k8s.KubernetesClient) []policy.PolicySource {
+	return []policy.PolicySource{
+		k8spolicy.New(client),
+		istio.New(client),
+	}
+}
+
+func (b *Builder) BuildGraph(namespaces []string) (Graph, error) {
+	indexByNS := map[string]models.NSIndex{}
+	var allNodes []models.WorkloadNode
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+
+	for _, ns := range namespaces {
+		wg.Add(1)
+		go func(ns string) {
+			defer wg.Done()
+
+			nsIndex, err := b.buildNsIndex(ns)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
+			}
+
+			mu.Lock()
+			indexByNS[ns] = nsIndex
+			allNodes = append(allNodes, nsIndex.Workloads...)
+			mu.Unlock()
+		}(ns)
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return Graph{}, firstErr
+	}
+
+	// Run every registered policy engine. Each engine returns its own Allow
+	// rules + per-workload PolicyStatus. Rules concatenate (each engine's
+	// edges render independently); PolicyStatus is collected per-engine so
+	// updateStatusKeys can intersect them later.
+	var allRules []policy.Rule
+	statusBySourcePerNode := map[string]map[string]models.PolicyStatus{}
+
+	for _, source := range b.sources {
+		result, err := source.Evaluate(context.Background(), namespaces, indexByNS)
+		if err != nil {
+			return Graph{}, fmt.Errorf("engine %s: %w", source.Name(), err)
+		}
+		allRules = append(allRules, result.Allow...)
+		allRules = append(allRules, result.Deny...)
+		for nodeID, status := range result.PolicyStatuses {
+			if statusBySourcePerNode[nodeID] == nil {
+				statusBySourcePerNode[nodeID] = map[string]models.PolicyStatus{}
+			}
+			statusBySourcePerNode[nodeID][source.Name()] = status
+		}
+	}
+
+	allNodes = updateStatusKeys(allNodes, statusBySourcePerNode)
+	edges := renderEdges(allRules, allNodes)
+
+	return Graph{Nodes: allNodes, Edges: edges}, nil
+}

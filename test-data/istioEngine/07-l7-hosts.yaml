@@ -1,0 +1,64 @@
+# Case 7: AuthorizationPolicy ALLOW gated by HTTP Host header.
+# Expected: allow edge l7-host-gateway --> l7-host-backend with hosts matcher
+# (api.example.com, *.internal.example.com) visible in the detail panel.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: l7-host-gateway
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: l7-host-gateway
+  template:
+    metadata:
+      labels:
+        app: l7-host-gateway
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: l7-host-backend
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: l7-host-backend
+  template:
+    metadata:
+      labels:
+        app: l7-host-backend
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-by-host-header
+  namespace: istio-mesh-a
+spec:
+  selector:
+    matchLabels:
+      app: l7-host-backend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "istio-mesh-a"
+      to:
+        - operation:
+            hosts:
+              - "api.example.com"
+              - "*.internal.example.com"
+            notHosts:
+              - "legacy.example.com"

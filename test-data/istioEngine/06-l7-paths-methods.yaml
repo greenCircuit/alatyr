@@ -1,0 +1,63 @@
+# Case 6: AuthorizationPolicy ALLOW with L7 matchers — HTTP paths + methods.
+# Expected: allow edge l7-api-client --> l7-api-server carrying L7 details
+# (methods=GET,POST  paths=/api/*) in the detail panel.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: l7-api-client
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: l7-api-client
+  template:
+    metadata:
+      labels:
+        app: l7-api-client
+    spec:
+      containers:
+        - name: app
+          image: curlimages/curl:latest
+          command: ["sleep", "infinity"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: l7-api-server
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: l7-api-server
+  template:
+    metadata:
+      labels:
+        app: l7-api-server
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-api-get-post
+  namespace: istio-mesh-a
+spec:
+  selector:
+    matchLabels:
+      app: l7-api-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "istio-mesh-a"
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/*"]
+            notPaths: ["/api/admin/*"]
