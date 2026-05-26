@@ -8,7 +8,26 @@ import cola from 'cytoscape-cola';
 import fcose from 'cytoscape-fcose';
 import { useGraphStore } from '../store/graphStore';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
-import { formatPort } from '../data/policies';
+import { STATUS_CFG, SEVERITY_COLOR } from '../data/policies';
+import { formatPort, realPorts, formatL7Summary } from '../data/policies';
+import { EDGE_STYLES } from '../style/edgeStyles';
+
+// Compose edge label combining port list and L7 summary. Either side may be
+// empty; when both are absent falls back to 'all ports'.
+function edgeLabel(edge: PolicyEdge): string {
+  const portStr = realPorts(edge.ports)?.map(formatPort).join(', ');
+  const l7Str = formatL7Summary(edge.l7Matches);
+  if (portStr && l7Str) return `${portStr} · ${l7Str}`;
+  if (l7Str) return l7Str;
+  return portStr ?? 'all ports';
+}
+
+// Bundle label when multiple policies collapse onto one arrow. Surface a hint
+// that some policies carry L7 so the user knows clicking will reveal more.
+function bundleLabel(edges: PolicyEdge[]): string {
+  const hasL7 = edges.some((edge) => (edge.l7Matches?.length ?? 0) > 0);
+  return hasL7 ? `${edges.length} policies · L7` : `${edges.length} policies`;
+}
 import DetailPanel from './DetailPanel';
 
 cytoscape.use(dagre);
@@ -67,6 +86,7 @@ interface Bundle {
   id: string; source: string; target: string;
   policies: PolicyEdge[]; hasNS: boolean;
   direction: 'egress' | 'ingress' | 'both';
+  action: number;
 }
 
 function aggregateDirection(policies: PolicyEdge[]): 'egress' | 'ingress' | 'both' {
@@ -76,20 +96,27 @@ function aggregateDirection(policies: PolicyEdge[]): 'egress' | 'ingress' | 'bot
 }
 
 function bundleEdges(policyEdges: PolicyEdge[]): Bundle[] {
+  // Bundle key includes action so allow + deny rules on the same (src,dst)
+  // render as two distinct arrows — never a mixed-semantics single line.
   const map = new Map<string, PolicyEdge[]>();
   for (const e of policyEdges) {
-    const key = `${e.source}→${e.target}`;
+    const action = e.action ?? 0;
+    const key = `${e.source}→${e.target}@${action}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(e);
   }
-  return Array.from(map.values()).map((policies) => ({
-    id:        `bnd-${policies[0].source}-${policies[0].target}`,
-    source:    policies[0].source,
-    target:    policies[0].target,
-    policies,
-    hasNS:     policies.some((p) => p.level === 'namespace'),
-    direction: aggregateDirection(policies),
-  }));
+  return Array.from(map.values()).map((policies) => {
+    const action = policies[0].action ?? 0;
+    return {
+      id:        `bnd-${policies[0].source}-${policies[0].target}-${action}`,
+      source:    policies[0].source,
+      target:    policies[0].target,
+      policies,
+      hasNS:     policies.some((p) => p.level === 'namespace'),
+      direction: aggregateDirection(policies),
+      action,
+    };
+  });
 }
 
 // ── Cytoscape element builder ─────────────────────────────────────────────────
@@ -107,21 +134,41 @@ function buildElements(
   const occupiedNS = new Set(workloads.filter((w) => w.namespace).map((w) => w.namespace));
   const namespaces = [...new Set(allNodes.map((n) => n.namespace).filter(Boolean))];
 
-  // Namespace compound (parent) nodes – must appear before their children
+  // Two-node ns design:
+  //   nsbox-<ns>  — invisible compound parent (just the border/box visual)
+  //   ns-<ns>     — label-only node, ALSO a child of nsbox-<ns>; carries the
+  //                 click handler and serves as the edge endpoint for ns-level
+  //                 policies. Because both ns-<ns> and the workloads are
+  //                 siblings inside the same compound, an "ingress from this ns"
+  //                 edge is a normal sibling-to-sibling line — no loop.
+  const nsNodeById = new Map(
+    allNodes.filter((n) => n.type === 'namespace').map((n) => [n.id, n]),
+  );
   for (const ns of namespaces) {
     if (!visibleNS.has(ns) || !occupiedNS.has(ns)) continue;
     els.push({
       data: {
+        id:       `nsbox-${ns}`,
+        ntype:    'namespace-box',
+        covColor: COV[coverage.ns[ns] ?? 'none'],
+      },
+    });
+    els.push({
+      data: {
         id:       `ns-${ns}`,
+        parent:   `nsbox-${ns}`,
         label:    ns,
         ntype:    'namespace',
         covColor: COV[coverage.ns[ns] ?? 'none'],
+        workload: nsNodeById.get(`ns-${ns}`),
       },
     });
   }
 
   // Workload nodes
+  const workloadNsById = new Map<string, string>();
   for (const w of workloads) {
+    workloadNsById.set(w.id, w.namespace);
     const data: Record<string, unknown> = {
       id:       w.id,
       label:    w.label,
@@ -130,24 +177,29 @@ function buildElements(
       workload: w,
       covColor: coverage.workload.has(w.id) ? COV.workload : COV.none,
     };
-    if (w.namespace && visibleNS.has(w.namespace)) data.parent = `ns-${w.namespace}`;
+    if (w.namespace && visibleNS.has(w.namespace)) data.parent = `nsbox-${w.namespace}`;
     els.push({ data });
   }
 
-  // Edge bundles
+  // Edge bundles. nsToChild flag = source is an NS box AND target lives
+  // inside that same NS — Cytoscape gets a direct top-anchored edge instead
+  // of routing around the compound parent (avoids loop-shaped visuals).
   for (const b of bundles) {
     const count = b.policies.length;
+    const nsToChild =
+      b.source.startsWith('ns-') &&
+      workloadNsById.get(b.target) === b.source.slice('ns-'.length);
     els.push({
       data: {
-        id:       b.id,
-        source:   b.source,
-        target:   b.target,
-        label:    count === 1
-          ? (b.policies[0].ports?.map(formatPort).join(', ') ?? 'all ports')
-          : `${count} policies`,
+        id:        b.id,
+        source:    b.source,
+        target:    b.target,
+        label:     count === 1 ? edgeLabel(b.policies[0]) : bundleLabel(b.policies),
         policies:  b.policies,
         hasNS:     b.hasNS,
         direction: b.direction,
+        action:    b.action,
+        nsToChild,
       },
     });
   }
@@ -180,6 +232,9 @@ function buildAggregatedElements(
   // Track which IDs actually exist as elements so we can drop dangling edges
   const validIds = new Set<string>();
 
+  const nsNodeById = new Map(
+    allNodes.filter((n) => n.type === 'namespace').map((n) => [n.id, n]),
+  );
   for (const ns of occupiedNS) {
     validIds.add(`ns-${ns}`);
     els.push({
@@ -188,6 +243,7 @@ function buildAggregatedElements(
         label:    ns,
         ntype:    'namespace-agg',
         covColor: COV[coverage.ns[ns] ?? 'none'],
+        workload: nsNodeById.get(`ns-${ns}`),
       },
     });
   }
@@ -209,30 +265,31 @@ function buildAggregatedElements(
 
   // Use all edges so workload-level cross-NS policies are included, not just namespace-level ones.
   // validIds gates which namespace pairs actually appear.
-  const aggMap = new Map<string, { src: string; tgt: string; policies: PolicyEdge[] }>();
+  // Split aggregated edges by action too so deny doesn't collapse into allow.
+  const aggMap = new Map<string, { src: string; tgt: string; action: number; policies: PolicyEdge[] }>();
   for (const e of allEdges) {
     const src = e.level === 'namespace' ? e.source : groupOf(e.source);
     const tgt = e.level === 'namespace' ? e.target : groupOf(e.target);
     if (src === tgt) continue;
     if (!validIds.has(src) || !validIds.has(tgt)) continue;
-    const key = `${src}\0${tgt}`;
-    if (!aggMap.has(key)) aggMap.set(key, { src, tgt, policies: [] });
+    const action = e.action ?? 0;
+    const key = `${src}\0${tgt}\0${action}`;
+    if (!aggMap.has(key)) aggMap.set(key, { src, tgt, action, policies: [] });
     aggMap.get(key)!.policies.push(e);
   }
 
-  for (const { src, tgt, policies } of aggMap.values()) {
+  for (const { src, tgt, action, policies } of aggMap.values()) {
     const count = policies.length;
     els.push({
       data: {
-        id:        `agg-${src}-${tgt}`,
+        id:        `agg-${src}-${tgt}-${action}`,
         source:    src,
         target:    tgt,
-        label:     count === 1
-          ? (policies[0].ports?.map(formatPort).join(', ') ?? 'all ports')
-          : `${count} policies`,
+        label:     count === 1 ? edgeLabel(policies[0]) : bundleLabel(policies),
         policies,
         hasNS:     policies.some((p) => p.level === 'namespace'),
         direction: aggregateDirection(policies),
+        action,
       },
     });
   }
@@ -240,50 +297,40 @@ function buildAggregatedElements(
   return els;
 }
 
-const PANEL_W = 302; // DetailPanel width (290) + right margin (12)
-
-// Fit all elements into the left portion of the canvas, reserving space for the overlay panel.
-function fitToArea(cy: cytoscape.Core, reserveRight: number, padding = 60) {
-  const els = cy.elements();
-  if (els.length === 0) return;
-  const w = cy.width();
-  const h = cy.height();
-  const availW = w - reserveRight - padding * 2;
-  const availH = h - padding * 2;
-  if (availW <= 0 || availH <= 0) { cy.fit(els, padding); return; }
-  const bb = els.boundingBox({});
-  if (bb.w === 0 || bb.h === 0) return;
-  const zoom = Math.min(availW / bb.w, availH / bb.h, cy.maxZoom());
-  const clampedZoom = Math.max(zoom, cy.minZoom());
-  cy.viewport({
-    zoom: clampedZoom,
-    pan: {
-      x: padding + availW / 2 - ((bb.x1 + bb.x2) / 2) * clampedZoom,
-      y: padding + availH / 2 - ((bb.y1 + bb.y2) / 2) * clampedZoom,
-    },
-  });
-}
-
 // ── Stylesheet ────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const STYLE: any[] = [
+  // Compound parent: visible box only, no label (label lives on the sibling
+  // child below). Ungrabbed children prevent accidental drag inside the box;
+  // the box itself remains grabbable so the user can drag the whole group.
   {
-    selector: 'node[ntype = "namespace"]',
+    selector: 'node[ntype = "namespace-box"]',
     style: {
       'background-color':   '#0a0c0e',
       'background-opacity': 0.65,
       'border-color':       'data(covColor)',
       'border-width':       2,
+      'padding':            32,
+      'shape':              'roundrectangle',
+      'label':              '',
+    },
+  },
+  // Label-only sibling child. Transparent so it floats over the box visual.
+  {
+    selector: 'node[ntype = "namespace"]',
+    style: {
+      'background-opacity': 0,
+      'border-width':       0,
       'label':              'data(label)',
-      'text-valign':        'top',
+      'text-valign':        'center',
       'text-halign':        'center',
       'color':              'data(covColor)',
       'font-size':          11,
       'font-weight':        'bold',
       'text-transform':     'uppercase',
-      'padding':            32,
-      'shape':              'roundrectangle',
-      'text-margin-y':      -10,
+      'width':              'label',
+      'height':             18,
+      'shape':              'rectangle',
     },
   },
   {
@@ -344,58 +391,10 @@ const STYLE: any[] = [
     selector: 'node[wtype = "cronjob"]',
     style: { 'shape': 'hexagon' },
   },
-  // ── base edge ──
-  {
-    selector: 'edge',
-    style: {
-      'width':                    1.5,
-      'target-arrow-shape':       'triangle',
-      'arrow-scale':              1.1,
-      'curve-style':              'bezier',
-      'label':                    'data(label)',
-      'font-size':                9,
-      'text-background-color':    '#0d0f11',
-      'text-background-opacity':  0.9,
-      'text-background-padding':  '3px',
-      'text-background-shape':    'round-rectangle',
-    },
-  },
-  // ── direction colors ──
-  {
-    selector: 'edge[direction = "egress"]',
-    style: {
-      'line-color':         '#4dabf7',   // blue  – traffic going out from source
-      'target-arrow-color': '#4dabf7',
-      'color':              '#4dabf7',
-    },
-  },
-  {
-    selector: 'edge[direction = "ingress"]',
-    style: {
-      'line-color':         '#f783ac',   // pink  – traffic allowed into target
-      'target-arrow-color': '#f783ac',
-      'color':              '#f783ac',
-    },
-  },
-  {
-    selector: 'edge[direction = "both"]',
-    style: {
-      'line-color':         '#a9e34b',   // lime  – bidirectional
-      'target-arrow-color': '#a9e34b',
-      'source-arrow-color': '#a9e34b',
-      'source-arrow-shape': 'triangle',
-      'color':              '#a9e34b',
-    },
-  },
-  // ── namespace-level edges: dashed on top of direction color ──
-  {
-    selector: 'edge[?hasNS]',
-    style: {
-      'line-style':        'dashed',
-      'line-dash-pattern': [8, 4],
-      'width':             2,
-    },
-  },
+  // Edge styles live in style/edgeStyles.ts so they can be edited without
+  // touching component code. Spread them in here after node styles so node
+  // selectors take precedence on shared properties.
+  ...EDGE_STYLES,
   {
     selector: '.dimmed',
     style: { 'opacity': 0.12 },
@@ -403,25 +402,12 @@ const STYLE: any[] = [
 ];
 
 // ── Status badge definitions ──────────────────────────────────────────────────
-const STATUS_CFG: Record<StatusKey, { symbol: string; bg: string; title: string }> = {
-  'internet-full':     { symbol: 'WAN⇆', bg: '#581c87', title: 'Critical: bidirectional internet traffic' },
-  'internet-egress':   { symbol: 'WAN↑', bg: '#c92a2a', title: 'High: can reach internet (exfil risk)'    },
-  'internet-ingress':  { symbol: 'WAN↓', bg: '#c92a2a', title: 'High: reachable from internet'            },
-  'lan-full':          { symbol: 'LAN⇆', bg: '#e8590c', title: 'Warning: bidirectional LAN traffic' },
-  'lan-egress':        { symbol: 'LAN↑', bg: '#f59f00', title: 'Caution: egress to private LAN' },
-  'lan-ingress':       { symbol: 'LAN↓', bg: '#f59f00', title: 'Caution: ingress from private LAN' },
-  'api-server-egress': { symbol: 'API↑', bg: '#1864ab', title: 'Info: egress to Kubernetes API server' },
-  'ns-full-access':    { symbol: 'NS⇆',  bg: '#e8590c', title: 'Warning: full access to/from entire namespace' },
-  'ns-egress-access':  { symbol: 'NS↑',  bg: '#f59f00', title: 'Caution: egress to all workloads in namespace'  },
-  'ns-ingress-access': { symbol: 'NS↓',  bg: '#f59f00', title: 'Caution: ingress from all workloads in namespace' },
-  'cross-namespace':   { symbol: '⇆',    bg: '#1864ab', title: 'Info: cross-namespace traffic allowed' },
-  'air-gapped':        { symbol: '⊘',    bg: '#2f9e44', title: 'Secure: effectively isolated (deny-all)' },
-};
-
 interface BadgeNode { id: string; statuses: StatusKey[] }
 
 function StatusBadge({ s }: { s: StatusKey }) {
-  const { symbol, bg, title } = STATUS_CFG[s];
+  const { symbol, severity, description } = STATUS_CFG[s];
+  const bg = SEVERITY_COLOR[severity];
+  const title = `${severity}: ${description}`;
   return (
     <span
       title={title}
@@ -499,7 +485,8 @@ export default function PolicyGraph() {
     selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces,
     aggregateByNamespace,
     selectedStatuses, toggleStatus,
-    selectedNode, selectedEdges,
+    selectedPolicySources, selectedActions,
+    selectedNode,
     setSelectedNode, setSelectedEdges,
     loadGraph, loadClusterState, loading, error,
     layoutAlgorithm,
@@ -551,17 +538,8 @@ export default function PolicyGraph() {
   // Re-apply dim state to badges when the badge list changes (after layout adds new badges)
   useEffect(() => { applyDimming(); }, [badgeNodes, applyDimming]);
 
-  // Re-fit viewport when overlay panel opens/closes — canvas size unchanged so no resize needed
-  const panelOpen = selectedNode !== null || selectedEdges.length > 0;
-  const prevPanelOpen = useRef(panelOpen);
-  useEffect(() => {
-    if (panelOpen === prevPanelOpen.current) return;
-    prevPanelOpen.current = panelOpen;
-    const cy = cyRef.current;
-    if (!cy) return;
-    fitToArea(cy, panelOpen ? PANEL_W : 0);
-    syncViewport();
-  }, [panelOpen, syncViewport]);
+  // Detail panel opens as an overlay — preserve the user's current zoom/pan.
+  // Selected node may end up partially under the panel; user pans manually if so.
 
   useEffect(() => { loadClusterState(); loadGraph(); }, []);
 
@@ -588,22 +566,19 @@ export default function PolicyGraph() {
       dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); });
     });
 
-    // Workload node click – toggle focus/dim (dimming handled reactively via applyDimming)
-    cy.on('tap', 'node[ntype = "workload"]', (evt) => {
-      const node      = evt.target as cytoscape.NodeSingular;
+    // Workload / namespace node click – open detail panel for whichever node was tapped.
+    // Toggle focus when the same node is clicked twice.
+    cy.on('tap', 'node[ntype = "workload"], node[ntype = "namespace"], node[ntype = "namespace-agg"]', (evt) => {
+      const node = evt.target as cytoscape.NodeSingular;
+      const workload = node.data('workload') as WorkloadNode | undefined;
+      if (!workload) return;
       const wasActive = node.hasClass('focused');
-      setSelectedNode(wasActive ? null : node.data('workload') as WorkloadNode);
+      setSelectedNode(wasActive ? null : workload);
     });
 
     // Edge click – show policy detail
     cy.on('tap', 'edge', (evt) => {
       setSelectedEdges((evt.target as cytoscape.EdgeSingular).data('policies') as PolicyEdge[]);
-    });
-
-    // Namespace box click – clear selection
-    cy.on('tap', 'node[ntype = "namespace"]', () => {
-      setSelectedNode(null);
-      setSelectedEdges([]);
     });
 
     // Background click – clear everything
@@ -659,6 +634,30 @@ export default function PolicyGraph() {
     const layout = cy.layout(layoutOptions);
 
     layout.one('layoutstop', () => {
+      // Pin the label-only ns child above its topmost workload sibling, then
+      // make it ungrabbable (not locked — lock blocks compound drag from
+      // pulling the child along, which makes the box resize instead of move).
+      cy.nodes('[ntype = "namespace"]').forEach((node) => {
+        const parent = node.parent().first();
+        if (parent.empty()) return;
+        const siblings = parent.children().filter((child) => child.data('ntype') === 'workload');
+        if (siblings.empty()) return;
+        let minTop = Infinity;
+        let centerX = 0;
+        let count = 0;
+        siblings.forEach((sibling) => {
+          const top = sibling.position('y') - sibling.height() / 2;
+          if (top < minTop) minTop = top;
+          centerX += sibling.position('x');
+          count += 1;
+        });
+        node.position({
+          x: centerX / count,
+          y: minTop - 20,
+        });
+        node.ungrabify();
+      });
+
       setBadgeNodes(
         cy.nodes('[ntype = "workload"]').toArray()
           .filter((n) => ((n.data('workload') as WorkloadNode).statuses?.length ?? 0) > 0)
@@ -672,7 +671,7 @@ export default function PolicyGraph() {
     layout.run();
   // filteredNodes/filteredEdges call get() internally; the listed deps cover all state that affects output
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
+  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: '#0d0f11', overflow: 'hidden' }}>
@@ -740,9 +739,10 @@ export default function PolicyGraph() {
             <div className="mt-1 pt-1 border-top border-secondary" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6c757d' }}>
               Arrows
             </div>
-            <Dot color="#4dabf7" label="egress" />
-            <Dot color="#f783ac" label="ingress" />
-            <Dot color="#a9e34b" label="both" />
+            <Dot color="#4dabf7" label="egress (allow)" />
+            <Dot color="#f783ac" label="ingress (allow)" />
+            <Dot color="#a9e34b" label="both (allow)" />
+            <Dot color="#e03131" label="deny" />
             <div className="d-flex gap-2 mt-1">
               <span style={{ color: '#adb5bd' }}>── workload</span>
               <span style={{ color: '#adb5bd' }}>╌╌ namespace</span>
@@ -753,23 +753,25 @@ export default function PolicyGraph() {
             {(Object.entries(STATUS_CFG) as [StatusKey, typeof STATUS_CFG[StatusKey]][]).map(([key, cfg]) => {
               const active = selectedStatuses.has(key);
               const dimmed = selectedStatuses.size > 0 && !active;
+              const bg = SEVERITY_COLOR[cfg.severity];
+              const label = `${cfg.severity}: ${cfg.description}`;
               return (
                 <span
                   key={key}
                   className="d-flex align-items-center gap-1"
-                  title={cfg.title}
+                  title={label}
                   onClick={() => toggleStatus(key)}
                   style={{ cursor: 'pointer', opacity: dimmed ? 0.4 : 1, transition: 'opacity 0.15s' }}
                 >
                   <span style={{
-                    background: cfg.bg, color: '#fff',
+                    background: bg, color: '#fff',
                     fontSize: 7, fontWeight: 700, padding: '2px 3px', borderRadius: 3, flexShrink: 0,
                     outline: active ? '1.5px solid #fff' : 'none',
                     outlineOffset: 1,
                   }}>
                     {cfg.symbol}
                   </span>
-                  <span style={{ fontSize: 9 }}>{cfg.title}</span>
+                  <span style={{ fontSize: 9 }}>{label}</span>
                 </span>
               );
             })}

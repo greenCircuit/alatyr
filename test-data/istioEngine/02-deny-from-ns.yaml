@@ -1,0 +1,56 @@
+# Case 2: AuthorizationPolicy DENY from another namespace.
+# Expected: explicit deny edge (visualized separately from ALLOW edges).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz-deny-target
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz-deny-target
+  template:
+    metadata:
+      labels:
+        app: authz-deny-target
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz-deny-attacker
+  namespace: istio-mesh-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz-deny-attacker
+  template:
+    metadata:
+      labels:
+        app: authz-deny-attacker
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-from-mesh-b
+  namespace: istio-mesh-a
+spec:
+  selector:
+    matchLabels:
+      app: authz-deny-target
+  action: DENY
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "istio-mesh-b"

@@ -5,6 +5,8 @@ export interface FilterState {
   allEdges:                PolicyEdge[];
   selectedNamespaces:      Set<string>;
   selectedNodeTypes:       Set<string>;
+  selectedPolicySources:   Set<string>;
+  selectedActions:         Set<number>;
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   searchQuery:             string;
@@ -50,6 +52,8 @@ export function filteredEdges(s: FilterState): PolicyEdge[] {
     ...nsSource.map((ns) => `ns-${ns}`),
   ]);
   return s.allEdges.filter((e) => {
+    if (!s.selectedPolicySources.has(e.policySource)) return false;
+    if (!s.selectedActions.has(e.action ?? 0)) return false;
     if (e.level === 'namespace')
       return s.showNamespaceEdges && visibleIds.has(e.source) && visibleIds.has(e.target);
     return visibleIds.has(e.source) && visibleIds.has(e.target);

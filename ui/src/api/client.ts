@@ -6,8 +6,9 @@ export interface Graph {
 }
 
 export interface ClusterState {
-  availableNs: string[];
-  statusKeys:  StatusKey[];
+  availableNs:   string[];
+  statusKeys:    StatusKey[];
+  policySources: string[];
 }
 
 export function fetchGraph(namespaces?: string[]): Promise<Graph> {
