@@ -2,6 +2,7 @@ stages:
   - semver
   - test
   - build
+  - smoke-tests
   - security
   - release
 
@@ -47,6 +48,19 @@ img-base:
   extends: .create_image
   variables:
     FILE_PATH: "Dockerfile"
+
+test-img:
+  extends: .create_image
+  variables:
+    FILE_PATH: "Dockerfile.tests"
+    REGISTRY_PATH: "smoke"
+  needs:
+    - job: release-dry-run
+      optional: true
+  rules:
+    - changes:
+        - Dockerfile.tests
+        - tests/requirements.txt
 
 build-ui:
   image: docker.io/node:22-alpine
@@ -100,6 +114,38 @@ build-binary:
       - graph
     when: on_success
     expire_in: 10 days
+    
+smoke-tests:
+  needs:
+    - build-binary
+  stage: smoke-tests
+  image: registry.dev.local/home-lab/network-policy-visualizer/smoke:0.1.0-3-add-smoke-robot-tests-to-pipeline
+  variables:
+    BACKEND_PORT: "8080"
+  script:
+    - export HOME=$CI_PROJECT_DIR
+    - export KUBECONFIG=$CI_PROJECT_DIR/kubeconfig
+    - mkdir -p $CI_PROJECT_DIR/.kwok
+    - cp -r /kwok-preload/.kwok/cache $CI_PROJECT_DIR/.kwok/
+    - mkdir -p tests/results
+    - kwokctl delete cluster --name graph-tests 2>/dev/null || true
+    - kwokctl create cluster --name graph-tests --runtime=binary
+    - kwokctl get kubeconfig --name graph-tests > $KUBECONFIG
+    - kubectl apply -f $ISTIO_CRDS_FILE
+    - chmod +x ./graph
+    - env -u DEMO_MODE KUBECONFIG=$KUBECONFIG ./graph > tests/results/backend.log 2>&1 &
+    - |
+      for i in $(seq 1 30); do
+        curl -fsS http://localhost:${BACKEND_PORT}/api/cluster-state >/dev/null 2>&1 && break
+        sleep 1
+      done
+    - cd tests && pytest --html=results/report.html --self-contained-html --junitxml=results/junit.xml -vv
+  artifacts:
+    when: always
+    paths:
+      - tests/results/
+    reports:
+      junit: tests/results/junit.xml
 
 # Security scans
 semgrep-sast:
@@ -119,7 +165,7 @@ dockerfile-check:
     name: aquasec/trivy:latest
     entrypoint: [""]
   script:
-    - trivy config . --exit-code 1 --severity HIGH,CRITICAL --skip-files Dockerfile.sandbox --skip-dirs test-data
+    - trivy config . --exit-code 1 --severity HIGH,CRITICAL --skip-files Dockerfile.sandbox,Dockerfile.tests --skip-dirs test-data
 
 git-leaks:
   stage: security

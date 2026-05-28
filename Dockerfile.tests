@@ -1,0 +1,68 @@
+# CI image with everything ./tests/run.sh needs preinstalled.
+#
+# Build:  docker build -t graph-tests -f tests/Dockerfile tests/
+# Run:    docker run --rm --network=host -v "$(pwd):/workspace" \
+#             -w /workspace graph-tests ./tests/run.sh
+#
+# Bakes: go, python3 + venv with test deps, kubectl, kwok + kwokctl,
+# pinned Istio CRDs. run.sh detects these and skips its lazy-download
+# paths (checks PATH and ISTIO_CRDS_FILE env var).
+#
+# First-run cost remaining: kwokctl downloads etcd + kube-apiserver to
+# ~/.kwok on the first `kwokctl create cluster`. Persist /root/.kwok as
+# a CI cache volume if you want to amortize that across runs.
+
+ARG GO_VERSION=1.22
+ARG KWOK_VERSION=v0.6.1
+ARG KUBECTL_VERSION=v1.31.0
+ARG ISTIO_VERSION=1.22.0
+ARG TARGETARCH=amd64
+
+FROM golang:${GO_VERSION}-bookworm
+
+ARG KWOK_VERSION
+ARG KUBECTL_VERSION
+ARG ISTIO_VERSION
+ARG TARGETARCH
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-venv \
+        curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# kubectl
+RUN curl -fsSL -o /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
+    && chmod +x /usr/local/bin/kubectl
+
+# kwok + kwokctl
+RUN curl -fsSL -o /usr/local/bin/kwok \
+        "https://github.com/kubernetes-sigs/kwok/releases/download/${KWOK_VERSION}/kwok-linux-${TARGETARCH}" \
+    && curl -fsSL -o /usr/local/bin/kwokctl \
+        "https://github.com/kubernetes-sigs/kwok/releases/download/${KWOK_VERSION}/kwokctl-linux-${TARGETARCH}" \
+    && chmod +x /usr/local/bin/kwok /usr/local/bin/kwokctl
+
+# Pre-download etcd + kube-apiserver into /root/.kwok so CI can copy them
+# without hitting the network. Cluster startup may fail here; only the
+# cached binaries matter.
+RUN mkdir /kwok-preload \
+    && HOME=/kwok-preload timeout 120 kwokctl create cluster --name preload --runtime=binary || true
+
+# Istio CRDs pinned at build time; run.sh picks them up via env var.
+RUN curl -fsSL -o /opt/istio-crds.yaml \
+        "https://raw.githubusercontent.com/istio/istio/${ISTIO_VERSION}/manifests/charts/base/crds/crd-all.gen.yaml"
+ENV ISTIO_CRDS_FILE=/opt/istio-crds.yaml
+
+# Python deps in a venv so pytest, requests, kubernetes land on PATH cleanly
+# without fighting Debian's externally-managed-environment marker.
+COPY tests/requirements.txt /tmp/requirements.txt
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+ENV PATH="/opt/venv/bin:${PATH}"
+
+ENV GOFLAGS=-buildvcs=false
+
+WORKDIR /workspace
