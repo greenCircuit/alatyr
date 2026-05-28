@@ -1,3 +1,15 @@
 /graph
 ui/dist/*
 !ui/dist/.gitkeep
+
+# tests — generated artifacts, not source
+tests/.bin/
+tests/.cache/
+.pytest_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
