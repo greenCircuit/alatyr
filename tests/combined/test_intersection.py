@@ -38,3 +38,28 @@ def test_effective_status_is_intersection_of_both_engines(get_graph):
     # both per-engine views differ from effective — proves intersection is running
     assert effective != k8s_view
     assert effective != istio_view
+
+
+# Regression: only one engine has a policy on the workload, the other engine
+# sees nothing. Effective must match the engine with the policy — the zero-
+# status engine has "no opinion" and must not inflate the intersection via
+# transparency (Lan/InnerNs/ApiServer must NOT fire). Before the fix in
+# IntersectPolicyStatus, the istio side's transparency would flip every
+# unlocked-egress dimension to true, over-claiming 3-4 extra badges.
+def test_no_opinion_engine_does_not_over_claim(get_graph):
+    # k8s ingress-only policy on backend (no internet/LAN peers — only a pod ref).
+    # Istio: no policy applied → engine produces zero PolicyStatus for backend.
+    k8s_scenarios.apply("allow_fe_to_be")
+    graph = get_graph(NS_A)
+
+    k8s_view = set(node_statuses_by_source(graph, "backend", NS_A, "k8s"))
+    istio_view = set(node_statuses_by_source(graph, "backend", NS_A, "istio"))
+    effective = set(node_statuses(graph, "backend", NS_A))
+
+    assert k8s_view == {"internet-egress"}          # ingress locked, egress transparent → internet egress
+    assert istio_view == {"internet-full"}           # zero status → transparent both ways
+    assert effective == {"internet-egress"}          # matches k8s view, zero engine ignored
+    # the over-claim regression: any of these would mean filter is broken
+    assert "lan-egress" not in effective
+    assert "api-server-egress" not in effective
+    assert "ns-egress-access" not in effective

@@ -103,6 +103,62 @@ export interface L7Match {
   notPaths?: string[];
 }
 
+export interface PolicyRef {
+  source:     string;
+  name:       string;
+  namespace:  string;
+  ruleIndex:  number;
+  action?:    string;    // "allow" | "deny" — set for selecting-policy refs, omitted for rule contributors
+  direction?: string;    // "ingress" | "egress" | "both"
+}
+
+// NodeRule mirrors backend store.NodeRule. Backend resolves the rule's DstID
+// into a human label + namespace so the UI doesn't need to look it up against
+// the graph node list. SrcID is omitted — clicked node is always the source.
+export interface NodeRule {
+  direction:     string;
+  port:          Port;
+  l7Match?:      L7Match;
+  action:        number; // 0 = Allow, 1 = Deny
+  contributors?: PolicyRef[];
+  dstId:         string;
+  dstLabel?:     string;     // empty for CIDR / unresolved IDs
+  dstNamespace?: string;
+}
+
+// Per-engine response from /api/node-info. Rules where node is source +
+// policies that select the node (including policies emitting no rule).
+export interface NodeInfoEngine {
+  rules:    NodeRule[] | null;
+  policies: PolicyRef[] | null;
+}
+
+export type NodeInfo = Record<string, NodeInfoEngine>;
+
+// Reachability verdict between two nodes, returned by /api/reachable.
+// Mirrors store.ReachabilityResult on the backend.
+export interface DirectionVerdict {
+  locked:        boolean;
+  allowMatches?: NodeRule[];
+  denyMatches?:  NodeRule[];
+  reason:        string;
+}
+
+export interface EngineVerdict {
+  status:       'allow' | 'deny' | 'not enforced';
+  egress:       DirectionVerdict;
+  ingress:      DirectionVerdict;
+  srcPolicies?: PolicyRef[];
+  dstPolicies?: PolicyRef[];
+}
+
+export interface ReachabilityResult {
+  verdict: 'allow' | 'deny' | 'partial';
+  engines: Record<string, EngineVerdict>;
+  path?:   string;
+  reason:  string;
+}
+
 export interface PolicyEdge {
   id: string;
   source: string;       // workload node id OR 'ns-<name>' for namespace-level

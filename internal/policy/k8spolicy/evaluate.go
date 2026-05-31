@@ -6,7 +6,6 @@ import (
 
 	"graph/internal/k8s"
 	"graph/internal/models"
-	"graph/internal/policy"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -37,22 +36,28 @@ func (s *source) getPolicies(namespaces []string) (map[string][]networkingv1.Net
 	return policiesByNS, nil
 }
 
-func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) (policy.EvaluationResult, error) {
+func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) (models.EvaluationResult, error) {
 	policiesByNS, err := s.getPolicies(namespaces)
 	if err != nil {
-		return policy.EvaluationResult{}, fmt.Errorf("k8s policy fetch: %w", err)
+		return models.EvaluationResult{}, fmt.Errorf("k8s policy fetch: %w", err)
 	}
 
 	policyStatuses := map[string]models.PolicyStatus{}
+	nodePolicies := map[string][]models.PolicyRef{}
 	for _, ns := range namespaces {
-		for nodeID, status := range generatePolicyStatusAssignment(index[ns].Workloads, policiesByNS[ns]) {
+		statuses, refs := generatePolicyStatusAssignment(index[ns].Workloads, policiesByNS[ns])
+		for nodeID, status := range statuses {
 			policyStatuses[nodeID] = status
+		}
+		for nodeID, policyRefs := range refs {
+			nodePolicies[nodeID] = policyRefs
 		}
 	}
 
-	return policy.EvaluationResult{
-		Allow:          buildAllowRules(index, policiesByNS),
+	return models.EvaluationResult{
+		AllowByNs:      buildAllowRulesByNs(index, policiesByNS),
 		PolicyStatuses: policyStatuses,
+		NodePolicies:   nodePolicies,
 	}, nil
 }
 

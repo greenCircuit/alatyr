@@ -8,6 +8,7 @@ import (
 	"graph/internal/graph"
 )
 
+// return full graph
 func (s *Server) handleGraph(c echo.Context) error {
 	var namespaces []string
 	if nsParam := c.QueryParam("namespaces"); nsParam != "" {
@@ -20,10 +21,12 @@ func (s *Server) handleGraph(c echo.Context) error {
 		}
 	}
 
-	g, err := graph.NewBuilder(s.client).BuildGraph(namespaces)
-	if err != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.store.PopulateCache(s.cache, namespaces); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	g := graph.BuildGraph(s.cache, namespaces)
 
 	return c.JSON(http.StatusOK, g)
 }

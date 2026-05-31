@@ -9,17 +9,69 @@ import (
 )
 
 
-// generatePolicyStatusAssignment returns the per-workload PolicyStatus for
-// every node, even when no policies match (zero-value PolicyStatus). The
-// graph layer intersects across engines and calls DeriveStatusKeys to get
-// final badges; engines do not derive keys themselves anymore.
-func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []networkingv1.NetworkPolicy) map[string]models.PolicyStatus {
-	assignments := map[string]models.PolicyStatus{}
+// generatePolicyStatusAssignment returns the per-workload PolicyStatus and
+// per-workload list of selecting policies (NodePolicies). Both keyed by
+// workload ID. PolicyStatus is the boolean digest consumed by status-key
+// derivation; NodePolicies preserves the policy refs so the detail panel can
+// show "selected by NetworkPolicy X" even when the policy emits zero rules.
+func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []networkingv1.NetworkPolicy) (map[string]models.PolicyStatus, map[string][]models.PolicyRef) {
+	statuses := map[string]models.PolicyStatus{}
+	nodePolicies := map[string][]models.PolicyRef{}
 	for _, node := range nodes {
 		matchPolicies := getNodePolicies(node, policies)
-		assignments[node.ID] = buildPolicyStatus(matchPolicies)
+		statuses[node.ID] = buildPolicyStatus(matchPolicies)
+
+		// Namespace node shows every policy in its ns (any policy here
+		// governs *some* workload in this ns). Workload nodes show only
+		// policies that select them. Status derivation stays strict above.
+		panelPolicies := matchPolicies
+		if node.Type == models.NodeTypeNamespace {
+			panelPolicies = policies
+		}
+		if len(panelPolicies) == 0 {
+			continue
+		}
+		refs := make([]models.PolicyRef, 0, len(panelPolicies))
+		for _, networkPolicy := range panelPolicies {
+			refs = append(refs, models.PolicyRef{
+				Source:    sourceName,
+				Name:      networkPolicy.Name,
+				Namespace: networkPolicy.Namespace,
+				Action:    "allow", // k8s NetworkPolicies are always allow-style (default-deny is structural)
+				Direction: networkPolicyDirection(networkPolicy),
+			})
+		}
+		nodePolicies[node.ID] = refs
 	}
-	return assignments
+	return statuses, nodePolicies
+}
+
+// networkPolicyDirection derives the effective direction string from a
+// NetworkPolicy's PolicyTypes. Empty PolicyTypes → ingress implied (and
+// egress added when egress rules are present), per k8s spec.
+func networkPolicyDirection(networkPolicy networkingv1.NetworkPolicy) models.Direction {
+	var hasIngress, hasEgress bool
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		if policyType == networkingv1.PolicyTypeIngress {
+			hasIngress = true
+		}
+		if policyType == networkingv1.PolicyTypeEgress {
+			hasEgress = true
+		}
+	}
+	if len(networkPolicy.Spec.PolicyTypes) == 0 {
+		hasIngress = true
+		if len(networkPolicy.Spec.Egress) > 0 {
+			hasEgress = true
+		}
+	}
+	if hasIngress && hasEgress {
+		return models.DirectionBoth
+	}
+	if hasEgress {
+		return models.DirectionEgress
+	}
+	return models.DirectionIngress
 }
 
 // GetNodePolicies returns all NetworkPolicies that select the given workload node

@@ -23,8 +23,9 @@ func generatePolicyStatusAssignment(
 	nodes []models.WorkloadNode,
 	nsPolicies []*istiosec.AuthorizationPolicy,
 	globalPolicies []*istiosec.AuthorizationPolicy,
-) map[string]models.PolicyStatus {
-	assignments := map[string]models.PolicyStatus{}
+) (map[string]models.PolicyStatus, map[string][]models.PolicyRef) {
+	statuses := map[string]models.PolicyStatus{}
+	nodePolicies := map[string][]models.PolicyRef{}
 	for nodeIndex := range nodes {
 		node := nodes[nodeIndex]
 
@@ -35,15 +36,49 @@ func generatePolicyStatusAssignment(
 		candidates = append(candidates, globalPolicies...)
 
 		matchPolicies := getNodePolicies(node, candidates)
-		assignments[node.ID] = buildPolicyStatus(matchPolicies)
+		statuses[node.ID] = buildPolicyStatus(matchPolicies)
+
+		// Namespace node shows every policy that could govern *some* workload
+		// in this ns (ns-local + mesh-wide globals). Status derivation above
+		// stays strict via getNodePolicies.
+		panelPolicies := matchPolicies
+		if node.Type == models.NodeTypeNamespace {
+			panelPolicies = candidates
+		}
+		if len(panelPolicies) == 0 {
+			continue
+		}
+		refs := make([]models.PolicyRef, 0, len(panelPolicies))
+		for _, authzPolicy := range panelPolicies {
+			refs = append(refs, models.PolicyRef{
+				Source:    sourceName,
+				Name:      authzPolicy.Name,
+				Namespace: authzPolicy.Namespace,
+				Action:    istioAction(authzPolicy),
+				Direction: models.DirectionIngress, // istio AuthZ is ingress-only at L3
+			})
+		}
+		nodePolicies[node.ID] = refs
 	}
-	return assignments
+	return statuses, nodePolicies
 }
 
 // RootNamespace is the Istio mesh root namespace. AuthorizationPolicies
 // declared here apply mesh-wide rather than to a single namespace.
 // Convention is "istio-system"; configurable via Istio install values.
 const RootNamespace = "istio-system"
+
+// istioAction maps AuthorizationPolicy.Spec.Action to the wire string
+// surfaced in PolicyRef. AUDIT / CUSTOM → "" (not rendered in UI badges).
+func istioAction(authzPolicy *istiosec.AuthorizationPolicy) string {
+	switch authzPolicy.Spec.Action {
+	case 0:
+		return "allow"
+	case 1:
+		return "deny"
+	}
+	return ""
+}
 
 // getNodePolicies returns every AuthorizationPolicy that selects the given
 // workload via its WorkloadSelector. Nil selector OR empty MatchLabels =

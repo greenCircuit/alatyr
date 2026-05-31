@@ -8,6 +8,7 @@ import (
 	"graph/internal/api"
 	"graph/internal/config"
 	"graph/internal/k8s"
+	"graph/internal/store"
 )
 
 func main() {
@@ -30,7 +31,8 @@ func main() {
 
 	e := echo.New()
 
-	server := api.New(client)
+	builder := store.NewBuilder(client)
+	server := api.New(client, builder)
 	server.RegisterRoutes(e)
 	server.RegisterUI(e, uiFS)
 

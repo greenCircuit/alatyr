@@ -9,7 +9,7 @@ import (
 // Tuples are grouped by (srcID, dstID, direction, contributing policy).
 // Ports for the same group are merged; level is determined by whether either
 // endpoint is a namespace node.
-func renderEdges(rules []policy.Rule, nodes []models.WorkloadNode) []PolicyEdge {
+func RenderEdges(rules []models.Rule, nodes []models.WorkloadNode) []PolicyEdge {
 	nsNodeIDs := map[string]bool{}
 	for _, node := range nodes {
 		if node.Type == models.NodeTypeNamespace {
@@ -26,7 +26,7 @@ func renderEdges(rules []policy.Rule, nodes []models.WorkloadNode) []PolicyEdge 
 		policyName      string
 		policyNamespace string
 		policySource    string
-		action          policy.RuleAction
+		action          models.RuleAction
 	}
 
 	grouped := map[edgeKey]*PolicyEdge{}
@@ -88,7 +88,7 @@ func appendUniquePort(ports []models.Port, candidate models.Port) []models.Port 
 // appendUniqueL7 deduplicates L7Match blocks across rules that fold into the
 // same edge. Fan-out per port (case 9) attaches the same L7 set to N rules;
 // without dedup the detail panel would show N copies of identical L7 data.
-func appendUniqueL7(existing []policy.L7Match, candidate policy.L7Match) []policy.L7Match {
+func appendUniqueL7(existing []models.L7Match, candidate models.L7Match) []models.L7Match {
 	for _, block := range existing {
 		if l7Equal(block, candidate) {
 			return existing
@@ -97,7 +97,7 @@ func appendUniqueL7(existing []policy.L7Match, candidate policy.L7Match) []polic
 	return append(existing, candidate)
 }
 
-func l7Equal(a, b policy.L7Match) bool {
+func l7Equal(a, b models.L7Match) bool {
 	return stringsEqual(a.Hosts, b.Hosts) &&
 		stringsEqual(a.Methods, b.Methods) &&
 		stringsEqual(a.Paths, b.Paths) &&
@@ -118,10 +118,10 @@ func stringsEqual(a, b []string) bool {
 	return true
 }
 
-// updateStatusKeys populates every workload's effective Statuses (intersection
+// UpdateStatusKeys populates every workload's effective Statuses (intersection
 // across all engines) and per-engine StatusesBySource (used by the detail
 // panel). statusBySource is keyed first by workload ID, then by PolicySource.Name().
-func updateStatusKeys(nodes []models.WorkloadNode, statusBySource map[string]map[string]models.PolicyStatus) []models.WorkloadNode {
+func UpdateStatusKeys(nodes []models.WorkloadNode, statusBySource map[string]map[string]models.PolicyStatus) []models.WorkloadNode {
 	for index := range nodes {
 		node := &nodes[index]
 		bySource := statusBySource[node.ID]

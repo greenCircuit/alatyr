@@ -63,3 +63,38 @@ def get_cluster_state(api) -> Callable[[], dict]:
         response.raise_for_status()
         return response.json()
     return _get
+
+
+@pytest.fixture
+def get_node_info(api) -> Callable[..., dict]:
+    """Hit /api/node-info for one workload.
+
+    Returns the per-engine map: `{engineName: {rules: [...], policies: [...]}}`.
+    Engines that have no rules AND no selecting policies for the node are
+    omitted from the response. Reads from the cache populated by /api/graph.
+    """
+    def _get(node_id: str, namespace: str) -> dict:
+        response = api.get(
+            f"{BACKEND_URL}/api/node-info",
+            params={"nodeId": node_id, "namespace": namespace},
+        )
+        response.raise_for_status()
+        return response.json()
+    return _get
+
+
+@pytest.fixture
+def get_reachability(api) -> Callable[..., dict]:
+    """Hit /api/reachable for one src→dst pair.
+
+    Reachability reads from the cache populated by /api/graph, so callers
+    must request the graph for the relevant namespaces first.
+    """
+    def _get(src_id: str, src_ns: str, dst_id: str, dst_ns: str) -> dict:
+        response = api.get(
+            f"{BACKEND_URL}/api/reachable",
+            params={"srcId": src_id, "srcNs": src_ns, "dstId": dst_id, "dstNs": dst_ns},
+        )
+        response.raise_for_status()
+        return response.json()
+    return _get

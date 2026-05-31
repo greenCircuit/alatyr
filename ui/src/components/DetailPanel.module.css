@@ -4,10 +4,40 @@
   right: 12px;
   width: auto;
   max-width: min(720px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
+  /* Parent (PolicyGraph container) is position: relative — using `100%`
+     here measures against the parent's actual height, not the viewport.
+     Survives zoom because parent height tracks layout, not vh. Panel still
+     shrinks to fit short content (no empty bottom space). */
+  max-height: calc(100% - 24px);
   overflow-y: auto;
   z-index: 10;
   background: #1a1e22ee;
+}
+
+/* Wide variant — engaged only when a reachability source is pinned.
+   Three-column layout (src | dst | result) needs more horizontal room, but
+   keep the canvas visible: cap so the graph still gets ~30% of viewport. */
+.panelWide {
+  width: 70vw;
+  max-width: 1100px;
+}
+
+.reachGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.reachCol {
+  min-width: 0; /* allow children to shrink so text wraps instead of forcing overflow */
+}
+
+.reachColHeader {
+  font-weight: 600;
+  border-bottom: 1px solid #444;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 /* Multi-policy grid: side-by-side cards when an edge carries multiple
@@ -25,6 +55,15 @@
 
 .badgeSm {
   font-size: 0.7rem;
+  /* Long label values like "app.kubernetes.io/instance=..." have no spaces,
+     so default word-wrap won't break them. break-word lets them split anywhere. */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  max-width: 100%;
+  /* Bootstrap .badge defaults to center alignment; override so wrapped lines
+     of label values left-align with the badge's left edge. */
+  text-align: left;
 }
 
 .statusBadge {
