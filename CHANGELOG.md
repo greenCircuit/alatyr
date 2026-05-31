@@ -1,7 +1,29 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
+(2026-05-31)
 
+### Features
+
+* **Reachability checks between two workloads** — pin a source node, click any other node, get a side-by-side panel with the per-engine verdict (`allow` / `deny` / `not enforced`), the selecting policies on each end, every matched allow and deny rule, and which engine (if any) blocked the path. Multi-engine AND: traffic is reachable only when every engine permits it.
+* **Per-engine breakdown in the workload detail panel** — clicking a single workload now shows what each engine's selecting policies say, in addition to the AND'd effective posture. Egress / ingress pills are colored to match the graph arrow directions.
+* **Graph highlights during comparison** — the pinned source renders with a cyan ring, the destination with an amber ring; dimming of unrelated nodes is suppressed in compare mode so the canvas stays readable.
+* **"Not enforced" engine state** — when an engine has no policy opinion about a pair (no locks, no matching rules) the panel labels it `not enforced` instead of leaving it ambiguous. Distinguishes "engine allowed it" from "engine never looked at it."
+* **`/api/reachable`** — new endpoint that returns the structured `ReachabilityResult` powering the panel. Query params: `srcId`, `srcNs`, `dstId`, `dstNs`.
+* **`/api/node-info`** — new endpoint returning per-engine rules + selecting policies for a single workload. Backs the detail-panel breakdown.
+* **Backend cache layer** — `NSIndex` and per-engine `EvaluationResult` are cached on `/api/graph` so the reachability and node-info endpoints don't re-fetch the cluster on every click.
+
+### Internals & cleanup
+
+* New unit tests for `IsNodesReachable` covering allow, explicit-deny, default-deny, not-enforced, namespace-node-matcher, and multi-engine block paths.
+* `test-data/` curated for showcasing — 13 debug fixtures dropped, the remaining set maps 1:1 to README scenarios (WAN⇆ wall, air-gapped, Istio DENY, L7 paths/methods/hosts, real `observability` namespace dump).
+* `docs/arch/` pruned — stale ADRs that referenced abstractions never built (ambient-mode detection, L3/L4-only scope, edge-level intersection) deleted. `0002-backend-computed-intersection.md` revised in place to describe the as-built status-key intersection model.
+
+---
+
+## [0.1.0]
+(2026-05-15)
+6dae3463e21321b0baa360fabd195f978e235143
 ### Features
 
 * **Istio AuthorizationPolicy support (L3/L4)** — ALLOW and DENY rules rendered as engine-attributed edges. namespaces, ipBlocks, and ports all participate in the graph.

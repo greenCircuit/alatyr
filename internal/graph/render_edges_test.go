@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"graph/internal/models"
-	"graph/internal/policy"
 )
 
 // Covers: action splitting, L7 fold + dedup, edge level inference. One
@@ -20,22 +19,22 @@ func TestRenderEdges_ActionSplitAndL7Dedup(t *testing.T) {
 		{ID: "dst"},
 	}
 
-	l7 := &policy.L7Match{Methods: []string{"GET"}, Paths: []string{"/api"}}
-	ref := policy.PolicyRef{Source: "istio", Name: "p1", Namespace: "ns-a", RuleIndex: 0}
+	l7 := &models.L7Match{Methods: []string{"GET"}, Paths: []string{"/api"}}
+	ref := models.PolicyRef{Source: "istio", Name: "p1", Namespace: "ns-a", RuleIndex: 0}
 
 	// Two allow rules sharing the same L7 (fan-out per port) — should fold
 	// into one edge with ports {8080, 9090} and a single L7Match entry.
-	allow8080 := policy.Rule{SrcID: "src", DstID: "dst", Port: models.Port{Port: 8080, Protocol: "TCP"}, Direction: models.DirectionIngress, Contributors: []policy.PolicyRef{ref}, L7Match: l7, Action: policy.ActionAllow}
+	allow8080 := models.Rule{SrcID: "src", DstID: "dst", Port: models.Port{Port: 8080, Protocol: "TCP"}, Direction: models.DirectionIngress, Contributors: []models.PolicyRef{ref}, L7Match: l7, Action: models.ActionAllow}
 	allow9090 := allow8080
 	allow9090.Port = models.Port{Port: 9090, Protocol: "TCP"}
 
 	// Same (src,dst,direction,policy) but action=deny — must NOT merge with
 	// the allow group; produces a separate edge.
 	denyRule := allow8080
-	denyRule.Action = policy.ActionDeny
+	denyRule.Action = models.ActionDeny
 	denyRule.L7Match = nil
 
-	edges := renderEdges([]policy.Rule{allow8080, allow9090, denyRule}, nodes)
+	edges := RenderEdges([]models.Rule{allow8080, allow9090, denyRule}, nodes)
 
 	if len(edges) != 2 {
 		t.Fatalf("got %d edges, want 2 (allow + deny split)", len(edges))
@@ -44,9 +43,9 @@ func TestRenderEdges_ActionSplitAndL7Dedup(t *testing.T) {
 	var allowEdge, denyEdge *PolicyEdge
 	for index := range edges {
 		switch edges[index].Action {
-		case policy.ActionAllow:
+		case models.ActionAllow:
 			allowEdge = &edges[index]
-		case policy.ActionDeny:
+		case models.ActionDeny:
 			denyEdge = &edges[index]
 		}
 	}

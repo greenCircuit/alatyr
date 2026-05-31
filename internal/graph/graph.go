@@ -2,7 +2,6 @@ package graph
 
 import (
 	"graph/internal/models"
-	"graph/internal/policy"
 )
 
 // PolicyEdge mirrors the UI PolicyEdge interface.
@@ -16,8 +15,8 @@ type PolicyEdge struct {
 	Level        models.EdgeLevel  `json:"level"`
 	Ports        []models.Port     `json:"ports,omitempty"`
 	PolicySource string            `json:"policySource"` // engine that produced this edge (e.g. "k8s", "istio")
-	L7Matches    []policy.L7Match  `json:"l7Matches,omitempty"` // accumulated L7 blocks; empty for pure-L3 edges
-	Action       policy.RuleAction `json:"action"`       // 0 = Allow, 1 = Deny
+	L7Matches    []models.L7Match  `json:"l7Matches,omitempty"` // accumulated L7 blocks; empty for pure-L3 edges
+	Action       models.RuleAction `json:"action"`       // 0 = Allow, 1 = Deny
 }
 
 // Bundle mirrors the UI Bundle interface used for edge aggregation.

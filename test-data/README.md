@@ -1,18 +1,30 @@
-# Network Policy Test Data
+# Demo data
 
-Two namespaces: `test-netpol-a`, `test-netpol-b`
+Curated scenarios embedded into the binary and served when `DEMO_MODE=true`.
+Each file maps to a feature the visualizer is designed to showcase. Unit tests
+in `internal/policy/...` cover the lower-level rule-construction cases — this
+tree is for screenshots and live demo, not regression coverage.
 
-Apply: `kubectl apply -f test-data/`  
-Verify: `curl "http://localhost:8080/api/graph?namespaces=test-netpol-a,test-netpol-b"`
+Apply against a live cluster: `kubectl apply -f test-data/`
 
-## Test Cases
+## k8sEngine
 
-| File | Policy | Expected edge | What it detects |
-|---|---|---|---|
-| `01-pod-ingress.yaml` | `pod-ingress` | `pod-ingress-src → pod-ingress-dst` (ingress, workload) | pod-only ingress selector |
-| `02-pod-egress.yaml` | `pod-egress` | `pod-egress-src → pod-egress-dst` (egress, workload) | pod-only egress selector |
-| `03-ns-ingress.yaml` | `ns-ingress` | `test-netpol-b namespace node → ns-ingress-dst` (ingress, namespace) | namespace-only selector as ingress source — edge must target the namespace node, not individual pods |
-| `04-cross-ns.yaml` | `cross-ns` | `cross-ns-src → cross-ns-dst` (ingress, workload) | both namespaceSelector+podSelector — edge must only appear for `cross-ns-src` in `test-netpol-a`, not for same-named pods in other namespaces |
-| `05-ip-block.yaml` | `ip-block` | `ip-block-src → 1.1.1.1/32` (egress, workload) | IP block egress — target is the CIDR string, not a node |
-| `06-pod-to-ns.yaml` | `pod-to-ns` | `pod-to-ns-src → test-netpol-b namespace node` (egress, namespace) | namespace-only selector as egress destination — edge must point at the namespace node, not individual pods in ns-b |
-| `07-ns-to-ns.yaml` | `ns-to-ns` | `test-netpol-a namespace node → every pod in test-netpol-b` (ingress, namespace) | empty podSelector + namespace-only source — source must be the namespace node, not individual pods from ns-a |
+| File | Workload | Showcases |
+|---|---|---|
+| `00-namespaces.yaml` | — | `test-netpol-a`, `test-netpol-b` ns scaffolding |
+| `08-isolated.yaml` | `isolated-svc` | `⊘` air-gapped — both directions locked, no escape hatch |
+| `09-internet-full.yaml` | `public-gateway` | `WAN⇆` — explicit `0.0.0.0/0` in + out |
+| `10-internet-egress-only.yaml` | `outbound-worker` | `WAN↑` — egress to internet, ingress denied |
+| `11-ns-full-access.yaml` | `inner-broker` | `NS⇆` — catch-all `podSelector: {}` opens whole ns |
+| `13-empty-podselector.yaml` | `flux-receiver` | `podSelector: {}` ingress footgun (flux pattern) |
+| `90-observability-namespace.yaml` + `91-observability-pods.yaml` + `92-observability-netpols.yaml` | real `observability` dump | Headline: partial NetworkPolicy coverage in production — unprotected pods render as `WAN⇆` |
+
+## istioEngine
+
+| File | Workload | Showcases |
+|---|---|---|
+| `00-namespaces.yaml` | — | `istio-mesh-a`, `istio-mesh-b` ns scaffolding (`istio-injection: enabled`) |
+| `02-deny-from-ns.yaml` | `authz-deny-target` ← `authz-deny-attacker` | AuthorizationPolicy `DENY` — visualized separately from ALLOW |
+| `06-l7-paths-methods.yaml` | `l7-api-server` | L7 ALLOW: HTTP methods + paths (`GET`/`POST` on `/api/*`) |
+| `07-l7-hosts.yaml` | `l7-host-backend` | L7 ALLOW gated on Host header |
+| `09-ports-and-l7.yaml` | `mixed-server` | Combined L4 ports + L7 paths/methods |

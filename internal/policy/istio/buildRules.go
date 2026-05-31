@@ -2,7 +2,6 @@ package istio
 
 import (
 	"graph/internal/models"
-	"graph/internal/policy"
 	"graph/internal/utils"
 
 	istioapi "istio.io/api/security/v1beta1"
@@ -14,9 +13,12 @@ import (
 // traffic INTO the selected workload. Egress is handled by Sidecar /
 // ServiceEntry resources (out of scope here). All produced rules use
 // allow and deny rules will use this since the way they are working are the same
-func buildRules(index map[string]models.NSIndex, policiesByNS map[string][]*istiosec.AuthorizationPolicy) []policy.Rule {
-	var allRules []policy.Rule
-	for _, policies := range policiesByNS {
+// buildRulesByNs expands AuthorizationPolicies into rules, grouped by the
+// policy's namespace for per-ns cache invalidation.
+func buildRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*istiosec.AuthorizationPolicy) map[string][]models.Rule {
+	result := map[string][]models.Rule{}
+	for ns, policies := range policiesByNS {
+		var nsRules []models.Rule
 		for _, authzPolicy := range policies {
 			srcNodes := getSourceNodes(authzPolicy, index)  // find all nodes that this policy will be applied to
 			ingressRules := expandRules(authzPolicy, index) // pass all rules from single policy, and find out what are riles will be
@@ -26,12 +28,15 @@ func buildRules(index map[string]models.NSIndex, policiesByNS map[string][]*isti
 				for _, rule := range ingressRules {
 					rule.SrcID = rule.DstID
 					rule.DstID = srcNode.ID
-					allRules = append(allRules, rule)
+					nsRules = append(nsRules, rule)
 				}
 			}
 		}
+		if len(nsRules) > 0 {
+			result[ns] = nsRules
+		}
 	}
-	return allRules
+	return result
 }
 
 func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
@@ -47,12 +52,12 @@ func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]
 	return utils.IndexLabelMatch(authzPolicy.Spec.Selector.MatchLabels, nsIndex.LabelIndex)
 }
 
-func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []policy.Rule {
-	var rulesMatrix []policy.Rule
+func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []models.Rule {
+	var rulesMatrix []models.Rule
 	rules := authzPolicy.Spec.Rules
 	for ruleIndex, rule := range rules {
 		var rulePorts []models.Port
-		var ruleL7 policy.L7Match
+		var ruleL7 models.L7Match
 		var matchWorkloads []models.WorkloadNode
 
 		for _, fromBlock := range rule.From {
@@ -64,14 +69,14 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 			ruleL7 = l7policies
 		}
 
-		contributors := []policy.PolicyRef{{
+		contributors := []models.PolicyRef{{
 			Source:    sourceName,
 			Name:      authzPolicy.Name,
 			Namespace: authzPolicy.Namespace,
 			RuleIndex: ruleIndex,
 		}}
 
-		var l7Ptr *policy.L7Match
+		var l7Ptr *models.L7Match
 		if !ruleL7.IsEmpty() {
 			l7Copy := ruleL7
 			l7Ptr = &l7Copy
@@ -80,7 +85,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 		// do matrix multiplication to find all rules that can exists from this policy
 		for _, workload := range matchWorkloads {
 			if len(rulePorts) == 0 {
-				rulesMatrix = append(rulesMatrix, policy.Rule{
+				rulesMatrix = append(rulesMatrix, models.Rule{
 					DstID:        workload.ID,
 					Direction:    models.DirectionIngress,
 					Contributors: contributors,
@@ -89,7 +94,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 				continue
 			}
 			for _, port := range rulePorts {
-				rulesMatrix = append(rulesMatrix, policy.Rule{
+				rulesMatrix = append(rulesMatrix, models.Rule{
 					DstID:        workload.ID,
 					Port:         port,
 					Direction:    models.DirectionIngress,
@@ -122,9 +127,9 @@ func expandFromSource(src *istioapi.Source, policyNamespace string, index map[st
 }
 
 // all workloads that match single operation
-func expandToOperation(operation *istioapi.Operation) ([]models.Port, policy.L7Match) {
+func expandToOperation(operation *istioapi.Operation) ([]models.Port, models.L7Match) {
 	var ports []models.Port
-	var l7Match policy.L7Match
+	var l7Match models.L7Match
 	if len(operation.Ports) != 0 {
 		converted := convertPorts(operation.Ports)
 		ports = converted

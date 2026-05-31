@@ -1,26 +1,18 @@
 package graph
 
-
 import (
 	"graph/internal/models"
 	"graph/internal/utils"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func (b *Builder) buildNsIndex(ns string) (models.NSIndex, error) {
-	var nsIndex models.NSIndex
-	pods, err := b.client.GetPods(ns)
-	if err != nil {
-		return nsIndex, err
-	}
-
-
-	cronJobs, err := b.client.GetCronJobs(ns)
-	if err != nil {
-		return nsIndex, err
-	}
-
+// AssembleNsIndex builds a per-namespace NSIndex from already-fetched k8s
+// objects. Pure — no k8s client. Inputs come from store.fetchNsIndex.
+// Output: workloads + label index + namespace node. Skips Pods in
+// Succeeded/Failed phase and Pods owned by a Job.
+func AssembleNsIndex(pods []corev1.Pod, cronJobs []batchv1.CronJob, nsObj corev1.Namespace) models.NSIndex {
 	seen := map[string]bool{}
 	var nodes []models.WorkloadNode
 
@@ -46,7 +38,7 @@ func (b *Builder) buildNsIndex(ns string) (models.NSIndex, error) {
 		if len(pod.OwnerReferences) > 0 && pod.OwnerReferences[0].Kind == "Job" {
 			continue
 		}
-		uid := ownerUID(pod)
+		uid := OwnerUID(pod)
 		if seen[uid] {
 			continue
 		}
@@ -54,46 +46,41 @@ func (b *Builder) buildNsIndex(ns string) (models.NSIndex, error) {
 
 		nodes = append(nodes, models.WorkloadNode{
 			ID:        uid,
-			Label:     workloadLabel(pod),
+			Label:     WorkloadLabel(pod),
 			Namespace: pod.Namespace,
 			Type:      models.NodeTypeDeployment,
 			Labels:    pod.Labels,
 		})
 	}
 
-	// add namespace node
-	nsObj, err := b.client.GetNs(ns)
-	if err != nil {
-		return nsIndex, err
-	}
-
 	nsNode := models.WorkloadNode{
 		ID:        "ns-" + nsObj.Name,
 		Label:     nsObj.Name,
-		Namespace: nsObj.Namespace,
+		Namespace: nsObj.Name, // k8s Namespace objects are cluster-scoped; .Namespace is empty. Use .Name so tests + UI can address it as a ns.
 		Type:      models.NodeTypeNamespace,
 		Labels:    nsObj.Labels,
 	}
-
 	nodes = append(nodes, nsNode)
 
-	nodeIndex := buildWorkloadIndex(nodes)
-
-	nsIndex.Workloads = nodes
-	nsIndex.LabelIndex = nodeIndex
-	nsIndex.NSNode = &nsNode
-
-	return nsIndex, nil
+	return models.NSIndex{
+		Workloads:  nodes,
+		LabelIndex: BuildWorkloadIndex(nodes),
+		NSNode:     &nsNode,
+	}
 }
 
-func ownerUID(pod corev1.Pod) string {
+// OwnerUID returns the workload-level UID for a pod (controller UID when
+// owned, pod UID otherwise). Same workload's pods share this id.
+func OwnerUID(pod corev1.Pod) string {
 	if len(pod.OwnerReferences) > 0 {
 		return string(pod.OwnerReferences[0].UID)
 	}
 	return string(pod.UID)
 }
 
-func workloadLabel(pod corev1.Pod) string {
+// WorkloadLabel picks a display label for a pod: app label > app.kubernetes.io/name
+// > owner name > pod name.
+func WorkloadLabel(pod corev1.Pod) string {
 	if name, ok := pod.Labels["app"]; ok {
 		return name
 	}
@@ -106,11 +93,11 @@ func workloadLabel(pod corev1.Pod) string {
 	return pod.Name
 }
 
-// buildWorkloadIndex builds a flat label index for fast selector matching.
-// Called once per namespace during graph construction; engines receive the
+// BuildWorkloadIndex builds a flat label index for fast selector matching.
+// Called once per namespace during NSIndex assembly; engines receive the
 // pre-built index and never rebuild.
 // Pointers reference the caller's slice — do not append to nodes after this returns.
-func buildWorkloadIndex(nodes []models.WorkloadNode) map[string][]*models.WorkloadNode {
+func BuildWorkloadIndex(nodes []models.WorkloadNode) map[string][]*models.WorkloadNode {
 	index := make(map[string][]*models.WorkloadNode, len(nodes))
 	for position := range nodes {
 		node := &nodes[position]

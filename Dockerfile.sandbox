@@ -15,4 +15,5 @@ RUN curl -fsSL "https://github.com/derailed/k9s/releases/latest/download/k9s_Lin
     | tar -xz -C /usr/local/bin k9s \
     && chmod +x /usr/local/bin/k9s
 
+
 WORKDIR /app

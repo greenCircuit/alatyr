@@ -8,7 +8,12 @@
       "Bash(curl -s \"http://localhost:8080/api/graph?namespaces=observability,gitlab\")",
       "Bash(go test *)",
       "WebFetch(domain:k8studio.io)",
-      "Bash(go build *)"
+      "Bash(go build *)",
+      "Bash(python3 -m pip install -r /app/tests/requirements.txt --quiet)",
+      "Bash(python3 *)",
+      "Bash(bash tests/run.sh)",
+      "Bash(git ls-tree *)",
+      "Bash(git *)"
     ]
   }
 }

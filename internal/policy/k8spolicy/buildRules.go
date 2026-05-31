@@ -2,16 +2,17 @@ package k8spolicy
 
 import (
 	"graph/internal/models"
-	"graph/internal/policy"
 	"graph/internal/utils"
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
-// buildAllowRules expands every NetworkPolicy into pod-level allow rules.
-// One rule per (src, dst, port, direction, policy-rule).
-func buildAllowRules(index map[string]models.NSIndex, policiesByNS map[string][]networkingv1.NetworkPolicy) []policy.Rule {
-	var allRules []policy.Rule
-	for _, policies := range policiesByNS {
+// buildAllowRulesByNs expands every NetworkPolicy into pod-level allow rules,
+// grouped by the policy's namespace so per-ns cache invalidation can replace
+// one ns's rules without touching others.
+func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]networkingv1.NetworkPolicy) map[string][]models.Rule {
+	result := map[string][]models.Rule{}
+	for ns, policies := range policiesByNS {
+		var nsRules []models.Rule
 		for _, networkPolicy := range policies {
 			srcNodes := getSourceNodes(networkPolicy, index)
 			egressRules := expandEgressRules(networkPolicy, index)
@@ -20,17 +21,20 @@ func buildAllowRules(index map[string]models.NSIndex, policiesByNS map[string][]
 			for _, srcNode := range srcNodes {
 				for _, rule := range egressRules {
 					rule.SrcID = srcNode.ID
-					allRules = append(allRules, rule)
+					nsRules = append(nsRules, rule)
 				}
 				for _, rule := range ingressRules {
 					rule.SrcID = rule.DstID
 					rule.DstID = srcNode.ID
-					allRules = append(allRules, rule)
+					nsRules = append(nsRules, rule)
 				}
 			}
 		}
+		if len(nsRules) > 0 {
+			result[ns] = nsRules
+		}
 	}
-	return allRules
+	return result
 }
 
 func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
@@ -44,8 +48,8 @@ func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]m
 	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
 }
 
-func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []policy.Rule {
-	var out []policy.Rule
+func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+	var out []models.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.To {
@@ -55,8 +59,8 @@ func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[strin
 	return out
 }
 
-func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []policy.Rule {
-	var out []policy.Rule
+func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+	var out []models.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.From {
@@ -69,7 +73,7 @@ func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[stri
 
 // expandPeerRules produces one rule per (peer-match × port).
 // Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
-func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []policy.Rule {
+func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []models.Rule {
 	var dstIDs []string
 
 	// namespace only
@@ -126,7 +130,7 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		dstIDs = append(dstIDs, peer.IPBlock.CIDR)
 	}
 
-	contributors := []policy.PolicyRef{{
+	contributors := []models.PolicyRef{{
 		Source:    sourceName,
 		Name:      policyName,
 		Namespace: policyNamespace,
@@ -138,10 +142,10 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		effectivePorts = []models.Port{{Protocol: "TCP"}}
 	}
 
-	out := make([]policy.Rule, 0, len(dstIDs)*len(effectivePorts))
+	out := make([]models.Rule, 0, len(dstIDs)*len(effectivePorts))
 	for _, dstID := range dstIDs {
 		for _, port := range effectivePorts {
-			out = append(out, policy.Rule{
+			out = append(out, models.Rule{
 				DstID:        dstID,
 				Port:         port,
 				Direction:    direction,

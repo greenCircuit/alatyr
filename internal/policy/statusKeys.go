@@ -88,12 +88,25 @@ func DeriveStatusKeys(policyStatus models.PolicyStatus) []models.StatusKey {
 //   - Locks (EgressLocked, IngressLocked): OR — any engine locking restricts.
 //   - HasL7: OR — any engine applying L7 surfaces the badge.
 func IntersectPolicyStatus(perEngine []models.PolicyStatus) models.PolicyStatus {
-	if len(perEngine) == 0 {
+	// Drop engines with zero PolicyStatus — they had no policy referencing
+	// this workload at all. Treating them as "transparency on every
+	// dimension" inflates the intersection (a transparent egress would
+	// claim LAN/InnerNs/ApiServer egress even when DeriveStatusKeys' single-
+	// engine path would only claim Internet). Filtering keeps single-engine
+	// and multi-engine semantics aligned: no-opinion engines don't count.
+	filtered := make([]models.PolicyStatus, 0, len(perEngine))
+	for _, status := range perEngine {
+		if status != (models.PolicyStatus{}) {
+			filtered = append(filtered, status)
+		}
+	}
+	if len(filtered) == 0 {
 		return models.PolicyStatus{}
 	}
-	if len(perEngine) == 1 {
-		return perEngine[0]
+	if len(filtered) == 1 {
+		return filtered[0]
 	}
+	perEngine = filtered
 
 	result := effectivePolicyStatus(perEngine[0])
 	for _, raw := range perEngine[1:] {

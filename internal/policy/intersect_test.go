@@ -79,6 +79,32 @@ func TestIntersectPolicyStatus_DefaultOpenEngineDoesNotSubtract(t *testing.T) {
 	}
 }
 
+// Regression: one engine has a policy that only locks ingress (no explicit
+// access flags), the other engine has no policy at all. Effective should
+// match the single-engine view: only InternetEgress fires via transparency
+// on the unlocked egress direction. Lan/InnerNs/ApiServer must NOT inflate
+// from the zero engine's "transparent everything" reading — DeriveStatusKeys'
+// single-engine path only treats Internet flags as transparency-implicit.
+func TestIntersectPolicyStatus_NoOpinionEngineDoesNotOverClaim(t *testing.T) {
+	k8sIngressOnly := models.PolicyStatus{
+		IngressLocked: true, // policy locks ingress with no explicit peers
+	}
+	istioZero := models.PolicyStatus{} // engine sees no policy on this workload
+	got := IntersectPolicyStatus([]models.PolicyStatus{k8sIngressOnly, istioZero})
+	keys := DeriveStatusKeys(got)
+
+	want := map[models.StatusKey]bool{models.StatusInternetEgress: true}
+	for _, key := range keys {
+		if !want[key] {
+			t.Errorf("unexpected key %q in effective status; want only [internet-egress]; got %v", key, keys)
+		}
+		delete(want, key)
+	}
+	for key := range want {
+		t.Errorf("missing expected key %q; got %v", key, keys)
+	}
+}
+
 // Air-gapped engine (no access, both locked) intersected with an engine
 // that has no policy at all → air-gapped wins. Transparency from the
 // no-policy engine doesn't open access the locked engine has closed.

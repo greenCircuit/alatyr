@@ -3,14 +3,14 @@ package api
 import (
 	"net/http"
 
-	"graph/internal/graph"
 	"graph/internal/models"
 	"graph/internal/policy"
 
 	"github.com/labstack/echo/v4"
 )
 
-// returning this so UI loads data without needing graph
+// get what ns, polices are available on cluster without needing it graph object for it.
+// Allows viewing this right away without waiting for graph to come up
 type ClusterState struct {
 	AvailableNs    []string           `json:"availableNs"`
 	StatusKeys     []models.StatusKey `json:"statusKeys"`
@@ -23,16 +23,10 @@ func (s *Server) handleClusterState(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	sources := graph.PolicySources(s.client)
-	sourceNames := make([]string, 0, len(sources))
-	for _, src := range sources {
-		sourceNames = append(sourceNames, src.Name())
-	}
-
 	data := ClusterState{
 		AvailableNs:   allNameSpaces,
 		StatusKeys:    policy.AllStatusKeys(),
-		PolicySources: sourceNames,
+		PolicySources: s.store.EngineNames(),
 	}
 
 	return c.JSON(http.StatusOK, data)

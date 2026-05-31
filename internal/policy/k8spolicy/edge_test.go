@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"graph/internal/models"
-	"graph/internal/policy"
 	"graph/internal/utils"
 
 	corev1 "k8s.io/api/core/v1"
@@ -54,9 +53,9 @@ func buildMultiNSIndex(nodesByNS map[string][]models.WorkloadNode) map[string]mo
 	return result
 }
 
-// buildAllowTuples adapts the test-fixture shape (single NS policy slice)
-// to buildAllowRules' map-by-NS signature.
-func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.NetworkPolicy) []policy.Rule {
+// buildAllowTuples adapts the test-fixture shape (single NS policy slice) to
+// buildAllowRulesByNs' map-by-NS signature, then flattens for assertions.
+func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.NetworkPolicy) []models.Rule {
 	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
 	for _, networkPolicy := range policies {
 		namespace := networkPolicy.Namespace
@@ -65,7 +64,12 @@ func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.N
 		}
 		policiesByNS[namespace] = append(policiesByNS[namespace], networkPolicy)
 	}
-	return buildAllowRules(index, policiesByNS)
+	rulesByNs := buildAllowRulesByNs(index, policiesByNS)
+	var flat []models.Rule
+	for _, rules := range rulesByNs {
+		flat = append(flat, rules...)
+	}
+	return flat
 }
 
 func defaultTestNodes() []models.WorkloadNode {

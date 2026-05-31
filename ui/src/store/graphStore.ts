@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { fetchGraph, fetchClusterState } from '../api/client';
-import type { WorkloadNode, PolicyEdge, StatusKey } from '../data/policies';
+import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability } from '../api/client';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeInfo, ReachabilityResult } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
 
 interface GraphState {
@@ -22,11 +22,19 @@ interface GraphState {
   aggregateByNamespace:    boolean;
   selectedNode:            WorkloadNode | null;
   selectedEdges:           PolicyEdge[];
+  nodeInfo:                NodeInfo | null;
+  nodeInfoLoading:         boolean;
   searchQuery:             string;
   layoutAlgorithm:         string;
 
+  reachabilitySource:      WorkloadNode | null;
+  reachability:            ReachabilityResult | null;
+  reachabilityLoading:     boolean;
+  reachabilityTarget:      WorkloadNode | null;
+
   loadClusterState:            () => Promise<void>;
   loadGraph:                   () => Promise<void>;
+  loadNodeInfo:                (nodeId: string, namespace: string) => Promise<void>;
   toggleNamespace:             (ns: string) => void;
   toggleNodeType:              (type: string) => void;
   toggleStatus:                (key: StatusKey) => void;
@@ -39,6 +47,9 @@ interface GraphState {
   setSelectedEdges:            (edges: PolicyEdge[]) => void;
   setSearchQuery:              (q: string) => void;
   setLayoutAlgorithm:          (algo: string) => void;
+
+  pinReachabilitySource:       (node: WorkloadNode) => void;
+  clearReachability:           () => void;
 
   filteredNodes: () => WorkloadNode[];
   filteredEdges: () => PolicyEdge[];
@@ -66,8 +77,15 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   aggregateByNamespace:    false,
   selectedNode:            null,
   selectedEdges:           [],
+  nodeInfo:                null,
+  nodeInfoLoading:         false,
   searchQuery:             '',
   layoutAlgorithm:         'dagre',
+
+  reachabilitySource:      null,
+  reachability:            null,
+  reachabilityLoading:     false,
+  reachabilityTarget:      null,
 
   loadClusterState: async () => {
     try {
@@ -146,8 +164,45 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   toggleAggregateByNamespace: () =>
     set((s) => ({ aggregateByNamespace: !s.aggregateByNamespace })),
 
-  setSelectedNode:      (node)  => set({ selectedNode: node,  selectedEdges: [] }),
-  setSelectedEdges:     (edges) => set({ selectedEdges: edges, selectedNode: null }),
+  setSelectedNode: (node) => {
+    const src = get().reachabilitySource;
+    // If a reachability source is pinned and the next click is on a different
+    // node, treat the click as "check reach from src → this node" and fire
+    // /api/reachable instead of overwriting the selection.
+    if (src && node && node.id !== src.id) {
+      set({ reachabilityTarget: node, reachabilityLoading: true, reachability: null });
+      fetchReachability(src.id, src.namespace || src.id, node.id, node.namespace || node.id)
+        .then((result) => {
+          // bail if source was unpinned or target changed mid-fetch
+          if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== node.id) return;
+          set({ reachability: result, reachabilityLoading: false });
+        })
+        .catch(() => set({ reachabilityLoading: false }));
+      return;
+    }
+    set({ selectedNode: node, selectedEdges: [], nodeInfo: null });
+    if (node && node.namespace) {
+      get().loadNodeInfo(node.id, node.namespace);
+    }
+  },
+  setSelectedEdges: (edges) => set({ selectedEdges: edges, selectedNode: null, nodeInfo: null }),
+
+  pinReachabilitySource: (node) =>
+    set({ reachabilitySource: node, reachability: null, reachabilityTarget: null }),
+  clearReachability: () =>
+    set({ reachabilitySource: null, reachability: null, reachabilityTarget: null, reachabilityLoading: false }),
+
+  loadNodeInfo: async (nodeId, namespace) => {
+    set({ nodeInfoLoading: true });
+    try {
+      const data = await fetchNodeInfo(nodeId, namespace);
+      // bail if user moved on before fetch completed
+      if (get().selectedNode?.id !== nodeId) return;
+      set({ nodeInfo: data, nodeInfoLoading: false });
+    } catch {
+      set({ nodeInfoLoading: false });
+    }
+  },
   setSearchQuery:       (q)     => set({ searchQuery: q }),
   setLayoutAlgorithm:   (algo)  => set({ layoutAlgorithm: algo }),
 

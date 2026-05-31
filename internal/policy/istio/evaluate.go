@@ -6,7 +6,6 @@ import (
 
 	"graph/internal/k8s"
 	"graph/internal/models"
-	"graph/internal/policy"
 
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
@@ -30,35 +29,43 @@ func (s *source) Name() string {
 // Root-namespace (mesh-wide) policies feed PolicyStatus but do not yet drive
 // rules — buildRules selects workloads by the policy's own namespace, so
 // applying a root-ns policy to every namespace needs a separate fan-out (TODO).
-func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) (policy.EvaluationResult, error) {
+func (s *source) Evaluate(_ context.Context, namespaces []string, index map[string]models.NSIndex) (models.EvaluationResult, error) {
 	policiesByNS, err := s.getPolicies(namespaces)
 	if err != nil {
-		return policy.EvaluationResult{}, fmt.Errorf("istio policy fetch: %w", err)
+		return models.EvaluationResult{}, fmt.Errorf("istio policy fetch: %w", err)
 	}
 	globalPolicies, err := s.client.GetAuthorizationPolicies(RootNamespace)
 	if err != nil {
-		return policy.EvaluationResult{}, fmt.Errorf("istio root-ns policy fetch: %w", err)
+		return models.EvaluationResult{}, fmt.Errorf("istio root-ns policy fetch: %w", err)
 	}
 
 	allowByNS, denyByNS := splitPoliciesByAction(policiesByNS)
 
 	policyStatuses := map[string]models.PolicyStatus{}
+	nodePolicies := map[string][]models.PolicyRef{}
 	for _, ns := range namespaces {
-		assignments := generatePolicyStatusAssignment(index[ns].Workloads, policiesByNS[ns], globalPolicies)
-		for nodeID, status := range assignments {
+		statuses, refs := generatePolicyStatusAssignment(index[ns].Workloads, policiesByNS[ns], globalPolicies)
+		for nodeID, status := range statuses {
 			policyStatuses[nodeID] = status
+		}
+		for nodeID, policyRefs := range refs {
+			nodePolicies[nodeID] = policyRefs
 		}
 	}
 
-	denyRules := buildRules(index, denyByNS)
-	for ruleIndex := range denyRules {
-		denyRules[ruleIndex].Action = policy.ActionDeny
+	denyByNsRules := buildRulesByNs(index, denyByNS)
+	for ns, rules := range denyByNsRules {
+		for ruleIndex := range rules {
+			rules[ruleIndex].Action = models.ActionDeny
+		}
+		denyByNsRules[ns] = rules
 	}
 
-	return policy.EvaluationResult{
-		Allow:          buildRules(index, allowByNS),
-		Deny:           denyRules,
+	return models.EvaluationResult{
+		AllowByNs:      buildRulesByNs(index, allowByNS),
+		DenyByNs:       denyByNsRules,
 		PolicyStatuses: policyStatuses,
+		NodePolicies:   nodePolicies,
 	}, nil
 }
 

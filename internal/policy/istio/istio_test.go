@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"graph/internal/models"
-	"graph/internal/policy"
 	"graph/internal/utils"
 
 	istioapi "istio.io/api/security/v1beta1"
@@ -130,7 +129,7 @@ func TestBuildPolicyStatus_CrossNsNoL7(t *testing.T) {
 
 // Covers: rule index threading + L7 attachment to per-port rules. A single
 // policy with two rules (rule 0 = L4 ports, rule 1 = L7 paths) should
-// produce policy.Rule entries with the right RuleIndex and L7Match populated
+// produce models.Rule entries with the right RuleIndex and L7Match populated
 // only on rule-1's outputs.
 func TestBuildRules_RuleIndexAndL7Attachment(t *testing.T) {
 	authzPolicy := makePolicy("two-rules", "ns-a", istioapi.AuthorizationPolicy_ALLOW,
@@ -151,13 +150,17 @@ func TestBuildRules_RuleIndexAndL7Attachment(t *testing.T) {
 	nsNode := models.WorkloadNode{ID: "ns-ns-a", Type: models.NodeTypeNamespace, Namespace: "ns-a", Labels: map[string]string{"kubernetes.io/metadata.name": "ns-a"}}
 	index := map[string]models.NSIndex{"ns-a": buildFixtureNSIndex([]models.WorkloadNode{target, nsNode})}
 
-	rules := buildRules(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	var rules []models.Rule
+	for _, nsRules := range rulesByNs {
+		rules = append(rules, nsRules...)
+	}
 
 	if len(rules) != 2 {
 		t.Fatalf("got %d rules, want 2", len(rules))
 	}
 
-	byIndex := map[int]policy.Rule{}
+	byIndex := map[int]models.Rule{}
 	for _, rule := range rules {
 		if len(rule.Contributors) != 1 {
 			t.Fatalf("rule missing contributor: %+v", rule)

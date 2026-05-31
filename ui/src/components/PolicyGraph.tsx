@@ -399,6 +399,24 @@ const STYLE: any[] = [
     selector: '.dimmed',
     style: { 'opacity': 0.12 },
   },
+  // Reachability source pin — blue, matches the SRC badge color in the panel.
+  {
+    selector: '.reach-src',
+    style: {
+      'border-color': '#0dcaf0',
+      'border-width': 5,
+      'background-color': '#0a3a4a',
+    },
+  },
+  // Reachability target — amber, matches the DST badge color in the panel.
+  {
+    selector: '.reach-dst',
+    style: {
+      'border-color': '#ffc107',
+      'border-width': 5,
+      'background-color': '#3d3010',
+    },
+  },
 ];
 
 // ── Status badge definitions ──────────────────────────────────────────────────
@@ -451,8 +469,10 @@ export default function PolicyGraph() {
   const badgeDivRefs  = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Refs so layoutstop callback can read latest selection state without stale closures
-  const selectedNodeRef      = useRef<WorkloadNode | null>(null);
-  const selectedStatusesRef  = useRef<Set<StatusKey>>(new Set());
+  const selectedNodeRef       = useRef<WorkloadNode | null>(null);
+  const selectedStatusesRef   = useRef<Set<StatusKey>>(new Set());
+  const reachabilitySourceRef = useRef<WorkloadNode | null>(null);
+  const reachabilityTargetRef = useRef<WorkloadNode | null>(null);
 
   // Write badge div positions from current Cytoscape node bounding boxes (no React re-render)
   const syncBadgePositions = useCallback(() => {
@@ -490,13 +510,24 @@ export default function PolicyGraph() {
     setSelectedNode, setSelectedEdges,
     loadGraph, loadClusterState, loading, error,
     layoutAlgorithm,
+    reachabilitySource, reachabilityTarget,
   } = useGraphStore();
 
-  // Apply dimming: node-click mode takes priority, then status filter mode
+  // Apply dimming: reach mode > node-click mode > status filter mode.
+  // Reach mode suppresses dimming entirely so the operator can scan candidate
+  // targets; src/dst get colored borders instead.
   const applyDimming = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.elements().removeClass('dimmed focused');
+    cy.elements().removeClass('dimmed focused reach-src reach-dst');
+    const reachSrc = reachabilitySourceRef.current;
+    const reachDst = reachabilityTargetRef.current;
+    if (reachSrc) {
+      cy.getElementById(reachSrc.id).addClass('reach-src');
+      if (reachDst) cy.getElementById(reachDst.id).addClass('reach-dst');
+      badgeDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      return;
+    }
     const node     = selectedNodeRef.current;
     const statuses = selectedStatusesRef.current;
     let focusedIds: Set<string> | null = null;
@@ -530,10 +561,12 @@ export default function PolicyGraph() {
 
   // Keep refs in sync and re-apply dimming whenever selection or status filter changes
   useEffect(() => {
-    selectedNodeRef.current     = selectedNode;
-    selectedStatusesRef.current = selectedStatuses;
+    selectedNodeRef.current       = selectedNode;
+    selectedStatusesRef.current   = selectedStatuses;
+    reachabilitySourceRef.current = reachabilitySource;
+    reachabilityTargetRef.current = reachabilityTarget;
     applyDimming();
-  }, [selectedNode, selectedStatuses, applyDimming]);
+  }, [selectedNode, selectedStatuses, reachabilitySource, reachabilityTarget, applyDimming]);
 
   // Re-apply dim state to badges when the badge list changes (after layout adds new badges)
   useEffect(() => { applyDimming(); }, [badgeNodes, applyDimming]);
