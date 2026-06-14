@@ -1,8 +1,28 @@
 # Changelog
 
+## [0.2.1]
+(2026-06-13)
+
+### Features
+
+* **Istio ambient-mesh membership + mTLS resolution** — new `internal/mesh` abstraction with an Istio source that detects ambient enrollment from the `istio.io/dataplane-mode` label (workload-level wins over namespace) and resolves the effective mTLS posture by walking `PeerAuthentication` precedence (workload → ns → mesh root). Per-port overrides, UNSET fall-through, and same-scope tie-break by `creationTimestamp` are all honored.
+* **Mesh section in the workload detail panel** — clicking a node now shows whether the workload is in mesh, which provider/mode, the effective mTLS verdict, every matching `PeerAuthentication` source, and a humanized issues list (root-ns selector ignored, duplicate at scope, port-level without selector, all-UNSET fall-back).
+* **NetworkPolicy ⇄ ambient interop warnings** — when an ambient workload has NetworkPolicy ingress rules from other engines that restrict ports without permitting the ztunnel HBONE port (`15008`), the detail panel surfaces a warning explaining mesh traffic will be blocked and which port to add.
+* **`MeshSource` interface + `CanReach`** — generic mesh-engine shape (`Name`, `Membership`, `ResolveMtls`, `CanReach`, `ValidateExternalRule`) so future providers plug in without graph-layer changes. `CanReach` denies src → dst only when the destination requires STRICT mTLS at the port and the source cannot speak mTLS (not enrolled or PA `DISABLE`).
+* **`PeerAuthentication` in the k8s client + demo client** — real client wires the Istio security v1 informer; `DemoClient` serves PA fixtures so ambient/mTLS scenarios run without a live cluster.
+* **Test fixtures** — `test-data/istioEngine/10-peer-authentications.yaml` covers strict/permissive/disable + port overrides + root-ns precedence; `11-ambient-netpol-interop.yaml` exercises the HBONE-port warning path.
+
+### Internals & cleanup
+
+* `internal/mesh/istio/` split into `istio.go` (package surface — consts, `source` type, ctor), `utils.go` (pure helpers — `convert`, `mtlsModeToScope`, `inAmbientMesh`, `effectiveMode`), `detect.go` (methods that hit the cluster), and `peerauth.go` (precedence walk). `ZtunnelHBONEPort = 15008` declared explicitly (the prior file didn't compile against an undeclared reference).
+* Frontend `DetailPanel`, `FilterPanel`, and `PolicyGraph` each broken into `<Component>/index.tsx` + `parts/*` modules. Mesh rendering lives in `DetailPanel/parts/mesh.tsx`.
+* New ADR `docs/arch/0003-istio-mesh-membership-and-mtls.md` documents the membership + mTLS resolution model.
+
+---
+
 ## [0.2.0]
 (2026-05-31)
-
+5085574dc1277c7d86524ee3d9cde62391c20e49
 ### Features
 
 * **Reachability checks between two workloads** — pin a source node, click any other node, get a side-by-side panel with the per-engine verdict (`allow` / `deny` / `not enforced`), the selecting policies on each end, every matched allow and deny rule, and which engine (if any) blocked the path. Multi-engine AND: traffic is reachable only when every engine permits it.

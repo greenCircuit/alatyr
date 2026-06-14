@@ -36,5 +36,9 @@ func main() {
 	server.RegisterRoutes(e)
 	server.RegisterUI(e, uiFS)
 
-	log.Fatal(e.Start(":8080"))
+	port := os.Getenv("BACKEND_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Fatal(e.Start(":" + port))
 }

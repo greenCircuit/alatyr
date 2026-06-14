@@ -18,7 +18,15 @@ import pytest
 import requests
 
 from libraries import cluster
-from libraries.constants import BACKEND_URL, TEST_NAMESPACES
+from libraries.constants import (
+    AMBIENT_LABEL_KEY,
+    AMBIENT_LABEL_VALUE,
+    BACKEND_URL,
+    NS_MESH,
+    POLICY_NAMESPACES,
+    ROOT_NS,
+    TEST_NAMESPACES,
+)
 
 
 @pytest.fixture(scope="session")
@@ -27,16 +35,27 @@ def topology():
         cluster.create_namespace(namespace)
         cluster.create_pod(namespace, "frontend", {"app": "frontend"})
         cluster.create_pod(namespace, "backend", {"app": "backend"})
+    # Ambient-enrolled ns: ns-label opts every workload into the mesh, so mtls
+    # resolves and ValidateExternalRules runs.
+    cluster.create_namespace(NS_MESH, labels={AMBIENT_LABEL_KEY: AMBIENT_LABEL_VALUE})
+    cluster.create_pod(NS_MESH, "frontend", {"app": "frontend"})
+    cluster.create_pod(NS_MESH, "backend", {"app": "backend"})
+    # Mesh root ns holds mesh-scoped (selectorless) PeerAuthentications. No pods;
+    # created here because kwok ships no istio install. create_namespace tolerates
+    # 409 so a pre-existing istio-system is fine.
+    cluster.create_namespace(ROOT_NS)
     yield
-    for namespace in TEST_NAMESPACES:
+    for namespace in TEST_NAMESPACES + [NS_MESH]:
         cluster.delete_namespace(namespace)
 
 
 @pytest.fixture(autouse=True)
 def policy_wipe(topology):
-    # autouse → every test gets clean policies, no need to opt in
+    # autouse → every test gets clean policies, no need to opt in.
+    # Includes the mesh ns + root ns (istio-system) so PeerAuthentications
+    # don't leak across tests.
     yield
-    cluster.delete_all_policies_in(*TEST_NAMESPACES)
+    cluster.delete_all_policies_in(*POLICY_NAMESPACES)
 
 
 @pytest.fixture(scope="session")

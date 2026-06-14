@@ -91,6 +91,28 @@ def find_edge(
     )
 
 
+def mesh_membership(detail: dict, source: str = "istio") -> dict | None:
+    """Membership entry for one mesh source from a /api/node-info NodeDetail."""
+    return detail.get("mesh", {}).get(source)
+
+
+def mtls_state(detail: dict, source: str = "istio") -> dict | None:
+    """Resolved MtlsState for one mesh source, or None when unenrolled/absent."""
+    membership = mesh_membership(detail, source)
+    return membership.get("mtls") if membership else None
+
+
+def mtls_issues(detail: dict, source: str = "istio") -> list[str]:
+    """PA-config issues from MtlsState (root selector ignored, duplicate, etc)."""
+    state = mtls_state(detail, source)
+    return list(state.get("issues", [])) if state else []
+
+
+def interop_issues(detail: dict) -> list[str]:
+    """Top-level cross-cutting issues (e.g. NP missing the ztunnel HBONE port)."""
+    return list(detail.get("issues", []))
+
+
 def assert_contains_all(actual: list[Any], expected: list[Any], label: str = "values") -> None:
     missing = [item for item in expected if item not in actual]
     if missing:

@@ -83,6 +83,31 @@ build_backend() {
     (cd "$REPO_ROOT" && go build -o "$CACHE_DIR/graph-server" .)
 }
 
+# port_in_use returns 0 (true) when something is already listening on $1.
+port_in_use() {
+    python3 - "$1" <<'PY'
+import socket, sys
+sock = socket.socket()
+busy = sock.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0
+sock.close()
+sys.exit(0 if busy else 1)
+PY
+}
+
+# pick_free_port bumps BACKEND_PORT past any in-use port (devcontainer dev
+# server commonly squats 8080), so a busy port no longer wedges the run.
+pick_free_port() {
+    local attempts=0
+    while port_in_use "$BACKEND_PORT"; do
+        log "port ${BACKEND_PORT} in use, trying $((BACKEND_PORT + 1))"
+        BACKEND_PORT=$((BACKEND_PORT + 1))
+        attempts=$((attempts + 1))
+        if (( attempts >= 20 )); then
+            err "no free port found near ${BACKEND_PORT}"; exit 1
+        fi
+    done
+}
+
 BACKEND_PID=""
 cleanup() {
     log "cleanup"
@@ -121,10 +146,12 @@ main() {
     log "applying Istio CRDs"
     kubectl apply -f "$crd_file" >/dev/null
 
+    pick_free_port
     log "starting backend on port ${BACKEND_PORT}"
     # Strip DEMO_MODE explicitly — devcontainer shells often export it for
-    # local dev, which would bypass the real KUBECONFIG path.
-    env -u DEMO_MODE KUBECONFIG="$KUBECONFIG_FILE" "$CACHE_DIR/graph-server" \
+    # local dev, which would bypass the real KUBECONFIG path. BACKEND_PORT is
+    # honored by main.go so a busy default port self-heals.
+    env -u DEMO_MODE BACKEND_PORT="$BACKEND_PORT" KUBECONFIG="$KUBECONFIG_FILE" "$CACHE_DIR/graph-server" \
         > "$CACHE_DIR/backend.log" 2>&1 &
     BACKEND_PID=$!
 
@@ -145,6 +172,7 @@ main() {
     set +e
     (
         cd "$SCRIPT_DIR"
+        export BACKEND_URL="http://localhost:${BACKEND_PORT}"
         pytest \
             --html="$RESULTS_DIR/report.html" \
             --self-contained-html \

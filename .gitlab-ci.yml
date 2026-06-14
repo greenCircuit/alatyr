@@ -173,9 +173,14 @@ git-leaks:
 
 try-image-scan:
   stage: security
-  image: 
+  image:
     name: aquasec/trivy:latest
     entrypoint: [""]
+  variables:
+    TRIVY_INSECURE: "true"
+    TRIVY_NON_SSL: "true"
+    TRIVY_USERNAME: "$CI_REGISTRY_USER"
+    TRIVY_PASSWORD: "$CI_REGISTRY_PASSWORD"
   script:
     - trivy image ${CI_REGISTRY_IMAGE}:latest --exit-code 1 --severity HIGH,CRITICAL
   allow_failure: true

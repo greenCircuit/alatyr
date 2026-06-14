@@ -1,95 +1,126 @@
 # network-policy-visualizer
 
-A read-only visualizer for cluster policy coverage. Point it at a cluster, get a graph of which workloads can talk to which — across **both** Kubernetes NetworkPolicy and Istio AuthorizationPolicy — and, more importantly, which workloads have **no policy at all** and are wide open.
+> **A Kubernetes policy reachability & gap analyzer.**
+> Computes the *effective* reachability between workloads across NetworkPolicy, Istio AuthorizationPolicy, and ambient mesh mTLS — then flags the gaps. Read-only by design, runs as a local binary.
+
+**Stop guessing what your pods can actually reach.**
+
+Policy is written per-engine and per-namespace, but reachability is *emergent* — no one can answer "can A reach B, and why?" by reading YAML. This tool resolves all three layers into the effective answer and shows, at a glance, who can talk to whom across **Kubernetes NetworkPolicy**, **Istio AuthorizationPolicy**, and **Istio ambient mesh mTLS** — and flags the workloads that are silently wide open or silently broken.
+
+Built for SREs, platform / ops engineers, and DevOps teams running multi-tenant clusters where "is this locked down?" and "why can't A reach B?" eat half the on-call rotation.
 
 ![Full graph](docs/fullGraph.png)
 
+---
+
+## The problem
+
+Modern Kubernetes pod-to-pod security is a layer cake:
+
+- **K8s NetworkPolicy** — L3/L4, default-open until something selects you, then default-deny in the locked direction.
+- **Istio AuthorizationPolicy** — L4 + L7, ALLOW + DENY semantics, ingress-only, ignored entirely if the workload isn't in the mesh.
+- **Istio ambient mesh** — ztunnel handles L4 + mTLS without sidecars, but only for pods enrolled via `istio.io/dataplane-mode: ambient`. mTLS posture comes from `PeerAuthentication` with a global → namespace → workload precedence chain.
+
+Each layer is hard to reason about alone. Stacked together, the failure modes multiply:
+
+- A pod with **zero policies is wide open by default** — and `kubectl get networkpolicies` never lists the workloads that lack one. The gap is invisible.
+- The **two policy engines have different semantics**. K8s NP locks once any policy selects the workload. Istio AuthZ stacks ALLOW + DENY. Effective reachability is an **AND across engines** — a workload allowed by one and blocked by another is blocked at runtime.
+- **Ambient mesh enrollment is a single label** — easy to set, easy to miss, easy to override at the wrong scope. An AuthorizationPolicy on a non-enrolled pod reads like enforcement and does nothing.
+- **PeerAuthentication STRICT silently breaks legacy clients**. A non-mesh caller hitting a STRICT destination fails at the transport layer, before any policy is even evaluated.
+- **Ambient + NetworkPolicy is a footgun.** Ambient traffic is delivered to pods via ztunnel on HBONE port **15008**. A port-restricted NetworkPolicy that doesn't allow 15008 silently drops every mesh-routed packet — the workload looks healthy, mesh traffic just disappears.
+- Cross-namespace intent is opaque — a policy in `ns-A` allowing `ns-B` only makes sense if you have both namespaces' labels open in another tab.
+
+Reading three layers of YAML in three languages and intersecting them in your head is not a reliable workflow. This tool does the resolution and puts the whole picture on one screen.
+
+---
+
 ## What it shows
 
-A live graph rendered from your cluster's pods, services, NetworkPolicies, and Istio AuthorizationPolicies. Three layers of information:
+### 1. The graph — every policy, every engine, on one canvas
 
-**Status badges** mark each workload's effective security posture. Badges are computed from the union of every policy that selects the workload — across every engine — and then intersected: a workload only earns an "open" badge if every engine permits it. The rules are evaluated, not just listed.
+Live nodes for every pod, cronjob, and namespace; edges for everything each policy permits or denies.
 
-| Badge | Status key | When it fires |
-|---|---|---|
-| `WAN⇆` | `internet-full` | Internet reachable in both directions. **Also fires on workloads with no policy** — default-open means the pod can reach `0.0.0.0/0` both ways. This is the "unprotected" case. |
-| `WAN↑` | `internet-egress` | Ingress locked, but egress can reach `0.0.0.0/0` |
-| `WAN↓` | `internet-ingress` | Egress locked, but ingress allows traffic from `0.0.0.0/0` |
-| `LAN⇆` / `LAN↑` / `LAN↓` | `lan-*` | Explicit `ipBlock` peer targets a private LAN outside the cluster (not `0.0.0.0/0`, not pod/service CIDR, not the API server) |
-| `API↑` | `api-server-egress` | Explicit `ipBlock` peer matches a configured Kubernetes API-server CIDR |
-| `⊘` | `air-gapped` | Both ingress and egress are locked **and** no internet / LAN / API-server escape hatch exists |
-| `⇆` | `cross-namespace` | A peer's `namespaceSelector` targets a namespace other than the workload's own |
-| `NS⇆` / `NS↑` / `NS↓` | `ns-full-access` / `ns-egress-access` / `ns-ingress-access` | A policy peer is a catch-all that matches every pod in the same namespace (empty `podSelector`, no `namespaceSelector` or same-ns selector) |
-| `L7` | `l7-applied` | An Istio AuthorizationPolicy selecting this workload uses L7 matchers (hosts / methods / paths) — reachability decisions depend on HTTP attributes the graph can't fully simulate |
+- Edges are **tagged by engine**. K8s and Istio render as separate edges between the same pair, so you immediately see when one engine allows traffic the other blocks.
+- **Direction-aware arrows** (ingress / egress / both) and explicit `DENY` styling for Istio deny rules — explicit deny is a different signal from "no allow matched."
+- L7 details (hosts, methods, paths) attached to Istio edges for click-through inspection.
+- Namespace-level rollup view collapses each ns to one node — perfect for tenant-isolation spot checks.
 
-A workload with **no badges at all** is a degenerate case — it has policies that lock both directions but no escape hatches were detected, yet the air-gapped check didn't fire. Usually means custom IP rules the classifier doesn't recognise. The badges to hunt for in practice are `WAN⇆` on workloads you didn't expect to be public.
+### 2. Status badges — who's exposed, who's air-gapped, at a glance
 
-**Edges** show what each policy actually permits or denies. Edges are tagged by engine — k8s and Istio render as separate edges between the same pair, so you can see when a workload is allowed by one engine but blocked by another (which, at runtime, means blocked).
+Each workload wears badges computed from the **union of every selecting policy across every engine**, intersected so a workload only earns an "open" badge if every engine permits it.
 
-- Workload → workload (specific pod selectors on both ends)
-- Workload → namespace (catch-all peer collapses to the namespace node)
-- Workload → CIDR (`ipBlock` peers)
-- Direction-aware arrows (ingress / egress / both)
-- Istio `DENY` policies render with a distinct style — explicit deny is a different signal from "no allow matched"
-- L7 details (methods, paths, hosts) attached to the edge for click-through
+| Badge | When it fires |
+|---|---|
+| `WAN⇆` | Internet reachable both directions — **including any pod with no policy at all** (default-open is the headline footgun). |
+| `WAN↑` / `WAN↓` | One direction locked, the other reaches `0.0.0.0/0`. |
+| `LAN⇆` / `LAN↑` / `LAN↓` | Explicit `ipBlock` peer targets a private LAN outside the cluster. |
+| `API↑` | Egress reaches a configured Kubernetes API-server CIDR. |
+| `⊘` | Both directions locked, no escape hatch — properly air-gapped. |
+| `⇆` | Peer namespaceSelector targets a different namespace. |
+| `NS⇆` / `NS↑` / `NS↓` | Catch-all peer matches every pod in the same namespace. |
+| `L7` | Istio AuthorizationPolicy uses L7 matchers — reachability depends on HTTP attributes the graph can't fully simulate. |
 
-**Reachability checks** answer "can A talk to B?" without forcing you to mentally trace selectors across multiple policies in multiple namespaces in multiple engines. Pin a source workload, click any other node, and a side-by-side panel shows the verdict per engine: which policies selected each end, which allow/deny rules matched, and which engine (if any) blocked the path. If k8s says yes but Istio says no, the panel makes that explicit instead of hiding it behind a single boolean.
+The badge to hunt for in practice: **`WAN⇆` on workloads you didn't expect to be public**. That's almost always a missing policy.
+
+### 3. Reachability checks — "can A actually reach B?" answered across all three layers
+
+Pin a source workload, click any destination. A side-by-side panel renders the verdict per layer:
+
+- **K8s NetworkPolicy** — which policies select each end, which allow / deny rules matched per direction, whether the path is locked or open.
+- **Istio AuthorizationPolicy** — same breakdown, with L7 matchers shown when present.
+- **Istio mesh / mTLS** — src and dst membership (in mesh? ambient?), the resolved PeerAuthentication mode on each side (STRICT / PERMISSIVE / DISABLE), and a transport-layer verdict. STRICT destination + non-mesh source → mesh blocks, even when both policy engines would allow it.
+
+If k8s says yes but Istio says no, the panel makes that explicit instead of hiding it behind a single boolean. If both policy engines allow but the mesh transport layer denies, that's surfaced too — with the exact PeerAuthentication object that forced the verdict.
 
 ![Selected node](docs/selectNode.png)
 
-## Why it matters
+### 4. Ambient mesh misconfiguration detector
 
-NetworkPolicy and Istio AuthorizationPolicy are the two main ways to lock down pod-to-pod traffic in Kubernetes. Each layer is hard enough to reason about in isolation; running both, which is increasingly common, multiplies the failure modes:
+Clicking any workload runs cross-cutting validators that don't fit inside a single policy or mesh entry. The headline one today:
 
-- Policies are **additive within each engine** — multiple rules stack, so one file rarely tells the whole story.
-- A workload with **zero policies is wide open by default**, in both engines. `kubectl get networkpolicies,authorizationpolicies` only lists policies, never the workloads that lack them. The gap is invisible.
-- Peers mix podSelectors, namespaceSelectors, ipBlocks, principals, namespaces, and `0.0.0.0/0`-with-`except` lists. Easy to misread "looks locked down" for "actually locked down".
-- Cross-namespace intent is opaque — a policy in ns-A allowing ns-B traffic only makes sense if you have both namespaces' labels open in another tab.
-- **The two engines have different semantics.** K8s NP locks a direction once any policy selects it (default-deny inside that lock). Istio AuthZ uses ALLOW + DENY rules, supports L7 matchers, and is ingress-only. A policy review that only covers one engine misses half the picture.
-- **Effective reachability is an AND across engines.** Traffic flows iff every engine in the path permits it. Reading two layers of YAML in two languages and intersecting them in your head is not a reliable workflow.
+> **"This workload is in the Istio ambient mesh, but its NetworkPolicy only allows ingress on port(s) `[8080]`. Ambient delivers traffic through ztunnel on port 15008, which is blocked. Add an ingress rule allowing TCP port 15008 so mesh traffic can reach the workload."**
 
-This tool puts the whole picture on one screen.
+This catches the single most common ambient rollout failure: a perfectly valid NetworkPolicy and a perfectly valid AuthorizationPolicy that, together, silently null out every packet ztunnel tries to deliver. The visualizer flags it on the workload, with the exact ports that need to be added.
 
-### Footguns it surfaces
+---
 
-Anyone who's run more than one cluster has hit at least half of these. The visualizer is designed to make each one visible at a glance.
+## Who this is for
 
-- **Default-open is backwards.** A pod with no policy can talk to anything, anywhere — there's no warning, no audit event, nothing in any dashboard. The graph flags every such workload with the `WAN⇆` (internet-full) badge — that's the headline signal.
-- **`podSelector: {}` means *everything*, not nothing.** People write empty selectors intending "match nothing" and accidentally allow the whole namespace. Shows up as a fat edge from the namespace box.
-- **`0.0.0.0/0` egress doesn't isolate intra-cluster traffic.** Every pod in every namespace is inside that CIDR — "allow internet" silently means "allow everything" unless an `except` list is set. Internet badges only fire when the rule is unambiguously external.
-- **DNS is the silent killer of egress lockdowns.** Lock egress without allowing `kube-system` UDP 53 and every outbound hostname dies. The graph shows the missing edge.
-- **Effective reachability is the OR of every selector inside an engine, AND across engines.** A workload may be selected by three k8s policies and two Istio policies, each contributing partial rules. Nobody resolves this reliably by reading YAML. The tool does the resolution and renders the result, then the reachability panel lets you verify any specific src→dst pair.
-- **Istio DENY rules win silently.** A DENY policy in `istio-system` blocks traffic that every ALLOW policy seems to permit. Easy to forget when triaging "why can't service A reach service B" — DENY edges render with a distinct style so they don't hide in the allow noise.
-- **An Istio AuthorizationPolicy on a workload outside the mesh has zero effect** — but reads as enforcement. The graph treats out-of-mesh workloads as not enforced by that engine, so you see the gap.
+**SREs on call.** "Service A can't reach service B" stops being a 40-minute YAML excavation. Pin A, click B, read the verdict per engine + mesh. Often the answer is right there: "Istio AuthZ is fine, k8s NP doesn't allow it" or "PeerAuthentication STRICT on the destination, source isn't enrolled in the mesh."
+
+**Platform / ops engineers rolling out mesh.** Enrolling a namespace in ambient is a one-label change. The downstream effects — NetworkPolicy interop, PeerAuthentication precedence, AuthorizationPolicy enforcement scope — are not obvious until something breaks. The visualizer shows membership, mTLS posture, and the ambient-vs-NP port trap before you ship the rollout.
+
+**DevOps engineers inheriting a cluster.** Helm-installed everything looks fine in `kubectl get pods`. Open the visualizer, switch to a workload namespace, every pod wearing `WAN⇆` is reachable from the public internet — or has no policy at all and defaults to it. Triage from there.
+
+**Security review and audit.** Filter on `WAN⇆` / `WAN↑`. Every workload that can reach `0.0.0.0/0` egress lights up. Screenshot, send. No grepping policy YAMLs across namespaces, no missing the workloads that have no policy to grep for.
+
+---
 
 ## When you'd actually use it
 
 **"I inherited this cluster — what's exposed?"**
-You're new on the team. Helm-installed everything looks fine in `kubectl get pods`. Open the visualizer, switch to a workload namespace, and every pod wearing the `WAN⇆` badge is reachable from the public internet — or, more often, has no policy at all and defaults to it. Those are the ones to ask about first.
+Open the visualizer. Every `WAN⇆` badge is a workload reachable from the public internet — or, more often, a workload with no policy that defaults to it. Those are the first questions to ask.
 
 **"The Helm chart said it has network policies — does it really?"**
-Most upstream charts only ship policies for a handful of components. The visualizer shows which workloads in the chart's namespace ended up covered and which the chart silently skipped. "Loki has an ingress policy, Grafana doesn't" without reading a single YAML.
+Most upstream charts ship policies for a handful of components. The graph shows which workloads in the chart's namespace got covered and which the chart silently skipped.
 
-**"Security is asking what can reach the internet."**
-Filter on the `WAN⇆` / `WAN↑` badges. Every workload that can reach `0.0.0.0/0` egress lights up. Screenshot, send. No grepping policy YAMLs across namespaces.
-
-**"A pod got compromised — what could it have reached?"**
-Click the workload. The detail panel lists every outbound edge: which pods, which namespaces, which CIDRs, on which ports. Faster than reconstructing it from policy files during an incident.
+**"We just enabled ambient on this namespace. Did anything break?"**
+Click any workload in the namespace. The detail panel shows mesh membership, the resolved PeerAuthentication, and any cross-cutting issues — including the ztunnel-port-15008 NetworkPolicy trap.
 
 **"Service A can't reach service B — whose fault is it?"**
-Pin service A, click service B. The reachability panel shows each engine's verdict: which selecting policies are in play on both ends, which allow rule should have matched and didn't, or which deny rule killed the path. Often the answer is "Istio is fine, k8s NP doesn't allow it" — without staring at two engines' YAML side by side.
+Pin A, click B. The reachability panel breaks down the verdict per engine + mesh. The blocking layer is named explicitly.
 
-**"We're rolling out Istio AuthorizationPolicy alongside existing NetworkPolicies. Are they consistent?"**
-The graph renders both engines as separate edges between the same pairs. Where one engine has an edge and the other doesn't, runtime traffic is blocked. Reachability checks confirm it pair by pair. Cuts the manual cross-reference between two policy languages.
+**"We're rolling out STRICT mTLS — what breaks?"**
+Filter the graph by workloads currently outside the mesh, then run reachability checks from them into the soon-to-be-STRICT namespace. Any "allow → deny" flip is a client that needs to be enrolled or exempted before you ship.
+
+**"A pod got compromised — what could it have reached?"**
+Click the workload. Every outbound edge — pods, namespaces, CIDRs, ports — is in the detail panel. Faster than reconstructing it from policy files during an incident.
 
 **"I'm about to add a deny-all default policy — will anything break?"**
-Run the tool against the current cluster first. Anything currently showing `WAN⇆` without an obvious reason — that is, relying on default-open — is what will break. Lock those down explicitly before flipping the default.
+Run the tool against the current cluster first. Anything currently showing `WAN⇆` without an obvious reason is what will break. Lock those down explicitly before flipping the default.
 
 **"I want to verify tenants can't reach each other."**
-Aggregate-by-namespace view collapses each ns into one node. Cross-namespace edges between tenant namespaces are immediately visible — or, ideally, absent. Reachability spot-checks confirm specific cross-tenant pairs.
-
-**"I changed a policy — did it do what I expected?"**
-Refresh. Compare badges and edges before and after. Re-run the reachability check on the pair you intended to allow or block. No need to mentally simulate selector resolution across both engines.
+Aggregate-by-namespace view collapses each ns into one node. Cross-namespace edges between tenant namespaces are immediately visible — or, ideally, absent.
 
 ---
 
@@ -103,7 +134,7 @@ KUBECONFIG=~/.kube/config ./graph
 # UI → http://localhost:8080
 ```
 
-The binary embeds the built UI — single static binary, no separate frontend deploy. Read-only on your cluster (it only `LIST`s pods, namespaces, NetworkPolicies, and Istio AuthorizationPolicies — when the CRDs are installed).
+The binary embeds the built UI — single static binary, no separate frontend deploy. Read-only on your cluster (it only `LIST`s pods, namespaces, NetworkPolicies, Istio AuthorizationPolicies, and Istio PeerAuthentications — when the CRDs are installed).
 
 Demo mode (no cluster required):
 
@@ -111,7 +142,7 @@ Demo mode (no cluster required):
 DEMO_MODE=true ./graph
 ```
 
-Loads sample data from embedded `test-data/` — includes a real `observability` namespace dump showing partial NetworkPolicy coverage as it actually appears in production, plus curated Istio AuthorizationPolicy scenarios (DENY rules, L7 ALLOW with hosts / methods / paths).
+Loads sample data from embedded `test-data/` — includes a real `observability` namespace dump showing partial NetworkPolicy coverage as it actually appears in production, plus curated Istio scenarios (DENY rules, L7 ALLOW with hosts / methods / paths, ambient mesh enrollment with PeerAuthentication precedence).
 
 ## RBAC
 
@@ -128,19 +159,19 @@ rules:
   - apiGroups: ["batch"]
     resources: ["cronjobs"]
     verbs: ["get", "list"]
-  # Optional — only required if Istio is installed and you want AuthZ in the graph.
+  # Optional — only required if Istio is installed and you want AuthZ + mesh in the graph.
   - apiGroups: ["security.istio.io"]
-    resources: ["authorizationpolicies"]
+    resources: ["authorizationpolicies", "peerauthentications"]
     verbs: ["get", "list"]
 ```
 
 ## Development
 
 ```bash
-go test ./...                          # unit tests for graph + policy + reachability logic (no cluster needed)
+go test ./...                          # unit tests for graph + policy + mesh + reachability logic (no cluster needed)
 cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api → :8080
 ```
 
-The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently. No watches, no caching layer — every request hits the API server fresh, so the picture is always live.
+The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently. Mesh / mTLS resolution is **lazy** — PeerAuthentications are fetched only when a workload is clicked or a reachability check runs, so the graph payload stays cheap. No watches, no caching layer — every request hits the API server fresh, so the picture is always live.
 
-For architecture detail see the ADRs in [`docs/arch/`](docs/arch/) and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).
+For architecture detail see the ADRs in [`docs/arch/`](docs/arch/) — in particular [`0003-istio-mesh-membership-and-mtls.md`](docs/arch/0003-istio-mesh-membership-and-mtls.md) for the mesh integration design — and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).

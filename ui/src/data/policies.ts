@@ -126,14 +126,53 @@ export interface NodeRule {
   dstNamespace?: string;
 }
 
-// Per-engine response from /api/node-info. Rules where node is source +
-// policies that select the node (including policies emitting no rule).
+// Per-engine policy entry inside NodeInfo.policies.
 export interface NodeInfoEngine {
   rules:    NodeRule[] | null;
   policies: PolicyRef[] | null;
 }
 
-export type NodeInfo = Record<string, NodeInfoEngine>;
+// Mesh types ------------------------------------------------------------
+
+export type MeshScope = 'unset' | 'disable' | 'strict' | 'permissive';
+
+export interface PARef {
+  namespace: string;
+  name:      string;
+}
+
+export interface MtlsSource {
+  namespace:     string;
+  name:          string;
+  meshScope:  MeshScope;
+  meshSource: 'global' | 'ns' | 'workload';
+  portModes?:    Record<string, MeshScope>;
+}
+
+export interface MtlsState {
+  verdict:          MeshScope;
+  portOverrides?:   Record<string, MeshScope>;
+  effectiveSource?: PARef; // absent or empty ns/name = default applied
+  sources?:         MtlsSource[];
+  issues?:          string[];
+}
+
+export interface MeshMembership {
+  inMesh:   boolean;
+  provider?: string;
+  mode?:     string;
+  waypoint?: { name: string; namespace: string };
+  mtls?:     MtlsState;
+}
+
+// /api/node-info response. Policies key = engine name (k8spolicy/istio);
+// Mesh key = mesh source name (currently only "istio"). Issues = cross-cutting
+// interop findings (e.g. ambient pod missing ztunnel allowance).
+export interface NodeInfo {
+  policies: Record<string, NodeInfoEngine>;
+  mesh?:    Record<string, MeshMembership>;
+  issues?:  string[];
+}
 
 // Reachability verdict between two nodes, returned by /api/reachable.
 // Mirrors store.ReachabilityResult on the backend.
@@ -152,11 +191,22 @@ export interface EngineVerdict {
   dstPolicies?: PolicyRef[];
 }
 
+// MeshVerdict mirrors models.MeshVerdict (one per mesh source).
+// effectiveSource names the PA that forced the verdict (when applicable).
+export interface MeshVerdict {
+  verdict:         'allow' | 'deny' | 'unknown';
+  reason:          string;
+  effectiveSource?: PARef;
+}
+
 export interface ReachabilityResult {
   verdict: 'allow' | 'deny' | 'partial';
   engines: Record<string, EngineVerdict>;
-  path?:   string;
-  reason:  string;
+  mesh?:    Record<string, MeshVerdict>;
+  srcMesh?: Record<string, MeshMembership>;
+  dstMesh?: Record<string, MeshMembership>;
+  path?:    string;
+  reason:   string;
 }
 
 export interface PolicyEdge {

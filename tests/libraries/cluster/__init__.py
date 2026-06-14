@@ -8,12 +8,14 @@ from . import istio, k8s
 
 
 def delete_all_policies_in(*namespaces: str) -> None:
-    """Wipe every k8s NetworkPolicy + Istio AuthorizationPolicy in the given
-    namespaces. Per-test teardown — keeps the suite-scoped pod topology intact.
+    """Wipe every k8s NetworkPolicy + Istio AuthorizationPolicy + PeerAuthentication
+    in the given namespaces. Per-test teardown — keeps the suite-scoped pod
+    topology intact.
     """
     for namespace in namespaces:
         k8s.delete_all_in(namespace)
         istio.delete_all_in(namespace)
+        istio.delete_all_pa_in(namespace)
 
 
 __all__ = [
