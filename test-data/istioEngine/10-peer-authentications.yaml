@@ -1,0 +1,229 @@
+# PeerAuthentication scenarios exercising resolveMtls precedence + issue
+# detection. Each block below is labeled with the expected MtlsState result so
+# the demo data doubles as a manual verification harness.
+#
+# Namespaces (defined in 00-namespaces.yaml):
+#   istio-system   — root ns; PAs here apply mesh-wide when selectorless
+#   istio-mesh-a   — ambient-enrolled
+#   istio-mesh-b   — ambient-enrolled
+#   istio-no-mesh  — NOT ambient-enrolled (verdict should be Disable)
+#
+# Reachability test for mesh-STRICT blocking (UI):
+#   1. Pin `bare-workload` (istio-no-mesh) as reachability source
+#   2. Click `mesh-strict-target` (istio-mesh-a, STRICT via workload-PA below)
+#   3. Expected: top verdict = deny, mesh card shows "dst requires STRICT
+#      mTLS; src cannot speak mTLS", DST column shows mTLS: strict.
+---
+# ─── Mesh-wide default: STRICT ───────────────────────────────────────────────
+# Selectorless PA in root ns. Applies to every workload in every ambient ns
+# unless overridden by ns-level or workload-level PA.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: mesh-default-strict
+  namespace: istio-system
+  creationTimestamp: "2024-01-01T00:00:00Z"
+spec:
+  mtls:
+    mode: STRICT
+---
+# ─── Namespace override: PERMISSIVE in istio-mesh-b ──────────────────────────
+# Selectorless PA in ns. Overrides mesh-wide STRICT for all workloads in
+# istio-mesh-b. EffectiveSource = istio-mesh-b/ns-permissive for any workload
+# here.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ns-permissive
+  namespace: istio-mesh-b
+  creationTimestamp: "2024-02-01T00:00:00Z"
+spec:
+  mtls:
+    mode: PERMISSIVE
+---
+# ─── Workload override: STRICT + port DISABLE on a single pod ────────────────
+# Workload-scoped PA. EffectiveSource for "mtls-port-override" pod (below) =
+# this PA. PortOverrides[8080] = Disable, port 9090 inherits Verdict (Strict).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: workload-strict-with-port
+  namespace: istio-mesh-a
+  creationTimestamp: "2024-03-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: mtls-port-override
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    8080:
+      mode: DISABLE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-port-override
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mtls-port-override
+  template:
+    metadata:
+      labels:
+        app: mtls-port-override
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+# ─── UNSET fall-through: workload UNSET → ns PERMISSIVE wins ─────────────────
+# Workload-scoped PA with UNSET mode. resolveMtls should skip it (MeshUnset)
+# and fall through to ns-permissive. For pods in istio-mesh-b matching
+# app=mtls-unset-fallthrough: Verdict = Permissive, EffectiveSource =
+# istio-mesh-b/ns-permissive (NOT this PA), and this PA still appears in
+# Sources at workload rank.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: workload-unset
+  namespace: istio-mesh-b
+  creationTimestamp: "2024-04-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: mtls-unset-fallthrough
+  mtls:
+    mode: UNSET
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-unset-fallthrough
+  namespace: istio-mesh-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mtls-unset-fallthrough
+  template:
+    metadata:
+      labels:
+        app: mtls-unset-fallthrough
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+# ─── Conflict: two selectorless PAs in same ns (duplicate-at-scope) ──────────
+# istio-mesh-b already has `ns-permissive` selectorless. This newer one will
+# be ignored by Istio (older wins). Expect Issues:
+#   "duplicate-at-scope: namespace scope — istio-mesh-b/ns-permissive wins by
+#   age; ignored: [istio-mesh-b/ns-strict-newer]"
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ns-strict-newer
+  namespace: istio-mesh-b
+  creationTimestamp: "2024-05-01T00:00:00Z"
+spec:
+  mtls:
+    mode: STRICT
+---
+# ─── Misconfig: root-ns PA WITH selector (root-selector-ignored) ─────────────
+# Istio treats this as namespace-local to istio-system. Workloads outside
+# istio-system labeled app=finance see it in Issues but it does NOT apply.
+# Expect Issues: "root-selector-ignored: istio-system/finance-strict has
+# selector — only matches workloads in istio-system"
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: finance-strict
+  namespace: istio-system
+  creationTimestamp: "2024-06-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: finance
+  mtls:
+    mode: STRICT
+---
+# ─── Misconfig: portLevelMtls on selectorless ns PA (port-level-without-selector)
+# Applies port-23-DISABLE to EVERY workload in istio-mesh-a, often
+# unintentional. Expect Issues:
+#   "port-level-without-selector: istio-mesh-a/ns-port-no-selector sets
+#   portLevelMtls without selector — applies to entire namespace"
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ns-port-no-selector
+  namespace: istio-mesh-a
+  creationTimestamp: "2024-07-01T00:00:00Z"
+spec:
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    23:
+      mode: DISABLE
+---
+# ─── Non-mesh ns: workload here should resolve to MeshDisable ────────────────
+# istio-no-mesh has no istio.io/dataplane-mode=ambient label. resolveMtls
+# short-circuits before fetching PAs. No EffectiveSource, no Sources, no
+# Issues. Just Verdict = "disable".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bare-workload
+  namespace: istio-no-mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bare-workload
+  template:
+    metadata:
+      labels:
+        app: bare-workload
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+---
+# ─── Reachability test target: explicit STRICT workload-PA ──────────────────
+# Workload-scoped PA pinning mode STRICT. This is redundant with the mesh-wide
+# default but makes the test scenario obvious in the UI (click → see "strict"
+# verdict forced by mesh-strict-target-pa, not just inherited from the
+# mesh-wide default).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: mesh-strict-target-pa
+  namespace: istio-mesh-a
+  creationTimestamp: "2024-08-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: mesh-strict-target
+  mtls:
+    mode: STRICT
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mesh-strict-target
+  namespace: istio-mesh-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mesh-strict-target
+  template:
+    metadata:
+      labels:
+        app: mesh-strict-target
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine

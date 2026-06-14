@@ -18,20 +18,22 @@ import (
 )
 
 type DemoClient struct {
-	namespaces           map[string]corev1.Namespace
-	pods                 map[string][]corev1.Pod
-	services             map[string][]corev1.Service
-	policies             map[string][]networkingv1.NetworkPolicy
+	namespaces            map[string]corev1.Namespace
+	pods                  map[string][]corev1.Pod
+	services              map[string][]corev1.Service
+	policies              map[string][]networkingv1.NetworkPolicy
 	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
+	peerAuthentications   map[string][]*istiosec.PeerAuthentication
 }
 
 func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 	c := &DemoClient{
-		namespaces:           map[string]corev1.Namespace{},
-		pods:                 map[string][]corev1.Pod{},
-		services:             map[string][]corev1.Service{},
-		policies:             map[string][]networkingv1.NetworkPolicy{},
+		namespaces:            map[string]corev1.Namespace{},
+		pods:                  map[string][]corev1.Pod{},
+		services:              map[string][]corev1.Service{},
+		policies:              map[string][]networkingv1.NetworkPolicy{},
 		authorizationPolicies: map[string][]*istiosec.AuthorizationPolicy{},
+		peerAuthentications:   map[string][]*istiosec.PeerAuthentication{},
 	}
 
 	// Walk the tree so per-engine subdirs (test-data/k8sEngine,
@@ -105,6 +107,13 @@ func (c *DemoClient) parseFile(data []byte) error {
 				return err
 			}
 			c.authorizationPolicies[authzPolicy.Namespace] = append(c.authorizationPolicies[authzPolicy.Namespace], authzPolicy)
+
+		case "PeerAuthentication":
+			peerAuth := &istiosec.PeerAuthentication{}
+			if err := json.Unmarshal(jsonBytes, peerAuth); err != nil {
+				return err
+			}
+			c.peerAuthentications[peerAuth.Namespace] = append(c.peerAuthentications[peerAuth.Namespace], peerAuth)
 		}
 	}
 	return nil
@@ -177,4 +186,8 @@ func (c *DemoClient) GetNs(ns string) (corev1.Namespace, error) {
 
 func (c *DemoClient) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
 	return c.authorizationPolicies[ns], nil
+}
+
+func (c *DemoClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error) {
+	return c.peerAuthentications[ns], nil
 }

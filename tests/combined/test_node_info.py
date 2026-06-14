@@ -1,10 +1,14 @@
 """Node-info endpoint (`/api/node-info`) — per-engine rules + selecting
-policies for a single workload.
+policies for a single workload, plus mesh membership + interop issues.
 
-Backend logic: `internal/store/buildStore.go::GetNodeData`. The response is
-a `{engineName: {rules, policies}}` map; an engine is omitted entirely when
-it has neither a matching rule nor a selecting policy for the node — that
-"silence is meaningful" contract is what these tests guard.
+Backend logic: `internal/store/buildStore.go::GetNodeData` (policies) +
+`GetWorkloadMesh` (mesh) + `ValidateNodeMesh` (issues). Response shape:
+    {policies: {engineName: {rules, policies}}, mesh?: {...}, issues?: [...]}
+
+An engine is omitted from `policies` entirely when it has neither a matching
+rule nor a selecting policy for the node — that "silence is meaningful"
+contract is what these tests guard. `mesh` is always present (at least one
+entry per registered mesh source).
 
 Two viewpoints per policy:
   - the workload the policy selects (`policies` populated, `rules` may be empty)
@@ -28,13 +32,13 @@ def _ids(graph: dict) -> tuple[str, str]:
 
 
 def test_node_with_no_policies_returns_empty_map(get_graph, get_node_info):
-    # Empty cluster → no engine has data for the workload → response is `{}`.
+    # Empty cluster → no engine has data for the workload → `policies` is `{}`.
     graph = get_graph(NS_A)
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
 
-    assert info == {}
+    assert info["policies"] == {}
 
 
 def test_selecting_policy_appears_under_its_engine(get_graph, get_node_info):
@@ -45,12 +49,13 @@ def test_selecting_policy_appears_under_its_engine(get_graph, get_node_info):
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
+    policies = info["policies"]
 
-    assert "k8s" in info
-    policy_names = [policy["name"] for policy in info["k8s"]["policies"]]
+    assert "k8s" in policies
+    policy_names = [policy["name"] for policy in policies["k8s"]["policies"]]
     assert "allow-fe-be" in policy_names
     # istio sees nothing — engine entry must be omitted, not present-but-empty
-    assert "istio" not in info
+    assert "istio" not in policies
 
 
 def test_outbound_rule_source_lists_its_rule(get_graph, get_node_info):
@@ -63,9 +68,10 @@ def test_outbound_rule_source_lists_its_rule(get_graph, get_node_info):
     frontend_id, _ = _ids(graph)
 
     info = get_node_info(frontend_id, NS_A)
+    policies = info["policies"]
 
-    assert "k8s" in info
-    assert len(info["k8s"]["rules"]) >= 1
+    assert "k8s" in policies
+    assert len(policies["k8s"]["rules"]) >= 1
 
 
 def test_istio_policy_visible_on_selected_workload(get_graph, get_node_info):
@@ -76,10 +82,11 @@ def test_istio_policy_visible_on_selected_workload(get_graph, get_node_info):
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
+    policies = info["policies"]
 
-    assert "istio" in info
-    assert info["istio"]["policies"], "istio policies list should not be empty"
-    assert "k8s" not in info
+    assert "istio" in policies
+    assert policies["istio"]["policies"], "istio policies list should not be empty"
+    assert "k8s" not in policies
 
 
 def test_both_engines_listed_when_each_has_data(get_graph, get_node_info):
@@ -91,7 +98,8 @@ def test_both_engines_listed_when_each_has_data(get_graph, get_node_info):
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
+    policies = info["policies"]
 
-    assert "k8s" in info and "istio" in info
-    assert info["k8s"]["policies"], "k8s policies missing"
-    assert info["istio"]["policies"], "istio policies missing"
+    assert "k8s" in policies and "istio" in policies
+    assert policies["k8s"]["policies"], "k8s policies missing"
+    assert policies["istio"]["policies"], "istio policies missing"

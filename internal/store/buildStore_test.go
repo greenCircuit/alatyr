@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 
 	"graph/internal/models"
@@ -73,7 +74,7 @@ func TestIsNodesReachable_AllowPath(t *testing.T) {
 		{SrcID: srcID, DstID: dstID, Direction: models.DirectionIngress, Action: models.ActionAllow},
 	}
 	cache := buildCache("k8s", allow, nil, true, true)
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "allow" {
 		t.Fatalf("verdict: want allow, got %q (reason=%q)", got.Verdict, got.Reason)
@@ -92,7 +93,7 @@ func TestIsNodesReachable_ExplicitDenyBlocks(t *testing.T) {
 		{SrcID: srcID, DstID: dstID, Direction: models.DirectionIngress, Action: models.ActionDeny},
 	}
 	cache := buildCache("istio", allow, deny, false, true)
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "deny" {
 		t.Fatalf("verdict: want deny (explicit deny rule), got %q", got.Verdict)
@@ -105,7 +106,7 @@ func TestIsNodesReachable_ExplicitDenyBlocks(t *testing.T) {
 func TestIsNodesReachable_DefaultDenyWhenLockedWithoutAllow(t *testing.T) {
 	// Ingress locked, no allow rule → default-deny.
 	cache := buildCache("k8s", nil, nil, false, true)
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "deny" {
 		t.Fatalf("verdict: want deny (default-deny via lock), got %q", got.Verdict)
@@ -118,7 +119,7 @@ func TestIsNodesReachable_DefaultDenyWhenLockedWithoutAllow(t *testing.T) {
 func TestIsNodesReachable_NotEnforcedWhenNoOpinion(t *testing.T) {
 	// No locks, no matching rules → engine has no opinion → "not enforced".
 	cache := buildCache("k8s", nil, nil, false, false)
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "allow" {
 		t.Fatalf("verdict: want allow (transparent engine permits), got %q", got.Verdict)
@@ -136,7 +137,7 @@ func TestIsNodesReachable_NsNodeMatcherPermitsPodToPod(t *testing.T) {
 		{SrcID: srcID, DstID: dstID, Direction: models.DirectionIngress, Action: models.ActionAllow},
 	}
 	cache := buildCache("k8s", allow, nil, true, true)
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "allow" {
 		t.Fatalf("verdict: want allow (ns-node matcher should resolve pod→ns rule), got %q (reason=%q)",
@@ -163,7 +164,7 @@ func TestIsNodesReachable_AllowOnOneEngineDeniedOnAnotherBlocks(t *testing.T) {
 			dstID: {IngressLocked: true},
 		},
 	}
-	got := IsNodesReachable(cache, srcID, srcNs, dstID, dstNs)
+	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "deny" {
 		t.Fatalf("verdict: want deny (istio blocks), got %q", got.Verdict)

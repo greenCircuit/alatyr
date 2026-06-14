@@ -115,6 +115,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         allEdges: data.edges,
         loading:  false,
       });
+      // Re-fetch detail for the currently-selected node so the panel reflects
+      // the refreshed cache (mesh state, issues, rules).
+      const selected = get().selectedNode;
+      if (selected?.namespace) {
+        get().loadNodeInfo(selected.id, selected.namespace);
+      }
     } catch (e) {
       set({ loading: false, error: String(e) });
     }

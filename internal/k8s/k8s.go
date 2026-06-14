@@ -26,6 +26,11 @@ type KubernetesClient interface {
 	// AuthorizationPolicy objects in the namespace. Real client uses
 	// istio.io/client-go (versioned clientset).
 	GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error)
+
+	// GetPeerAuthentications fetches Istio security.istio.io/v1
+	// PeerAuthentication objects in the namespace. Used by the mesh package
+	// to resolve mTLS verdict per workload (see ADR 0003).
+	GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error)
 }
 
 type Client struct {
@@ -110,6 +115,21 @@ func (c *Client) GetNs(ns string) (corev1.Namespace, error) {
 // sync.Mutex and trip the copylocks vet check).
 func (c *Client) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
 	list, err := c.istioClientset.SecurityV1().AuthorizationPolicies(ns).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// GetPeerAuthentications fetches Istio PeerAuthentications for a namespace via
+// the versioned istio clientset. Same pointer-slice convention as
+// GetAuthorizationPolicies (proto types embed sync.Mutex; pointers avoid the
+// copylocks vet warning).
+//
+// Errors (including IsNoMatch when the PA CRD isn't installed) bubble up
+// unchanged. Callers in internal/mesh handle CRD-absent degradation.
+func (c *Client) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error) {
+	list, err := c.istioClientset.SecurityV1().PeerAuthentications(ns).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}

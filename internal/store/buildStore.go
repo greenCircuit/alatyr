@@ -7,25 +7,28 @@ import (
 
 	"graph/internal/graph"
 	"graph/internal/k8s"
+	"graph/internal/mesh"
+	meshistio "graph/internal/mesh/istio"
 	"graph/internal/models"
 	"graph/internal/policy"
 	"graph/internal/policy/istio"
 	"graph/internal/policy/k8spolicy"
-
 )
 
-// Builder owns the k8s client and the registered engine list. Constructed
-// once at server start; methods take only per-request inputs (cache,
-// namespaces) so call sites never thread the client through.
+// Builder owns the k8s client and the registered engine + mesh source lists.
+// Constructed once at server start; methods take only per-request inputs
+// (cache, namespaces) so call sites never thread the client through.
 type Builder struct {
-	client  k8s.KubernetesClient
-	sources []policy.PolicySource
+	client       k8s.KubernetesClient
+	sources      []policy.PolicySource
+	meshSources  []mesh.MeshSource
 }
 
 func NewBuilder(client k8s.KubernetesClient) *Builder {
 	return &Builder{
-		client:  client,
-		sources: defaultSources(client),
+		client:      client,
+		sources:     defaultSources(client),
+		meshSources: defaultMeshSources(client),
 	}
 }
 
@@ -34,6 +37,19 @@ func defaultSources(client k8s.KubernetesClient) []policy.PolicySource {
 		k8spolicy.New(client),
 		istio.New(client),
 	}
+}
+
+func defaultMeshSources(client k8s.KubernetesClient) []mesh.MeshSource {
+	return []mesh.MeshSource{
+		meshistio.New(client),
+	}
+}
+
+// MeshSources exposes the registered mesh sources so the API layer can call
+// ResolveMtls on demand from the detail / reachability endpoints. Returned
+// slice mirrors registration order.
+func (b *Builder) MeshSources() []mesh.MeshSource {
+	return b.meshSources
 }
 
 // EngineNames returns the registered engine identifiers. Used by the
@@ -131,8 +147,8 @@ func buildWorkloadIDIndex(data *models.Cache) map[string]models.WorkloadNode {
 	return index
 }
 
-func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) NodeRule {
-	view := NodeRule{
+func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models.NodeRule {
+	view := models.NodeRule{
 		Direction:    rule.Direction,
 		Port:         rule.Port,
 		L7Match:      rule.L7Match,
@@ -147,14 +163,57 @@ func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) NodeRu
 	return view
 }
 
+// GetWorkloadMesh resolves per-source mesh state for a single node on demand.
+// For workload nodes: membership (cheap label check) + mTLS (one k8s
+// round-trip). For namespace nodes: membership only — PA resolution is
+// per-pod and doesn't roll up to a single ns-level verdict. Sources whose
+// ResolveMtls errors surface membership only. Returns nil for unknown nodes.
+func GetWorkloadMesh(ctx context.Context, data *models.Cache, sources []mesh.MeshSource, nodeId, ns string) map[string]*models.MeshMembership {
+	nsIndex, ok := data.NsIndex[ns]
+	if !ok {
+		return nil
+	}
+	var workload *models.WorkloadNode
+	for i := range nsIndex.Workloads {
+		w := &nsIndex.Workloads[i]
+		if w.ID == nodeId {
+			workload = w
+			break
+		}
+	}
+	if workload == nil {
+		return nil
+	}
+	var nsLabels map[string]string
+	if nsIndex.NSNode != nil {
+		nsLabels = nsIndex.NSNode.Labels
+	}
+	isNamespace := workload.Type == models.NodeTypeNamespace
+
+	out := map[string]*models.MeshMembership{}
+	for _, src := range sources {
+		membership := src.Membership(*workload, nsLabels)
+		if membership == nil {
+			continue
+		}
+		if membership.InMesh && !isNamespace {
+			if mtls, err := src.ResolveMtls(ctx, *workload, nsLabels); err == nil {
+				membership.Mtls = mtls
+			}
+		}
+		out[src.Name()] = membership
+	}
+	return out
+}
+
 // GetNodeData returns per-engine NodeInfo for the workload. Inbound rules
 // (DstID == nodeId) are deliberately excluded for now; will be added when
 // click-on-node UI needs them.
-func GetNodeData(data *models.Cache, nodeId string, ns string) map[string]NodeInfo {
+func GetNodeData(data *models.Cache, nodeId string, ns string) map[string]models.NodeInfo {
 	idIndex := buildWorkloadIDIndex(data)
-	out := map[string]NodeInfo{}
+	out := map[string]models.NodeInfo{}
 	for engineName, engineEvaluate := range data.EvaluationResults {
-		var policyRules []NodeRule
+		var policyRules []models.NodeRule
 		for _, rule := range engineEvaluate.AllowByNs[ns] {
 			if rule.SrcID == nodeId {
 				policyRules = append(policyRules, toNodeRule(rule, idIndex))
@@ -169,16 +228,18 @@ func GetNodeData(data *models.Cache, nodeId string, ns string) map[string]NodeIn
 		if len(policyRules) == 0 && len(policies) == 0 {
 			continue
 		}
-		out[engineName] = NodeInfo{Rules: policyRules, Policies: policies}
+		out[engineName] = models.NodeInfo{Rules: policyRules, Policies: policies}
 	}
 	return out
 }
 
-// isNodesReachable evaluates src→dst across every engine in one pass. Both
-// pod-ID and ns-node-ID participate as matchers so pod↔pod, pod↔ns, ns↔pod,
-// and ns↔ns peer rules are caught without separate calls. Locks come from
-// PolicyStatuses; deny matches subtract per-direction.
-func IsNodesReachable(data *models.Cache, srcNodeId, srcNodeNs, destNodeId, destNodeNs string) ReachabilityResult {
+// IsNodesReachable evaluates src→dst across every policy engine + every mesh
+// source in one pass. Both pod-ID and ns-node-ID participate as matchers so
+// pod↔pod, pod↔ns, ns↔pod, and ns↔ns peer rules are caught without separate
+// calls. Locks come from PolicyStatuses; deny matches subtract per-direction.
+// Mesh pass runs after the engine loop and adds transport-layer (mTLS)
+// reachability — block when dst requires STRICT but src cannot speak mTLS.
+func IsNodesReachable(ctx context.Context, data *models.Cache, meshSources []mesh.MeshSource, srcNodeId, srcNodeNs, destNodeId, destNodeNs string) ReachabilityResult {
 	// NsIndex entries are missing for external nodes (ns=="") and any ns not
 	// fetched yet; NSNode is *WorkloadNode so the zero NSIndex has a nil pointer.
 	// Tolerate both — empty matcher just never matches.
@@ -262,13 +323,71 @@ func IsNodesReachable(data *models.Cache, srcNodeId, srcNodeNs, destNodeId, dest
 		result.Engines[engineName] = ev
 	}
 
+	// Mesh pass — transport-layer check (mTLS) + per-side state for the UI.
+	// Skip if either endpoint is not a known workload (e.g. external nodes)
+	// — mesh has no opinion on off-cluster peers.
+	if len(meshSources) > 0 {
+		srcWorkload, srcOk := idIndex[srcNodeId]
+		dstWorkload, dstOk := idIndex[destNodeId]
+		if srcOk && dstOk {
+			srcNsLabels := nsLabels(data, srcNodeNs)
+			dstNsLabels := nsLabels(data, destNodeNs)
+			result.Mesh = map[string]models.MeshVerdict{}
+			result.SrcMesh = map[string]*models.MeshMembership{}
+			result.DstMesh = map[string]*models.MeshMembership{}
+			for _, src := range meshSources {
+				// TODO(perf): N+1 ResolveMtls — outer ResolveMtls(src/dst) below
+				// plus CanReach internally re-resolves both. 4 calls per click
+				// when 2 would do. Fix by adding CanReachFromStates(srcState,
+				// dstState, port) and resolving once here.
+				// Per-side membership + mTLS, so the UI can show why mesh denied.
+				if m := src.Membership(srcWorkload, srcNsLabels); m != nil {
+					if m.InMesh {
+						if mtls, err := src.ResolveMtls(ctx, srcWorkload, srcNsLabels); err == nil {
+							m.Mtls = mtls
+						}
+					}
+					result.SrcMesh[src.Name()] = m
+				}
+				if m := src.Membership(dstWorkload, dstNsLabels); m != nil {
+					if m.InMesh {
+						if mtls, err := src.ResolveMtls(ctx, dstWorkload, dstNsLabels); err == nil {
+							m.Mtls = mtls
+						}
+					}
+					result.DstMesh[src.Name()] = m
+				}
+
+				v := src.CanReach(ctx, srcWorkload, dstWorkload, srcNsLabels, dstNsLabels, 0)
+				result.Mesh[src.Name()] = v
+				if v.Verdict == "deny" {
+					if blockedBy == "" {
+						blockedBy = "mesh:" + src.Name()
+					} else {
+						blockedBy = blockedBy + ", mesh:" + src.Name()
+					}
+				}
+			}
+		}
+	}
+
 	if blockedBy != "" {
 		result.Verdict = "deny"
 		result.Reason = "blocked by: " + blockedBy
 	} else {
-		result.Reason = "all engines permit"
+		result.Reason = "all engines + mesh permit"
 	}
 	return result
+}
+
+// nsLabels returns the ns object's k8s labels from cached NSIndex, or nil
+// when the ns isn't in cache (e.g. external).
+func nsLabels(data *models.Cache, ns string) map[string]string {
+	idx, ok := data.NsIndex[ns]
+	if !ok || idx.NSNode == nil {
+		return nil
+	}
+	return idx.NSNode.Labels
 }
 
 // directionReason produces the per-direction human-readable explanation
