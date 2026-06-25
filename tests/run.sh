@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN_DIR="$SCRIPT_DIR/.bin"
 CACHE_DIR="$SCRIPT_DIR/.cache"
-RESULTS_DIR="$CACHE_DIR/robot-results"
+RESULTS_DIR="./"
 
 KWOK_VERSION="${KWOK_VERSION:-v0.6.1}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.22.0}"
@@ -119,7 +119,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+RUN_PERF=false
+PYTEST_ARGS=()
+parse_args() {
+    for arg in "$@"; do
+        case "$arg" in
+            --perf) RUN_PERF=true ;;
+            *) PYTEST_ARGS+=("$arg") ;;
+        esac
+    done
+}
+
 main() {
+    parse_args "$@"
     if ! command -v go >/dev/null 2>&1; then
         err "go not found in PATH"; exit 1
     fi
@@ -145,7 +157,15 @@ main() {
 
     log "applying Istio CRDs"
     kubectl apply -f "$crd_file" >/dev/null
-
+    # Wait for the CRDs the istio engine watches to reach Established before
+    # the backend's informers spin up. Without this, the discovery probe in
+    # NewInformerClient can win the race against CRD registration; informers
+    # then hold an empty cache forever and every istio test sees zero policies.
+    kubectl wait --for=condition=Established \
+        crd/authorizationpolicies.security.istio.io \
+        crd/peerauthentications.security.istio.io \
+        --timeout=30s >/dev/null
+    sleep 10
     pick_free_port
     log "starting backend on port ${BACKEND_PORT}"
     # Strip DEMO_MODE explicitly — devcontainer shells often export it for
@@ -168,15 +188,33 @@ main() {
         sleep 1
     done
 
-    log "running pytest"
+    # --perf swaps the functional suite for the initial-load latency sweep
+    # (-m perf overrides the default "-m not perf" in pytest.ini).
+    local marker_args=()
+    local report_html="report.html"
+    local report_junit="junit.xml"
+    if [[ "$RUN_PERF" == "true" ]]; then
+        # -m perf overrides the default "-m not perf" in pytest.ini; -s lets the
+        # sweep's summary table print to the console.
+        marker_args=(-m perf -s)
+        report_html="perf-report.html"
+        report_junit="perf-junit.xml"
+        log "running pytest (perf sweep)"
+    else
+        log "running pytest"
+    fi
+
     set +e
     (
         cd "$SCRIPT_DIR"
         export BACKEND_URL="http://localhost:${BACKEND_PORT}"
+        export PERF_RESULTS_DIR="$RESULTS_DIR"
         pytest \
-            --html="$RESULTS_DIR/report.html" \
+            --html="$RESULTS_DIR/${report_html}" \
             --self-contained-html \
-            --junitxml="$RESULTS_DIR/junit.xml" \
+            --junitxml="$RESULTS_DIR/${report_junit}" \
+            "${marker_args[@]}" \
+            "${PYTEST_ARGS[@]}" \
             -vv
     )
     local rc=$?

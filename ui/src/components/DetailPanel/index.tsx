@@ -6,7 +6,7 @@
 import { useGraphStore } from '../../store/graphStore';
 import { SEVERITY_COLOR } from '../../data/policies';
 import s from './DetailPanel.module.css';
-import { PolicyRow, RuleRow, PolicyRefRow } from './parts/policy';
+import { PolicyRow, RuleRow, PolicyRefRow, EngineBadge } from './parts/policy';
 import { MeshCard } from './parts/mesh';
 import { ReachabilityPane } from './parts/reachability';
 import { StatusBadges } from './parts/status';
@@ -144,7 +144,7 @@ export default function DetailPanel() {
                       const info = nodeInfo?.policies?.[engine];
                       return (
                         <div key={engine} className="border border-secondary rounded p-2 mt-4">
-                          <div className={`fw-semibold`}>{engine}</div>
+                          <EngineBadge engine={engine} />
                           <StatusBadges keys={keys} />
                           {info?.policies && info.policies.length > 0 && (
                             <div className="mt-2">

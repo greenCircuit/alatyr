@@ -14,7 +14,11 @@ import (
 // (buildPolicyStatus → policy.DeriveStatusKeys) so tests assert against
 // final keys without depending on the deleted BuildStatusKeys facade.
 func deriveStatusKeys(policies []networkingv1.NetworkPolicy) []models.StatusKey {
-	return policy.DeriveStatusKeys(buildPolicyStatus(policies))
+	ptrs := make([]*networkingv1.NetworkPolicy, len(policies))
+	for i := range policies {
+		ptrs[i] = &policies[i]
+	}
+	return policy.DeriveStatusKeys(buildPolicyStatus(ptrs))
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

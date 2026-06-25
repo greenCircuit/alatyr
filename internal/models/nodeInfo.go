@@ -5,10 +5,10 @@ package models
 // is always the source for outbound rules.
 type NodeRule struct {
 	Direction    Direction   `json:"direction"`
-	Port         Port        `json:"port"`
+	Ports        []Port      `json:"ports"`
 	L7Match      *L7Match    `json:"l7Match,omitempty"`
 	Action       RuleAction  `json:"action"`
-	Contributors []PolicyRef `json:"contributors,omitempty"`
+	Contributor  PolicyRef   `json:"contributor,omitempty"`
 	DstID        string      `json:"dstId"`
 	DstLabel     string      `json:"dstLabel,omitempty"`
 	DstNamespace string      `json:"dstNamespace,omitempty"`

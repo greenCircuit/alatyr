@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.2]
+(2026-06-23)
+
+### Fixes
+
+* **DENY AuthorizationPolicies render as DENY again** — every Istio `AuthorizationPolicy` with `action: DENY` was silently rendering as a green ALLOW edge because the action field wasn't propagated into emitted rules. Operators reviewing deny posture were seeing the wrong-colored arrows for the policies they cared about most.
+* **Multi-source / multi-operation AuthorizationPolicies now show every edge they grant or block** — a policy with several `from[]` source blocks (e.g., `from ns-a OR ns-b`) or several `to[]` operation blocks (e.g., `{port 80, host X}` and `{port 443, method Y}`) was silently keeping only the last block. Every source-spec block now contributes its own edge with the correct port↔L7 pairing.
+* **`from`-only AuthorizationPolicies produce edges again** — the common "block traffic from ns-evil" shape (a `from:` clause with no `to:`) was emitting zero rules and disappearing from the graph entirely. These now render with explicit "all ports" / "all L7" signals so the deny intent is visible.
+* **Workload detail panel — Ports column shows real values** — was rendering "undefined/" on every rule row after a backend port-field rename moved past the frontend type. Detail panel now decodes the array shape correctly and renders an "all ports" chip when a rule grants unrestricted port access.
+
+### Features
+
+* **Explicit "all ports" and "all L7" signals on rules and edges** — backend now stamps `allPorts` / `allL7` booleans whenever a policy block grants unrestricted access on either dimension. Resolves the long-standing ambiguity between "policy didn't say anything about ports" and "policy explicitly restricted ports to none" so the UI can render an honest "ALL" badge instead of leaving the chip row empty and ambiguous.
+
+### Internals & cleanup
+
+* Istio rule emission rewritten so each source-spec block (one `to[]` × one `from[]`) produces its own atomic `Rule`. Pairing between ports and L7 predicates is preserved by construction, removing the matrix lie at the aggregation layer.
+* `models.Rule.Port` / `models.NodeRule.Port` renamed to `Ports` with matching JSON tags; `Rule.Contributor` JSON tag corrected from plural to singular. Frontend `NodeRule` interface and the detail-panel `RuleRow` updated to match.
+* New unit tests pin the multi-`to[]`, multi-`from[]`, no-`to[]`, DENY-action, and AllL7-invariant contracts in `internal/policy/istio/istio_test.go` so future refactors can't silently regress them.
+* New design doc `docs/backlog/l7-and-port-allowance-shape.md` records the discussion behind the allowance-list direction and the remaining cleanup list (port dedup keyed by number alone, L7 order-sensitivity, `Rule.Validate()` invariant check).
+
+---
+
 ## [0.2.1]
 (2026-06-13)
 

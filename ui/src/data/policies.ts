@@ -116,13 +116,15 @@ export interface PolicyRef {
 // into a human label + namespace so the UI doesn't need to look it up against
 // the graph node list. SrcID is omitted — clicked node is always the source.
 export interface NodeRule {
-  direction:     string;
-  port:          Port;
-  l7Match?:      L7Match;
-  action:        number; // 0 = Allow, 1 = Deny
-  contributors?: PolicyRef[];
-  dstId:         string;
-  dstLabel?:     string;     // empty for CIDR / unresolved IDs
+  direction:    string;
+  ports:        Port[];
+  allPorts?:    boolean;     // true when rule grants all ports (no port restriction)
+  allL7?:       boolean;     // true when rule grants any L7 (no host/method/path restriction)
+  l7Match?:     L7Match;
+  action:       number;      // 0 = Allow, 1 = Deny
+  contributor?: PolicyRef;   // singular — one policy attribution per NodeRule
+  dstId:        string;
+  dstLabel?:    string;      // empty for CIDR / unresolved IDs
   dstNamespace?: string;
 }
 

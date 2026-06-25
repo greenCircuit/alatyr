@@ -44,6 +44,20 @@ export function bundleEdges(policyEdges: PolicyEdge[]): Bundle[] {
   });
 }
 
+// Distinct engine names for the edges on one arrow, in first-seen order. A
+// bundle can mix engines (k8s + istio both allowing the same pair), so the
+// engine-icon overlay may render more than one logo per arrow.
+export function edgeEngines(edges: PolicyEdge[]): string[] {
+  const seen = new Set<string>();
+  const engines: string[] = [];
+  for (const edge of edges) {
+    if (seen.has(edge.policySource)) continue;
+    seen.add(edge.policySource);
+    engines.push(edge.policySource);
+  }
+  return engines;
+}
+
 // Compose edge label combining port list and L7 summary. Either side may be
 // empty; when both are absent falls back to 'all ports'.
 export function edgeLabel(edge: PolicyEdge): string {

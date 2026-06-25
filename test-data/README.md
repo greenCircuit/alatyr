@@ -28,3 +28,4 @@ Apply against a live cluster: `kubectl apply -f test-data/`
 | `06-l7-paths-methods.yaml` | `l7-api-server` | L7 ALLOW: HTTP methods + paths (`GET`/`POST` on `/api/*`) |
 | `07-l7-hosts.yaml` | `l7-host-backend` | L7 ALLOW gated on Host header |
 | `09-ports-and-l7.yaml` | `mixed-server` | Combined L4 ports + L7 paths/methods |
+| `12-port-policies.yaml` | `port-client` → `port-server` | NP egress (2 app ports) + NP ingress (app port + ztunnel HBONE 15008) in ambient ns |

@@ -40,6 +40,7 @@ const (
 	WaypointSkipValue = "none"
 
 	RootNamespace = "istio-system"
+	IngressNamespace = "istio ingress"
 	ZtunnelHBONEPort = 15008
 )
 

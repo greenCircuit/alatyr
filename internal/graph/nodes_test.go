@@ -5,6 +5,8 @@ import (
 
 	"graph/internal/models"
 	"graph/internal/utils"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // BuildWorkloadIndex
@@ -49,5 +51,14 @@ func TestBuildWorkloadIndex_EmptyNodes(t *testing.T) {
 	idx := BuildWorkloadIndex(nil)
 	if len(idx) != 0 {
 		t.Errorf("expected empty index, got %d entries", len(idx))
+	}
+}
+
+func TestWorkloadLabel_MissingLabels(t *testing.T) {
+	var pod corev1.Pod
+	pod.Name = "test"
+	res := WorkloadLabel(&pod)
+	if res != pod.Name {
+		t.Errorf("failed to get name when no owner reference and no labels")
 	}
 }

@@ -55,51 +55,77 @@ func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]
 func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []models.Rule {
 	var rulesMatrix []models.Rule
 	rules := authzPolicy.Spec.Rules
+	ruleAction := actionFromSpec(authzPolicy.Spec.Action)
 	for ruleIndex, rule := range rules {
-		var rulePorts []models.Port
-		var ruleL7 models.L7Match
 		var matchWorkloads []models.WorkloadNode
 
 		for _, fromBlock := range rule.From {
-			matchWorkloads = expandFromSource(fromBlock.Source, authzPolicy.Namespace, index)
-		}
-		for _, toBlock := range rule.To {
-			ports, l7policies := expandToOperation(toBlock.Operation)
-			rulePorts = ports
-			ruleL7 = l7policies
+			workloads := expandFromSource(fromBlock.Source, authzPolicy.Namespace, index)
+			matchWorkloads = append(matchWorkloads, workloads...)
 		}
 
-		contributors := []models.PolicyRef{{
+		contributor := models.PolicyRef{
 			Source:    sourceName,
 			Name:      authzPolicy.Name,
 			Namespace: authzPolicy.Namespace,
 			RuleIndex: ruleIndex,
-		}}
-
-		var l7Ptr *models.L7Match
-		if !ruleL7.IsEmpty() {
-			l7Copy := ruleL7
-			l7Ptr = &l7Copy
 		}
 
-		// do matrix multiplication to find all rules that can exists from this policy
-		for _, workload := range matchWorkloads {
-			if len(rulePorts) == 0 {
+		if len(rule.To) == 0 {
+			for _, workload := range matchWorkloads {
 				rulesMatrix = append(rulesMatrix, models.Rule{
-					DstID:        workload.ID,
-					Direction:    models.DirectionIngress,
-					Contributors: contributors,
-					L7Match:      l7Ptr,
+					DstID:       workload.ID,
+					Direction:   models.DirectionIngress,
+					Contributor: contributor,
+					Action:      ruleAction,
+					AllPorts:    true,
+					AllL7:       true,
 				})
-				continue
 			}
-			for _, port := range rulePorts {
+			continue
+		}
+
+		for _, toBlock := range rule.To {
+			var rulePorts []models.Port
+			var ruleL7 models.L7Match
+			ports, l7policies := expandToOperation(toBlock.Operation)
+			rulePorts = ports
+			ruleL7 = l7policies
+			allL7 := true
+			var l7Ptr *models.L7Match
+
+			// have l7 policies
+			if !ruleL7.IsEmpty() {
+				l7Copy := ruleL7
+				l7Ptr = &l7Copy
+				allL7 = false
+			}
+			
+
+			// do matrix multiplication to find all rules that can exists from this policy
+			for _, workload := range matchWorkloads {
+				if len(rulePorts) == 0 {
+					rulesMatrix = append(rulesMatrix, models.Rule{
+						DstID:       workload.ID,
+						Direction:   models.DirectionIngress,
+						Contributor: contributor,
+						Action:      ruleAction,
+						L7Match:     l7Ptr,
+						AllPorts:    true,
+						AllL7:       allL7,
+					})
+					continue
+				}
+
 				rulesMatrix = append(rulesMatrix, models.Rule{
-					DstID:        workload.ID,
-					Port:         port,
-					Direction:    models.DirectionIngress,
-					Contributors: contributors,
-					L7Match:      l7Ptr,
+					DstID:       workload.ID,
+					Ports:       rulePorts,
+					Direction:   models.DirectionIngress,
+					Contributor: contributor,
+					Action:      ruleAction,
+					L7Match:     l7Ptr,
+					AllPorts:    false,
+					AllL7:       allL7,
 				})
 			}
 		}

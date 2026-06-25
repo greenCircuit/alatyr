@@ -1,9 +1,21 @@
 package istio
 import (
-		
+
+	"graph/internal/models"
+
 	istioapi "istio.io/api/security/v1beta1"
 	istioapitype "istio.io/api/type/v1beta1"
 )
+
+// actionFromSpec maps an AuthorizationPolicy.Spec.Action to a models.RuleAction.
+// AUDIT and CUSTOM are filtered out earlier by splitPoliciesByAction; anything
+// non-DENY at this point is treated as ALLOW.
+func actionFromSpec(action istioapi.AuthorizationPolicy_Action) models.RuleAction {
+	if action == istioapi.AuthorizationPolicy_DENY {
+		return models.ActionDeny
+	}
+	return models.ActionAllow
+}
 
 // isCatchAllSelector reports whether the WorkloadSelector applies to every
 // workload in the namespace (nil OR empty MatchLabels).

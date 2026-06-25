@@ -14,7 +14,21 @@
   4. Deny bucket in EvaluationResult is populated but the graph builder (buildGraph.go:72) only
    consumes result.Allow. Deny edges won't render until BuildGraph reads result.Deny too.
   5. Copylocks warnings: istio proto types embed sync.Mutex. Strict fix =
-  6. Static demo for portfolio (GitHub Pages, no backend). Goal: live demo link
+  6. Istio informer can start blind. NewInformerClient (internal/k8s/informerClient.go)
+  treats Discovery().ServerResourcesForGroupVersion("security.istio.io/v1") as boolean
+  present/absent; only IsNotFound flips it to false. If the GV is reachable but the
+  CRDs haven't reached Established yet, the istio factory is built, WaitForCacheSync
+  returns true, and the lister stays empty forever — no AuthZ/PA ever surfaces. Bug
+  hit the e2e suite (run.sh launched the backend right after kubectl apply -f crd.yaml,
+  before Established). Test side patched in run.sh with kubectl wait, but the same
+  blind-start can happen in real installs (controller deployed before Istio's CRDs
+  land). Fix options: (a) re-probe ServerResourcesForGroupVersion after sync and
+  confirm AuthorizationPolicy + PeerAuthentication are both listed before reporting
+  ready; (b) on empty initial LIST, poll discovery and rebuild the factory if the
+  resources appear later; (c) at minimum, log loudly when the istio path is treated
+  as absent — silence is the worst outcome.
+
+  7. Static demo for portfolio (GitHub Pages, no backend). Goal: live demo link
   for LinkedIn — recruiters don't clone, they click. Steps:
     - Bake demo data: run backend in DEMO_MODE, capture /api/graph +
       /api/cluster-state responses, commit as ui/public/demo/graph.json +

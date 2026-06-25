@@ -3,6 +3,7 @@ package k8spolicy
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"graph/internal/k8s"
 	"graph/internal/models"
@@ -24,14 +25,34 @@ func (s *source) Name() string {
 	return sourceName
 }
 
-func (s *source) getPolicies(namespaces []string) (map[string][]networkingv1.NetworkPolicy, error) {
-	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
+func (s *source) getPolicies(namespaces []string) (map[string][]*networkingv1.NetworkPolicy, error) {
+	policiesByNS := map[string][]*networkingv1.NetworkPolicy{}
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
 	for _, ns := range namespaces {
-		nsPolicies, err := s.client.GetPolicies(ns)
-		if err != nil {
-			return nil, err
-		}
-		policiesByNS[ns] = nsPolicies
+		wg.Add(1)
+		go func(ns string) {
+			defer wg.Done()
+			nsPolicies, err := s.client.GetPolicies(ns)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
+			}
+			mu.Lock()
+			policiesByNS[ns] = nsPolicies
+			mu.Unlock()
+
+		} (ns)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return policiesByNS, nil
 }

@@ -14,7 +14,7 @@ import (
 // workload ID. PolicyStatus is the boolean digest consumed by status-key
 // derivation; NodePolicies preserves the policy refs so the detail panel can
 // show "selected by NetworkPolicy X" even when the policy emits zero rules.
-func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []networkingv1.NetworkPolicy) (map[string]models.PolicyStatus, map[string][]models.PolicyRef) {
+func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []*networkingv1.NetworkPolicy) (map[string]models.PolicyStatus, map[string][]models.PolicyRef) {
 	statuses := map[string]models.PolicyStatus{}
 	nodePolicies := map[string][]models.PolicyRef{}
 	for _, node := range nodes {
@@ -49,7 +49,7 @@ func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []netw
 // networkPolicyDirection derives the effective direction string from a
 // NetworkPolicy's PolicyTypes. Empty PolicyTypes → ingress implied (and
 // egress added when egress rules are present), per k8s spec.
-func networkPolicyDirection(networkPolicy networkingv1.NetworkPolicy) models.Direction {
+func networkPolicyDirection(networkPolicy *networkingv1.NetworkPolicy) models.Direction {
 	var hasIngress, hasEgress bool
 	for _, policyType := range networkPolicy.Spec.PolicyTypes {
 		if policyType == networkingv1.PolicyTypeIngress {
@@ -76,8 +76,8 @@ func networkPolicyDirection(networkPolicy networkingv1.NetworkPolicy) models.Dir
 
 // GetNodePolicies returns all NetworkPolicies that select the given workload node
 // via PodSelector. Namespace nodes only match catch-all selectors.
-func getNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPolicy) []networkingv1.NetworkPolicy {
-	var matches []networkingv1.NetworkPolicy
+func getNodePolicies(node models.WorkloadNode, policies []*networkingv1.NetworkPolicy) []*networkingv1.NetworkPolicy {
+	var matches []*networkingv1.NetworkPolicy
 	for _, networkPolicy := range policies {
 		podSelector := networkPolicy.Spec.PodSelector
 		catchAll := isCatchAll(podSelector.MatchLabels, len(podSelector.MatchExpressions))
@@ -99,7 +99,7 @@ func getNodePolicies(node models.WorkloadNode, policies []networkingv1.NetworkPo
 // buildPolicyStatus accumulates raw policy signals for a single workload from
 // the NetworkPolicies that select it. Returned PolicyStatus is consumed by
 // status-key derivation. Assumes every namespace has the auto-injected
-func buildPolicyStatus(policies []networkingv1.NetworkPolicy) models.PolicyStatus {
+func buildPolicyStatus(policies []*networkingv1.NetworkPolicy) models.PolicyStatus {
 	var policyStatus models.PolicyStatus
 	for _, networkPolicy := range policies {
 		for _, policyType := range networkPolicy.Spec.PolicyTypes {

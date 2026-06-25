@@ -28,6 +28,7 @@ function state(overrides: Partial<FilterState>): FilterState {
     selectedNodeTypes: ALL_TYPES,
     selectedPolicySources: new Set(['k8s', 'istio']),
     selectedActions: new Set([0, 1]),
+    selectedDirections: new Set(['ingress', 'egress']),
     showNamespaceEdges: true,
     showConnectedNamespaces: false,
     searchQuery: '',

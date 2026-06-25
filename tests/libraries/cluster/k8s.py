@@ -7,11 +7,12 @@ from __future__ import annotations
 from kubernetes.client import V1NetworkPolicy
 from kubernetes.client.rest import ApiException
 
-from .common import net
+from .common import net, wait_for_informer
 
 
 def apply(namespace: str, policy: V1NetworkPolicy) -> None:
     net().create_namespaced_network_policy(namespace=namespace, body=policy)
+    wait_for_informer()
 
 
 def delete_all_in(namespace: str) -> None:

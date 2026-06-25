@@ -19,7 +19,7 @@ func TestGetNodePolicies_MatchesByLabel(t *testing.T) {
 	nonMatchingPolicy := networkingv1.NetworkPolicy{Spec: networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "bar"}},
 	}}
-	got := getNodePolicies(node, []networkingv1.NetworkPolicy{matchingPolicy, nonMatchingPolicy})
+	got := getNodePolicies(node, []*networkingv1.NetworkPolicy{&matchingPolicy, &nonMatchingPolicy})
 	if len(got) != 1 {
 		t.Errorf("expected 1 matching policy, got %d", len(got))
 	}
@@ -31,7 +31,7 @@ func TestGetNodePolicies_EmptyPodSelector_MatchesAll(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{Spec: networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{},
 	}}
-	got := getNodePolicies(node, []networkingv1.NetworkPolicy{networkPolicy})
+	got := getNodePolicies(node, []*networkingv1.NetworkPolicy{&networkPolicy})
 	if len(got) != 1 {
 		t.Errorf("expected 1 policy for empty podSelector, got %d", len(got))
 	}
@@ -46,7 +46,7 @@ func TestGetNodePolicies_NamespaceNode_OnlyCatchAll(t *testing.T) {
 	specificPolicy := networkingv1.NetworkPolicy{Spec: networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
 	}}
-	got := getNodePolicies(nsNode, []networkingv1.NetworkPolicy{catchAllPolicy, specificPolicy})
+	got := getNodePolicies(nsNode, []*networkingv1.NetworkPolicy{&catchAllPolicy, &specificPolicy})
 	if len(got) != 1 {
 		t.Errorf("expected only catch-all policy for namespace node, got %d", len(got))
 	}
@@ -58,7 +58,7 @@ func TestGetNodePolicies_NoMatch(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{Spec: networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "bar"}},
 	}}
-	got := getNodePolicies(node, []networkingv1.NetworkPolicy{networkPolicy})
+	got := getNodePolicies(node, []*networkingv1.NetworkPolicy{&networkPolicy})
 	if len(got) != 0 {
 		t.Errorf("expected 0 policies, got %d", len(got))
 	}
