@@ -6,9 +6,19 @@ live in cluster/k8s.py and cluster/istio.py.
 from __future__ import annotations
 
 import os
+import time
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+
+# Bounded wait after applying a policy so the backend's informer cache
+# ingests the WATCH ADDED event before the test queries the graph. Single
+# source of truth — every engine's apply helper imports this.
+POST_APPLY_WAIT = 0.25
+
+
+def wait_for_informer() -> None:
+    time.sleep(POST_APPLY_WAIT)
 
 
 _loaded = False

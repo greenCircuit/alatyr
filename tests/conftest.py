@@ -12,6 +12,7 @@ Function-scoped:
 
 from __future__ import annotations
 
+import time
 from typing import Callable
 
 import pytest
@@ -27,6 +28,17 @@ from libraries.constants import (
     ROOT_NS,
     TEST_NAMESPACES,
 )
+
+# Informer cache budgets. Backend WATCH events propagate in ms, but tests can
+# race both the prior test's DELETE and their own CREATE events. Both bounds
+# are polled, so they cap the wait — they aren't sleeps.
+_INFORMER_DRAIN_TIMEOUT = 5.0
+_INFORMER_DRAIN_POLL = 0.05
+# stable-fetch: return once two consecutive responses are identical. Catches
+# the apply() → get_graph() race where the WATCH ADDED event for a freshly
+# created policy hasn't reached the cache yet.
+_STABLE_FETCH_TIMEOUT = 3.0
+_STABLE_FETCH_POLL = 0.05
 
 
 @pytest.fixture(scope="session")
@@ -50,12 +62,32 @@ def topology():
 
 
 @pytest.fixture(autouse=True)
-def policy_wipe(topology):
+def policy_wipe(topology, api):
     # autouse → every test gets clean policies, no need to opt in.
-    # Includes the mesh ns + root ns (istio-system) so PeerAuthentications
-    # don't leak across tests.
-    yield
+    # Wipe runs BEFORE the test, then we block until the backend's informer
+    # cache reflects the empty state (no edges across POLICY_NAMESPACES).
+    # Wiping post-yield isn't enough on its own: the next test's apply()
+    # can race the prior test's DELETE event, leaving stale policies in the
+    # cache and producing extra status keys. Covers mesh ns + istio-system
+    # so PeerAuthentications don't leak either.
     cluster.delete_all_policies_in(*POLICY_NAMESPACES)
+    _wait_until_no_edges(api)
+    yield
+
+
+def _wait_until_no_edges(api: requests.Session) -> None:
+    deadline = time.monotonic() + _INFORMER_DRAIN_TIMEOUT
+    params = {"namespaces": ",".join(POLICY_NAMESPACES)}
+    while time.monotonic() < deadline:
+        response = api.get(f"{BACKEND_URL}/api/graph", params=params)
+        response.raise_for_status()
+        if not response.json().get("edges"):
+            return
+        time.sleep(_INFORMER_DRAIN_POLL)
+    raise RuntimeError(
+        f"informer cache still has edges after {_INFORMER_DRAIN_TIMEOUT}s — "
+        "prior test's policies didn't drain"
+    )
 
 
 @pytest.fixture(scope="session")
@@ -69,10 +101,28 @@ def api() -> requests.Session:
 def get_graph(api) -> Callable[..., dict]:
     def _get(*namespaces: str) -> dict:
         params = {"namespaces": ",".join(namespaces)} if namespaces else None
-        response = api.get(f"{BACKEND_URL}/api/graph", params=params)
-        response.raise_for_status()
-        return response.json()
+        return _stable_get(api, "/api/graph", params)
     return _get
+
+
+def _stable_get(api: requests.Session, path: str, params: dict | None) -> dict:
+    """Poll the endpoint until two consecutive responses are identical, then
+    return. Absorbs the informer-cache race between a just-applied policy and
+    the test's first read. Falls back to the last response on timeout so a
+    truly mismatched cache surfaces as the real assertion failure, not a
+    timeout."""
+    deadline = time.monotonic() + _STABLE_FETCH_TIMEOUT
+    last: dict | None = None
+    while time.monotonic() < deadline:
+        response = api.get(f"{BACKEND_URL}{path}", params=params)
+        response.raise_for_status()
+        body = response.json()
+        if last is not None and body == last:
+            return body
+        last = body
+        time.sleep(_STABLE_FETCH_POLL)
+    assert last is not None
+    return last
 
 
 @pytest.fixture

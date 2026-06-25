@@ -55,6 +55,7 @@ func inAmbientMesh(workloadLabels, nsLabels map[string]string) bool {
 	if v, ok := workloadLabels[AmbientEnrollmentKey]; ok {
 		return v == AmbientEnrollmentValue
 	}
+
 	return nsLabels[AmbientEnrollmentKey] == AmbientEnrollmentValue
 }
 

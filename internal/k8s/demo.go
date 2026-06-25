@@ -18,20 +18,18 @@ import (
 )
 
 type DemoClient struct {
-	namespaces            map[string]corev1.Namespace
-	pods                  map[string][]corev1.Pod
-	services              map[string][]corev1.Service
-	policies              map[string][]networkingv1.NetworkPolicy
+	namespaces            map[string]*corev1.Namespace
+	pods                  map[string][]*corev1.Pod
+	policies              map[string][]*networkingv1.NetworkPolicy
 	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
 	peerAuthentications   map[string][]*istiosec.PeerAuthentication
 }
 
 func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 	c := &DemoClient{
-		namespaces:            map[string]corev1.Namespace{},
-		pods:                  map[string][]corev1.Pod{},
-		services:              map[string][]corev1.Service{},
-		policies:              map[string][]networkingv1.NetworkPolicy{},
+		namespaces:            map[string]*corev1.Namespace{},
+		pods:                  map[string][]*corev1.Pod{},
+		policies:              map[string][]*networkingv1.NetworkPolicy{},
 		authorizationPolicies: map[string][]*istiosec.AuthorizationPolicy{},
 		peerAuthentications:   map[string][]*istiosec.PeerAuthentication{},
 	}
@@ -74,28 +72,28 @@ func (c *DemoClient) parseFile(data []byte) error {
 
 		switch tm.Kind {
 		case "Namespace":
-			var ns corev1.Namespace
-			if err := json.Unmarshal(jsonBytes, &ns); err != nil {
+			ns := &corev1.Namespace{}
+			if err := json.Unmarshal(jsonBytes, ns); err != nil {
 				return err
 			}
 			c.namespaces[ns.Name] = ns
 
 		case "Deployment":
-			var d appsv1.Deployment
+			var d *appsv1.Deployment
 			if err := json.Unmarshal(jsonBytes, &d); err != nil {
 				return err
 			}
 			c.pods[d.Namespace] = append(c.pods[d.Namespace], deploymentToPod(d))
 
 		case "Pod":
-			var pod corev1.Pod
+			var pod *corev1.Pod
 			if err := json.Unmarshal(jsonBytes, &pod); err != nil {
 				return err
 			}
 			c.pods[pod.Namespace] = append(c.pods[pod.Namespace], pod)
 
 		case "NetworkPolicy":
-			var np networkingv1.NetworkPolicy
+			var np *networkingv1.NetworkPolicy
 			if err := json.Unmarshal(jsonBytes, &np); err != nil {
 				return err
 			}
@@ -137,8 +135,8 @@ func splitYAMLDocs(data []byte) [][]byte {
 // deploymentToPod synthesizes a representative pod from a Deployment.
 // Uses a deterministic UID so that multiple pods from the same Deployment
 // collapse into a single workload node via ownerUID deduplication.
-func deploymentToPod(d appsv1.Deployment) corev1.Pod {
-	return corev1.Pod{
+func deploymentToPod(d *appsv1.Deployment) *corev1.Pod {
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.Name + "-demo-pod",
 			Namespace: d.Namespace,
@@ -152,19 +150,15 @@ func deploymentToPod(d appsv1.Deployment) corev1.Pod {
 	}
 }
 
-func (c *DemoClient) GetPods(ns string) ([]corev1.Pod, error) {
+func (c *DemoClient) GetPods(ns string) ([]*corev1.Pod, error) {
 	return c.pods[ns], nil
 }
 
-func (c *DemoClient) GetCronJobs(ns string) ([]batchv1.CronJob, error) {
+func (c *DemoClient) GetCronJobs(ns string) ([]*batchv1.CronJob, error) {
 	return nil, nil
 }
 
-func (c *DemoClient) GetSvc(ns string) ([]corev1.Service, error) {
-	return c.services[ns], nil
-}
-
-func (c *DemoClient) GetPolicies(ns string) ([]networkingv1.NetworkPolicy, error) {
+func (c *DemoClient) GetPolicies(ns string) ([]*networkingv1.NetworkPolicy, error) {
 	return c.policies[ns], nil
 }
 
@@ -176,10 +170,10 @@ func (c *DemoClient) GetNsNames() ([]string, error) {
 	return names, nil
 }
 
-func (c *DemoClient) GetNs(ns string) (corev1.Namespace, error) {
+func (c *DemoClient) GetNs(ns string) (*corev1.Namespace, error) {
 	obj, ok := c.namespaces[ns]
 	if !ok {
-		return corev1.Namespace{}, fmt.Errorf("namespace %q not found in demo data", ns)
+		return nil, fmt.Errorf("namespace %q not found in demo data", ns)
 	}
 	return obj, nil
 }

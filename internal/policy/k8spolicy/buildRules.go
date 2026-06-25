@@ -9,7 +9,7 @@ import (
 // buildAllowRulesByNs expands every NetworkPolicy into pod-level allow rules,
 // grouped by the policy's namespace so per-ns cache invalidation can replace
 // one ns's rules without touching others.
-func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]networkingv1.NetworkPolicy) map[string][]models.Rule {
+func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) map[string][]models.Rule {
 	result := map[string][]models.Rule{}
 	for ns, policies := range policiesByNS {
 		var nsRules []models.Rule
@@ -37,7 +37,7 @@ func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[strin
 	return result
 }
 
-func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
+func getSourceNodes(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
 	nsIndex := index[networkPolicy.Namespace]
 	if isCatchAll(networkPolicy.Spec.PodSelector.MatchLabels, len(networkPolicy.Spec.PodSelector.MatchExpressions)) {
 		if nsIndex.NSNode != nil {
@@ -48,7 +48,7 @@ func getSourceNodes(networkPolicy networkingv1.NetworkPolicy, index map[string]m
 	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
 }
 
-func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
 	var out []models.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
 		ports := convertPorts(rule.Ports)
@@ -59,7 +59,7 @@ func expandEgressRules(networkPolicy networkingv1.NetworkPolicy, index map[strin
 	return out
 }
 
-func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
 	var out []models.Rule
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
 		ports := convertPorts(rule.Ports)
@@ -71,7 +71,7 @@ func expandIngressRules(networkPolicy networkingv1.NetworkPolicy, index map[stri
 }
 
 
-// expandPeerRules produces one rule per (peer-match × port).
+// expandPeerRules produces one rule per (peer-match).
 // Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
 func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []models.Rule {
 	var dstIDs []string
@@ -130,28 +130,30 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		dstIDs = append(dstIDs, peer.IPBlock.CIDR)
 	}
 
-	contributors := []models.PolicyRef{{
+	// metadata about policy
+	contributor := models.PolicyRef{
 		Source:    sourceName,
 		Name:      policyName,
 		Namespace: policyNamespace,
 		RuleIndex: ruleIndex,
-	}}
-
-	effectivePorts := ports
-	if len(effectivePorts) == 0 {
-		effectivePorts = []models.Port{{Protocol: "TCP"}}
 	}
 
-	out := make([]models.Rule, 0, len(dstIDs)*len(effectivePorts))
+	out := make([]models.Rule, 0, len(dstIDs))
 	for _, dstID := range dstIDs {
-		for _, port := range effectivePorts {
-			out = append(out, models.Rule{
-				DstID:        dstID,
-				Port:         port,
-				Direction:    direction,
-				Contributors: contributors,
-			})
+		rule := models.Rule{
+			DstID:        dstID,
+			Ports:        ports,
+			Direction:    direction,
+			Contributor:  contributor,
+			AllL7: 		  true,
 		}
+
+		if len(ports) == 0 {
+			rule.AllPorts = true
+		}
+
+		out = append(out, rule)
 	}
+
 	return out
 }

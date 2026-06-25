@@ -6,9 +6,7 @@ import (
 )
 
 // foldTuplesToEdges collapses pod-level Rules into PolicyEdges.
-// Tuples are grouped by (srcID, dstID, direction, contributing policy).
-// Ports for the same group are merged; level is determined by whether either
-// endpoint is a namespace node.
+// Used to render arrow in graphs, to eliminate duplicates ports or l7 rules
 func RenderEdges(rules []models.Rule, nodes []models.WorkloadNode) []PolicyEdge {
 	nsNodeIDs := map[string]bool{}
 	for _, node := range nodes {
@@ -30,35 +28,39 @@ func RenderEdges(rules []models.Rule, nodes []models.WorkloadNode) []PolicyEdge 
 	}
 
 	grouped := map[edgeKey]*PolicyEdge{}
-	for _, rule := range rules{
-		for _, ref := range rule.Contributors {
-			key := edgeKey{
-				srcID:           rule.SrcID,
-				dstID:           rule.DstID,
-				direction:       rule.Direction,
-				policyName:      ref.Name,
-				policyNamespace: ref.Namespace,
-				policySource:    ref.Source,
-				action:          rule.Action,
+
+	for _, rule := range rules {
+		key := edgeKey{
+			srcID:           rule.SrcID,
+			dstID:           rule.DstID,
+			direction:       rule.Direction,
+			policyName:      rule.Contributor.Name,
+			policyNamespace: rule.Contributor.Namespace,
+			policySource:    rule.Contributor.Source,
+			action:          rule.Action,
+		}
+		edge, exists := grouped[key]
+		if !exists {
+			edge = &PolicyEdge{
+				Source:       rule.SrcID,
+				Target:       rule.DstID,
+				Direction:    rule.Direction,
+				PolicyName:   rule.Contributor.Name,
+				Namespace:    rule.Contributor.Namespace,
+				Level:        edgeLevelFor(rule.SrcID, rule.DstID, nsNodeIDs),
+				PolicySource: rule.Contributor.Source,
+				Action:       rule.Action,
 			}
-			edge, exists := grouped[key]
-			if !exists {
-				edge = &PolicyEdge{
-					Source:       rule.SrcID,
-					Target:       rule.DstID,
-					Direction:    rule.Direction,
-					PolicyName:   ref.Name,
-					Namespace:    ref.Namespace,
-					Level:        edgeLevelFor(rule.SrcID, rule.DstID, nsNodeIDs),
-					PolicySource: ref.Source,
-					Action:       rule.Action,
-				}
-				grouped[key] = edge
-			}
-			edge.Ports = appendUniquePort(edge.Ports, rule.Port)
-			if rule.L7Match != nil {
-				edge.L7Matches = appendUniqueL7(edge.L7Matches, *rule.L7Match)
-			}
+			grouped[key] = edge
+		}
+
+		// Edge dedup is keyed on port number, or l7 policy only
+		// this is just so arrows have right information
+		if rule.L7Match != nil {
+			edge.L7Matches = appendUniqueL7(edge.L7Matches, *rule.L7Match)
+		}
+		if len(rule.Ports) != 0 {
+			edge.Ports = appendUniquePort(edge.Ports, rule.Ports)
 		}
 	}
 
@@ -76,13 +78,19 @@ func edgeLevelFor(srcID, dstID string, nsNodeIDs map[string]bool) models.EdgeLev
 	return models.EdgeLevelWorkload
 }
 
-func appendUniquePort(ports []models.Port, candidate models.Port) []models.Port {
+func appendUniquePort(ports []models.Port, candidates []models.Port) []models.Port {
+	seen := make(map[int]bool)
 	for _, existing := range ports {
-		if existing == candidate {
-			return ports
-		}
+		seen[existing.Port] = true
 	}
-	return append(ports, candidate)
+	for _, candidate := range candidates {
+		if seen[candidate.Port] {
+			continue
+		}
+		seen[candidate.Port] = true
+		ports = append(ports, candidate)
+	}
+	return ports
 }
 
 // appendUniqueL7 deduplicates L7Match blocks across rules that fold into the

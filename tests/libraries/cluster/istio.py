@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from kubernetes.client.rest import ApiException
 
-from .common import custom
+from .common import custom, wait_for_informer
 
 _AUTHZ_GROUP = "security.istio.io"
 _AUTHZ_VERSION = "v1beta1"
@@ -29,6 +29,7 @@ def apply(namespace: str, body: dict) -> None:
             **body,
         },
     )
+    wait_for_informer()
 
 
 def delete_all_in(namespace: str) -> None:
@@ -71,6 +72,7 @@ def apply_pa(namespace: str, body: dict) -> None:
             **body,
         },
     )
+    wait_for_informer()
 
 
 def delete_all_pa_in(namespace: str) -> None:

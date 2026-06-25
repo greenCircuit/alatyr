@@ -5,11 +5,13 @@ package models
 type Rule struct {
 	SrcID        string      `json:"srcId"`
 	DstID        string      `json:"dstId"`
-	Port         Port        `json:"port"`
+	Ports        []Port      `json:"ports"`
 	Direction    Direction   `json:"direction"`
-	Contributors []PolicyRef `json:"contributors,omitempty"`
+	Contributor  PolicyRef   `json:"contributor,omitempty"`
 	L7Match      *L7Match    `json:"l7Match,omitempty"` // nil for L3-only engines (k8s); optional for istio
 	Action       RuleAction  `json:"action"`            // zero-value = ActionAllow; istio DENY policies stamp ActionDeny
+	AllPorts	 bool		 `json:"allPorts"`
+	AllL7		 bool 		 `json:"allL7"`
 }
 
 type RuleAction int

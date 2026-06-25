@@ -17,9 +17,11 @@ interface GraphState {
   selectedStatuses:        Set<StatusKey>;
   selectedPolicySources:   Set<string>;
   selectedActions:         Set<number>; // 0 = allow, 1 = deny
+  selectedDirections:      Set<string>; // 'ingress' | 'egress'
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   aggregateByNamespace:    boolean;
+  showEngineIcons:         boolean;
   selectedNode:            WorkloadNode | null;
   selectedEdges:           PolicyEdge[];
   nodeInfo:                NodeInfo | null;
@@ -40,9 +42,11 @@ interface GraphState {
   toggleStatus:                (key: StatusKey) => void;
   togglePolicySource:          (src: string) => void;
   toggleAction:                (action: number) => void;
+  toggleDirection:             (direction: string) => void;
   toggleNamespaceEdges:        () => void;
   toggleConnectedNamespaces:   () => void;
   toggleAggregateByNamespace:  () => void;
+  toggleEngineIcons:           () => void;
   setSelectedNode:             (node: WorkloadNode | null) => void;
   setSelectedEdges:            (edges: PolicyEdge[]) => void;
   setSearchQuery:              (q: string) => void;
@@ -57,6 +61,7 @@ interface GraphState {
 
 const ALL_TYPES = ['service', 'deployment', 'headless', 'external', 'cronjob'];
 const ALL_ACTIONS = [0, 1];
+const ALL_DIRECTIONS = ['ingress', 'egress'];
 
 export const useGraphStore = create<GraphState>((set, get) => ({
   allNodes:               [],
@@ -72,9 +77,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   selectedStatuses:        new Set<StatusKey>(),
   selectedPolicySources:   new Set<string>(),
   selectedActions:         new Set<number>(ALL_ACTIONS),
+  selectedDirections:      new Set<string>(ALL_DIRECTIONS),
   showNamespaceEdges:      true,
   showConnectedNamespaces: false,
   aggregateByNamespace:    false,
+  showEngineIcons:         false,
   selectedNode:            null,
   selectedEdges:           [],
   nodeInfo:                null,
@@ -161,6 +168,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return { selectedActions: next, selectedNode: null, selectedEdges: [] };
     }),
 
+  toggleDirection: (direction) =>
+    set((state) => {
+      const next = new Set(state.selectedDirections);
+      next.has(direction) ? next.delete(direction) : next.add(direction);
+      return { selectedDirections: next, selectedNode: null, selectedEdges: [] };
+    }),
+
   toggleNamespaceEdges: () =>
     set((s) => ({ showNamespaceEdges: !s.showNamespaceEdges })),
 
@@ -169,6 +183,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   toggleAggregateByNamespace: () =>
     set((s) => ({ aggregateByNamespace: !s.aggregateByNamespace })),
+
+  toggleEngineIcons: () =>
+    set((s) => ({ showEngineIcons: !s.showEngineIcons })),
 
   setSelectedNode: (node) => {
     const src = get().reachabilitySource;

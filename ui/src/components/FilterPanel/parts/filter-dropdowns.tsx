@@ -6,8 +6,10 @@
 import { useRef, useState } from 'react';
 import { useGraphStore } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
+import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { useOutsideClick } from './useOutsideClick';
-import { STATUS_LABELS, ACTION_LABEL } from './constants';
+import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL } from './constants';
+import styles from '../FilterPanel.module.css';
 
 export function NamespaceDropdown() {
   const {
@@ -17,8 +19,14 @@ export function NamespaceDropdown() {
   } = useGraphStore();
 
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useOutsideClick(ref, open, () => setOpen(false));
+
+  const query = search.trim().toLowerCase();
+  const visibleNamespaces = query === ''
+    ? namespaces
+    : namespaces.filter((ns) => ns.toLowerCase().includes(query));
 
   const nsCount = selectedNamespaces.size;
   const label = nsCount === namespaces.length
@@ -42,24 +50,37 @@ export function NamespaceDropdown() {
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
           style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 200 }}
         >
+          <input
+            type="text"
+            autoFocus
+            className="form-control form-control-sm bg-dark text-light border-secondary mb-2"
+            placeholder="Search namespaces…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
               className="btn btn-link btn-sm p-0 text-secondary"
               style={{ fontSize: 11 }}
-              onClick={() => namespaces.forEach((ns) => { if (!selectedNamespaces.has(ns)) toggleNamespace(ns); })}
+              onClick={() => visibleNamespaces.forEach((ns) => { if (!selectedNamespaces.has(ns)) toggleNamespace(ns); })}
             >
               all
             </button>
             <button
               className="btn btn-link btn-sm p-0 text-secondary"
               style={{ fontSize: 11 }}
-              onClick={() => namespaces.forEach((ns) => { if (selectedNamespaces.has(ns)) toggleNamespace(ns); })}
+              onClick={() => visibleNamespaces.forEach((ns) => { if (selectedNamespaces.has(ns)) toggleNamespace(ns); })}
             >
               none
             </button>
           </div>
 
-          {namespaces.map((ns) => (
+          {visibleNamespaces.length === 0 && (
+            <div className={`text-secondary ${styles.noMatches}`}>No matches</div>
+          )}
+
+          {visibleNamespaces.map((ns) => (
             <div key={ns} className="form-check mb-1">
               <input
                 className="form-check-input"
@@ -88,6 +109,11 @@ export function StatusDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOutsideClick(ref, open, () => setOpen(false));
+
+  // Match the Legend's badge order (STATUS_CFG insertion order), keeping only
+  // keys the backend actually emits.
+  const available = new Set(availableStatusKeys);
+  const orderedStatusKeys = (Object.keys(STATUS_CFG) as StatusKey[]).filter((key) => available.has(key));
 
   return (
     <div className="position-relative" ref={ref}>
@@ -121,20 +147,33 @@ export function StatusDropdown() {
             </button>
           </div>
 
-          {availableStatusKeys.map((key: StatusKey) => (
-            <div key={key} className="form-check mb-1">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                id={`status-dd-${key}`}
-                checked={selectedStatuses.has(key)}
-                onChange={() => toggleStatus(key)}
-              />
-              <label className="form-check-label text-light" htmlFor={`status-dd-${key}`} style={{ fontSize: 13 }}>
-                {STATUS_LABELS[key]}
-              </label>
-            </div>
-          ))}
+          {orderedStatusKeys.map((key: StatusKey) => {
+            const cfg = STATUS_CFG[key];
+            return (
+              <div key={key} className="form-check mb-1 d-flex align-items-center gap-2">
+                <input
+                  className="form-check-input m-0"
+                  type="checkbox"
+                  id={`status-dd-${key}`}
+                  checked={selectedStatuses.has(key)}
+                  onChange={() => toggleStatus(key)}
+                />
+                <label
+                  className={`form-check-label text-light d-flex align-items-center gap-2 ${styles.statusLabel}`}
+                  htmlFor={`status-dd-${key}`}
+                >
+                  <span
+                    title={cfg.description}
+                    className={styles.statusBadge}
+                    style={{ background: SEVERITY_COLOR[cfg.severity] }}
+                  >
+                    {cfg.symbol}
+                  </span>
+                  {STATUS_LABELS[key]}
+                </label>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -248,6 +287,56 @@ export function ActionDropdown() {
               />
               <label className="form-check-label text-light" htmlFor={`action-dd-${action}`} style={{ fontSize: 13 }}>
                 {ACTION_LABEL[action]}
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DirectionDropdown() {
+  const { selectedDirections, toggleDirection } = useGraphStore();
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  const label = selectedDirections.size === 2
+    ? 'Ingress + Egress'
+    : selectedDirections.has('ingress')
+      ? 'Ingress only'
+      : selectedDirections.has('egress')
+        ? 'Egress only'
+        : 'No direction';
+
+  return (
+    <div className="position-relative" ref={ref}>
+      <button
+        className={`btn btn-sm ${selectedDirections.size < 2 ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {label}
+      </button>
+
+      {open && (
+        <div
+          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 140 }}
+        >
+          {['ingress', 'egress'].map((direction) => (
+            <div key={direction} className="form-check mb-1">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id={`direction-dd-${direction}`}
+                checked={selectedDirections.has(direction)}
+                onChange={() => toggleDirection(direction)}
+              />
+              <label className="form-check-label text-light" htmlFor={`direction-dd-${direction}`} style={{ fontSize: 13 }}>
+                {DIRECTION_LABEL[direction]}
               </label>
             </div>
           ))}

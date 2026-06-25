@@ -1,0 +1,168 @@
+package k8s
+
+import (
+	"fmt"
+
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	batchlisters "k8s.io/client-go/listers/batch/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	netlisters "k8s.io/client-go/listers/networking/v1"
+	"k8s.io/client-go/tools/clientcmd"
+
+	istiosec "istio.io/client-go/pkg/apis/security/v1"
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
+	istioinformers "istio.io/client-go/pkg/informers/externalversions"
+	istiolisters "istio.io/client-go/pkg/listers/security/v1"
+)
+
+// InformerClient backs the KubernetesClient surface with shared informer
+// caches instead of per-request List calls. One cluster-scoped LIST + WATCH
+// per GVK at startup; every Get* call after that is an in-memory indexer
+// lookup. apLister/paLister stay nil when the Istio security CRDs aren't
+// installed — methods return (nil, nil) in that case, matching the existing
+// IsNoMatch tolerance.
+type InformerClient struct {
+	coreFactory  informers.SharedInformerFactory
+	istioFactory istioinformers.SharedInformerFactory
+
+	podLister corelisters.PodLister
+	cjLister  batchlisters.CronJobLister
+	npLister  netlisters.NetworkPolicyLister
+	nsLister  corelisters.NamespaceLister
+
+	apLister istiolisters.AuthorizationPolicyLister // nil if security.istio.io/v1 absent
+	paLister istiolisters.PeerAuthenticationLister  // nil if security.istio.io/v1 absent
+}
+
+// NewInformerClient builds clientsets, starts shared informer factories,
+// blocks until every registered informer's cache has synced, then returns
+// a client wired to the listers. Caller owns stopCh; closing it stops all
+// informers. Istio CRDs are probed via discovery — when absent, the istio
+// factory is skipped entirely (WaitForCacheSync on a missing GVK hangs).
+func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*InformerClient, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, err
+	}
+	coreCS, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	istioCS, err := istioclient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	coreFactory := informers.NewSharedInformerFactory(coreCS, 0)
+	podInf := coreFactory.Core().V1().Pods()
+	cjInf := coreFactory.Batch().V1().CronJobs()
+	npInf := coreFactory.Networking().V1().NetworkPolicies()
+	nsInf := coreFactory.Core().V1().Namespaces()
+
+	c := &InformerClient{
+		coreFactory: coreFactory,
+		podLister:   podInf.Lister(),
+		cjLister:    cjInf.Lister(),
+		npLister:    npInf.Lister(),
+		nsLister:    nsInf.Lister(),
+	}
+
+	istioPresent, err := istioSecurityCRDPresent(coreCS)
+	if err != nil {
+		return nil, fmt.Errorf("probe istio security CRDs: %w", err)
+	}
+	if istioPresent {
+		istioFactory := istioinformers.NewSharedInformerFactory(istioCS, 0)
+		apInf := istioFactory.Security().V1().AuthorizationPolicies()
+		paInf := istioFactory.Security().V1().PeerAuthentications()
+		c.istioFactory = istioFactory
+		c.apLister = apInf.Lister()
+		c.paLister = paInf.Lister()
+	}
+
+	coreFactory.Start(stopCh)
+	if c.istioFactory != nil {
+		c.istioFactory.Start(stopCh)
+	}
+
+	for typ, ok := range coreFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			return nil, fmt.Errorf("core informer failed to sync: %v", typ)
+		}
+	}
+	if c.istioFactory != nil {
+		for typ, ok := range c.istioFactory.WaitForCacheSync(stopCh) {
+			if !ok {
+				return nil, fmt.Errorf("istio informer failed to sync: %v", typ)
+			}
+		}
+	}
+
+	return c, nil
+}
+
+// istioSecurityCRDPresent probes discovery for security.istio.io/v1. WaitForCacheSync
+// blocks forever on a missing GVK; checking up front lets the rest of the app
+// run on clusters without Istio installed.
+func istioSecurityCRDPresent(cs *kubernetes.Clientset) (bool, error) {
+	_, err := cs.Discovery().ServerResourcesForGroupVersion("security.istio.io/v1")
+	if err == nil {
+		return true, nil
+	}
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (c *InformerClient) GetPods(ns string) ([]*corev1.Pod, error) {
+	return c.podLister.Pods(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetCronJobs(ns string) ([]*batchv1.CronJob, error) {
+	return c.cjLister.CronJobs(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetPolicies(ns string) ([]*networkingv1.NetworkPolicy, error) {
+	return c.npLister.NetworkPolicies(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetNs(ns string) (*corev1.Namespace, error) {
+	return c.nsLister.Get(ns)
+}
+
+func (c *InformerClient) GetNsNames() ([]string, error) {
+	items, err := c.nsLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(items))
+	for _, n := range items {
+		names = append(names, n.Name)
+	}
+	return names, nil
+}
+
+// GetAuthorizationPolicies returns (nil, nil) when security.istio.io/v1 is not
+// installed — same shape callers already tolerate via IsNoMatch on the live
+// client.
+func (c *InformerClient) GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error) {
+	if c.apLister == nil {
+		return nil, nil
+	}
+	return c.apLister.AuthorizationPolicies(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error) {
+	if c.paLister == nil {
+		return nil, nil
+	}
+	return c.paLister.PeerAuthentications(ns).List(labels.Everything())
+}
+

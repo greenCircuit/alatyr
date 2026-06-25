@@ -24,9 +24,9 @@ func TestRenderEdges_ActionSplitAndL7Dedup(t *testing.T) {
 
 	// Two allow rules sharing the same L7 (fan-out per port) — should fold
 	// into one edge with ports {8080, 9090} and a single L7Match entry.
-	allow8080 := models.Rule{SrcID: "src", DstID: "dst", Port: models.Port{Port: 8080, Protocol: "TCP"}, Direction: models.DirectionIngress, Contributors: []models.PolicyRef{ref}, L7Match: l7, Action: models.ActionAllow}
+	allow8080 := models.Rule{SrcID: "src", DstID: "dst", Ports: []models.Port{{Port: 8080, Protocol: "TCP"}}, Direction: models.DirectionIngress, Contributor: ref, L7Match: l7, Action: models.ActionAllow}
 	allow9090 := allow8080
-	allow9090.Port = models.Port{Port: 9090, Protocol: "TCP"}
+	allow9090.Ports = []models.Port{{Port: 9090, Protocol: "TCP"}}
 
 	// Same (src,dst,direction,policy) but action=deny — must NOT merge with
 	// the allow group; produces a separate edge.
@@ -61,5 +61,58 @@ func TestRenderEdges_ActionSplitAndL7Dedup(t *testing.T) {
 	}
 	if len(denyEdge.L7Matches) != 0 {
 		t.Errorf("deny edge L7Matches = %d, want 0 (rule had no L7)", len(denyEdge.L7Matches))
+	}
+}
+
+// Two rules fold into one edge with overlapping ports. Guards against:
+//   - append running only on first rule per bucket (brace-scope regression)
+//   - appendUniquePort forgetting to mark seen, leading to dupes in candidates
+//   - the slice walk being silently swapped back to scalar assignment
+func TestRenderEdges_PortDedupAcrossRules(t *testing.T) {
+	nodes := []models.WorkloadNode{{ID: "src"}, {ID: "dst"}}
+	ref := models.PolicyRef{Source: "k8s", Name: "p1", Namespace: "ns-a"}
+
+	rule1 := models.Rule{
+		SrcID: "src", DstID: "dst",
+		Ports:       []models.Port{{Port: 80, Protocol: "TCP"}, {Port: 443, Protocol: "TCP"}},
+		Direction:   models.DirectionIngress,
+		Contributor: ref,
+		Action:      models.ActionAllow,
+	}
+	rule2 := rule1
+	rule2.Ports = []models.Port{{Port: 443, Protocol: "TCP"}, {Port: 8080, Protocol: "TCP"}}
+
+	edges := RenderEdges([]models.Rule{rule1, rule2}, nodes)
+	if len(edges) != 1 {
+		t.Fatalf("got %d edges, want 1 (same key folds)", len(edges))
+	}
+	if len(edges[0].Ports) != 3 {
+		t.Errorf("got ports %+v, want 3 unique (80, 443, 8080)", edges[0].Ports)
+	}
+}
+
+// Edge view intentionally dedups ports on port number alone, ignoring
+// protocol / Name / EndPort. NodeRule (detail panel) preserves those.
+// Locks in the conscious choice so a future "fix" doesn't quietly split.
+func TestRenderEdges_EdgeIgnoresProtocol(t *testing.T) {
+	nodes := []models.WorkloadNode{{ID: "src"}, {ID: "dst"}}
+	ref := models.PolicyRef{Source: "k8s", Name: "p1", Namespace: "ns-a"}
+
+	rule1 := models.Rule{
+		SrcID: "src", DstID: "dst",
+		Ports:       []models.Port{{Port: 80, Protocol: "TCP"}},
+		Direction:   models.DirectionIngress,
+		Contributor: ref,
+		Action:      models.ActionAllow,
+	}
+	rule2 := rule1
+	rule2.Ports = []models.Port{{Port: 80, Protocol: "UDP"}}
+
+	edges := RenderEdges([]models.Rule{rule1, rule2}, nodes)
+	if len(edges) != 1 {
+		t.Fatalf("got %d edges, want 1", len(edges))
+	}
+	if len(edges[0].Ports) != 1 {
+		t.Errorf("edge should dedup on port number alone, got %+v", edges[0].Ports)
 	}
 }

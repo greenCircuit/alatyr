@@ -7,7 +7,7 @@ import (
 )
 
 type PolicySource interface {
-	// Stable identifier. Used as map key in Edge.Contributors and as
+	// Stable identifier. Used as map key in Edge.Contributor and as
 	// value in the API ?policySource= param.
 	Name() string
 

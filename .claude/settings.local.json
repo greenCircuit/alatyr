@@ -13,7 +13,10 @@
       "Bash(python3 *)",
       "Bash(bash tests/run.sh)",
       "Bash(git ls-tree *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(npx vitest *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

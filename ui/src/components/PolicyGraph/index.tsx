@@ -15,8 +15,12 @@ import { useGraphStore } from '../../store/graphStore';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
 import DetailPanel from '../DetailPanel';
 import { buildElements, buildAggregatedElements } from './parts/elements';
+import { edgeEngines } from './parts/bundling';
 import { STYLE } from './parts/styles';
 import { StatusBadge, Legend, type BadgeNode } from './parts/legend';
+import { EngineLogo } from '../../data/engineIcons';
+
+interface EdgeIcon { id: string; engines: string[] }
 
 cytoscape.use(dagre);
 cytoscape.use(cola);
@@ -27,8 +31,10 @@ export default function PolicyGraph() {
   const cyRef         = useRef<cytoscape.Core | null>(null);
   const badgeLayerRef = useRef<HTMLDivElement>(null);
   const [badgeNodes, setBadgeNodes] = useState<BadgeNode[]>([]);
+  const [edgeIcons, setEdgeIcons]   = useState<EdgeIcon[]>([]);
   const [legendOpen, setLegendOpen] = useState(true);
-  const badgeDivRefs  = useRef<Map<string, HTMLDivElement>>(new Map());
+  const badgeDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
+  const edgeIconDivRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Refs so layoutstop callback can read latest selection state without stale closures
   const selectedNodeRef       = useRef<WorkloadNode | null>(null);
@@ -49,6 +55,23 @@ export default function PolicyGraph() {
     });
   }, []);
 
+  // Write engine-icon div positions from each edge's midpoint (graph-space).
+  // Icons are centered on the midpoint via a CSS translate, so only left/top
+  // change here — the overlay layer transform handles pan/zoom.
+  const syncEdgeIconPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    edgeIconDivRefs.current.forEach((div, id) => {
+      const edge = cy.getElementById(id);
+      if (edge.empty()) return;
+      const mid = edge.midpoint();
+      // Lift above the midpoint so the icon clears the edge's port/L7 label,
+      // which Cytoscape draws centered on the midpoint.
+      div.style.left = `${mid.x}px`;
+      div.style.top  = `${mid.y - 16}px`;
+    });
+  }, []);
+
   // Mirror Cytoscape viewport transform onto the badge overlay layer (no React re-render)
   const syncViewport = useCallback(() => {
     const cy = cyRef.current;
@@ -65,9 +88,9 @@ export default function PolicyGraph() {
     allNodes, allEdges,
     filteredNodes, filteredEdges, selectedNamespaces,
     selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces,
-    aggregateByNamespace,
+    aggregateByNamespace, showEngineIcons,
     selectedStatuses,
-    selectedPolicySources, selectedActions,
+    selectedPolicySources, selectedActions, selectedDirections,
     selectedNode,
     setSelectedNode, setSelectedEdges,
     loadGraph, loadClusterState, loading, error,
@@ -75,6 +98,23 @@ export default function PolicyGraph() {
     reachabilitySource, reachabilityTarget,
     pinReachabilitySource,
   } = useGraphStore();
+
+  // Rebuild the engine-icon list when the toggle flips or the graph is rebuilt
+  // (badgeNodes changes once per layout, so it doubles as a "graph ready" cue).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !showEngineIcons) { setEdgeIcons([]); return; }
+    setEdgeIcons(
+      cy.edges().toArray().map((edge) => ({
+        id:      edge.id(),
+        engines: edgeEngines((edge.data('policies') as PolicyEdge[]) ?? []),
+      })),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEngineIcons, badgeNodes]);
+
+  // Position icons after they render
+  useEffect(() => { syncEdgeIconPositions(); }, [edgeIcons, syncEdgeIconPositions]);
 
   // Apply dimming: reach mode > node-click mode > status filter mode.
   // Reach mode suppresses dimming entirely so the operator can scan candidate
@@ -89,6 +129,7 @@ export default function PolicyGraph() {
       cy.getElementById(reachSrc.id).addClass('reach-src');
       if (reachDst) cy.getElementById(reachDst.id).addClass('reach-dst');
       badgeDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      edgeIconDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       return;
     }
     const node     = selectedNodeRef.current;
@@ -115,8 +156,13 @@ export default function PolicyGraph() {
         focusedIds = new Set(toFocus.map((e) => e.id()));
       }
     }
-    // Mirror dim state onto badge overlay divs (Cytoscape classes don't reach HTML overlays)
+    // Mirror dim state onto overlay divs (Cytoscape classes don't reach HTML
+    // overlays). Edge icons key on the edge id, which is in focusedIds when the
+    // edge is part of the focused neighborhood.
     badgeDivRefs.current.forEach((div, id) => {
+      div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
+    });
+    edgeIconDivRefs.current.forEach((div, id) => {
       div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,8 +177,9 @@ export default function PolicyGraph() {
     applyDimming();
   }, [selectedNode, selectedStatuses, reachabilitySource, reachabilityTarget, applyDimming]);
 
-  // Re-apply dim state to badges when the badge list changes (after layout adds new badges)
-  useEffect(() => { applyDimming(); }, [badgeNodes, applyDimming]);
+  // Re-apply dim state to overlays when the badge or engine-icon list changes
+  // (after layout adds new badges, or the engine-icon toggle flips)
+  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, applyDimming]);
 
   useEffect(() => { loadClusterState(); loadGraph(); }, []);
 
@@ -156,7 +203,7 @@ export default function PolicyGraph() {
     let dragRaf: number | null = null;
     cy.on('drag', 'node', () => {
       if (dragRaf !== null) return;
-      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); });
+      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); });
     });
 
     // Workload / namespace node click – open detail panel for whichever node was tapped.
@@ -273,7 +320,10 @@ export default function PolicyGraph() {
     layout.run();
   // filteredNodes/filteredEdges call get() internally; the listed deps cover all state that affects output
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
+  // showEngineIcons intentionally excluded: it's a pure overlay toggle (no
+  // element/label change), so it must not trigger a relayout that reshuffles
+  // the graph. The edge-icon overlay reacts to it separately below.
+  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: '#0d0f11', overflow: 'hidden' }}>
@@ -302,6 +352,26 @@ export default function PolicyGraph() {
               style={{ position: 'absolute', display: 'flex', gap: 2 }}
             >
               {statuses.map((s) => <StatusBadge key={s} s={s} />)}
+            </div>
+          ))}
+
+          {/* Engine provenance icons at edge midpoints. translate(-50%) centers
+              on the midpoint; brand color is owned by the SVG, independent of
+              the arrow's direction color. */}
+          {edgeIcons.map(({ id, engines }) => (
+            <div
+              key={id}
+              ref={(el) => {
+                if (el) edgeIconDivRefs.current.set(id, el);
+                else    edgeIconDivRefs.current.delete(id);
+              }}
+              style={{
+                position: 'absolute', display: 'flex', gap: 1,
+                transform: 'translate(-50%, -50%)',
+                background: '#0d0f11cc', borderRadius: 3, padding: 1,
+              }}
+            >
+              {engines.map((engine) => <EngineLogo key={engine} engine={engine} size={13} />)}
             </div>
           ))}
         </div>

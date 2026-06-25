@@ -5,7 +5,26 @@
 
 import type { PolicyEdge, NodeRule, PolicyRef, L7Match } from '../../../data/policies';
 import { formatPort, realPorts } from '../../../data/policies';
+import { engineMeta } from '../../../data/engines';
+import { EngineLogo } from '../../../data/engineIcons';
 import s from '../DetailPanel.module.css';
+
+// Engine provenance chip — brand logo + name. Shared by the edge panel and the
+// workload panel's per-engine cards so the same brand-colored mark that rides
+// the arrows also labels the panels. Border (not fill) carries the brand color
+// so the logo keeps its own color on the dark chip.
+export function EngineBadge({ engine }: { engine: string }) {
+  const { label, color } = engineMeta(engine);
+  return (
+    <span
+      className="badge d-inline-flex align-items-center gap-1"
+      title={label}
+      style={{ background: '#11151a', border: `1px solid ${color}`, color: '#e9ecef' }}
+    >
+      <EngineLogo engine={engine} size={12} /> {engine}
+    </span>
+  );
+}
 
 // Match graph arrow colors so panel → canvas is a visual hand-off.
 // Same hex values as style/edgeStyles.ts.
@@ -94,7 +113,7 @@ export function PolicyRow({ p }: { p: PolicyEdge }) {
       </div>
       <div className={`${s.fieldRow} mb-1`}>
         <div className={s.fieldLabel}>Engine:</div>
-        <div>{p.policySource}</div>
+        <EngineBadge engine={p.policySource} />
       </div>
       <div className={`${s.fieldRow} mb-1`}>
         <div className={s.fieldLabel}>Namespace:</div>
@@ -119,7 +138,7 @@ export function PolicyRow({ p }: { p: PolicyEdge }) {
 
 export function RuleRow({ rule }: { rule: NodeRule }) {
   const isDeny = rule.action === 1;
-  const ports = realPorts([rule.port]);
+  const ports = realPorts(rule.ports);
   const dstLabel = rule.dstLabel || rule.dstId; // fall back to raw id for CIDR / unresolved
   return (
     <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
@@ -137,20 +156,25 @@ export function RuleRow({ rule }: { rule: NodeRule }) {
       <div>
         <div className="text-secondary">Ports</div>
         <div className="d-flex flex-column align-items-start gap-1 mt-1">
-          {ports?.map((pt, i) => (
-            <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
-          )) ?? <div>all ports</div>}
+          {rule.allPorts ? (
+            <span className="badge bg-info text-dark">all ports</span>
+          ) : ports?.length ? (
+            ports.map((pt, i) => (
+              <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
+            ))
+          ) : (
+            <div className="text-secondary">none</div>
+          )}
         </div>
       </div>
       {rule.l7Match && <L7Block blocks={[rule.l7Match]} />}
-      {rule.contributors && rule.contributors.length > 0 && (
+      {rule.contributor && (
         <div className="mt-2">
           <div className="text-secondary">From policy</div>
-          {rule.contributors.map((policyRef, i) => (
-            <div key={i} className="text-light">
-              {policyRef.name}<span className="text-secondary"> / {policyRef.namespace}</span>
-            </div>
-          ))}
+          <div className="text-light">
+            {rule.contributor.name}
+            <span className="text-secondary"> / {rule.contributor.namespace}</span>
+          </div>
         </div>
       )}
     </div>

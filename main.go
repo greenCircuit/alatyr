@@ -22,7 +22,9 @@ func main() {
 		}
 		client = demo
 	} else {
-		real, err := k8s.New(os.Getenv("KUBECONFIG"))
+		stopCh := make(chan struct{})
+		defer close(stopCh)                                       
+		real, err := k8s.NewInformerClient(os.Getenv("KUBECONFIG"), stopCh)
 		if err != nil {
 			log.Fatalf("failed to create k8s client: %v", err)
 		}

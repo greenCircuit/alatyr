@@ -7,6 +7,7 @@ export interface FilterState {
   selectedNodeTypes:       Set<string>;
   selectedPolicySources:   Set<string>;
   selectedActions:         Set<number>;
+  selectedDirections:      Set<string>;
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   searchQuery:             string;
@@ -54,6 +55,10 @@ export function filteredEdges(s: FilterState): PolicyEdge[] {
   return s.allEdges.filter((e) => {
     if (!s.selectedPolicySources.has(e.policySource)) return false;
     if (!s.selectedActions.has(e.action ?? 0)) return false;
+    // 'both' edges pass when either direction is selected.
+    if (e.direction === 'both'
+      ? s.selectedDirections.size === 0
+      : !s.selectedDirections.has(e.direction)) return false;
     if (e.level === 'namespace')
       return s.showNamespaceEdges && visibleIds.has(e.source) && visibleIds.has(e.target);
     return visibleIds.has(e.source) && visibleIds.has(e.target);

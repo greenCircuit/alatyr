@@ -12,7 +12,7 @@ import (
 // objects. Pure — no k8s client. Inputs come from store.fetchNsIndex.
 // Output: workloads + label index + namespace node. Skips Pods in
 // Succeeded/Failed phase and Pods owned by a Job.
-func AssembleNsIndex(pods []corev1.Pod, cronJobs []batchv1.CronJob, nsObj corev1.Namespace) models.NSIndex {
+func AssembleNsIndex(pods []*corev1.Pod, cronJobs []*batchv1.CronJob, nsObj *corev1.Namespace) models.NSIndex {
 	seen := map[string]bool{}
 	var nodes []models.WorkloadNode
 
@@ -71,7 +71,7 @@ func AssembleNsIndex(pods []corev1.Pod, cronJobs []batchv1.CronJob, nsObj corev1
 
 // OwnerUID returns the workload-level UID for a pod (controller UID when
 // owned, pod UID otherwise). Same workload's pods share this id.
-func OwnerUID(pod corev1.Pod) string {
+func OwnerUID(pod *corev1.Pod) string {
 	if len(pod.OwnerReferences) > 0 {
 		return string(pod.OwnerReferences[0].UID)
 	}
@@ -80,12 +80,25 @@ func OwnerUID(pod corev1.Pod) string {
 
 // WorkloadLabel picks a display label for a pod: app label > app.kubernetes.io/name
 // > owner name > pod name.
-func WorkloadLabel(pod corev1.Pod) string {
+func WorkloadLabel(pod *corev1.Pod) string {
+	var component string
+	if comp, ok := pod.Labels["app.kubernetes.io/component"]; ok {
+		component = comp
+	}
+
 	if name, ok := pod.Labels["app"]; ok {
-		return name
+		if component != "" && component != name {
+			return name + "-" + component
+		} else {
+			return name
+		}
 	}
 	if name, ok := pod.Labels["app.kubernetes.io/name"]; ok {
-		return name
+		if component != "" && component != name {
+			return name + "-" + component
+		} else {
+			return name
+		}
 	}
 	if len(pod.OwnerReferences) > 0 {
 		return pod.OwnerReferences[0].Name

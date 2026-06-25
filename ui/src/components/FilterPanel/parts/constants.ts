@@ -30,3 +30,5 @@ export const LAYOUTS = [
 ];
 
 export const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
+
+export const DIRECTION_LABEL: Record<string, string> = { ingress: 'Ingress', egress: 'Egress' };

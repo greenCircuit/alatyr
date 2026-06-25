@@ -11,6 +11,7 @@ export function ViewControls() {
     searchQuery, layoutAlgorithm,
     showConnectedNamespaces, toggleConnectedNamespaces,
     aggregateByNamespace, toggleAggregateByNamespace,
+    showEngineIcons, toggleEngineIcons,
     setSearchQuery, setLayoutAlgorithm,
     loadGraph, loading,
   } = useGraphStore();
@@ -27,7 +28,7 @@ export function ViewControls() {
       <input
         type="text"
         className="form-control form-control-sm bg-dark text-light border-secondary"
-        placeholder="Search nodes…"
+        placeholder="Search by node name…"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         style={{ width: 160 }}
@@ -70,6 +71,15 @@ export function ViewControls() {
         style={{ whiteSpace: 'nowrap' }}
       >
         ⇄ Connections
+      </button>
+
+      <button
+        className={`btn btn-sm ${showEngineIcons ? 'btn-warning' : 'btn-outline-secondary'}`}
+        onClick={toggleEngineIcons}
+        title="Show which policy engine produced each arrow"
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        ☸ Engine icons
       </button>
     </>
   );

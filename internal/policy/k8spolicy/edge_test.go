@@ -56,8 +56,9 @@ func buildMultiNSIndex(nodesByNS map[string][]models.WorkloadNode) map[string]mo
 // buildAllowTuples adapts the test-fixture shape (single NS policy slice) to
 // buildAllowRulesByNs' map-by-NS signature, then flattens for assertions.
 func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.NetworkPolicy) []models.Rule {
-	policiesByNS := map[string][]networkingv1.NetworkPolicy{}
-	for _, networkPolicy := range policies {
+	policiesByNS := map[string][]*networkingv1.NetworkPolicy{}
+	for i := range policies {
+		networkPolicy := &policies[i]
 		namespace := networkPolicy.Namespace
 		if namespace == "" {
 			namespace = "default"
@@ -183,7 +184,7 @@ func TestGetTargetEgressTuples_Match(t *testing.T) {
 		map[string]string{"app": "frontend"},
 		map[string]string{"app": "backend"},
 	)
-	tuples := expandEgressRules(networkPolicy, buildTestIndex(nodes))
+	tuples := expandEgressRules(&networkPolicy, buildTestIndex(nodes))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 egress tuple, got %d", len(tuples))
 	}
@@ -204,7 +205,7 @@ func TestGetTargetEgressTuples_NilPodSelector(t *testing.T) {
 			},
 		},
 	}
-	tuples := expandEgressRules(networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("nil PodSelector should produce no tuples, got %d", len(tuples))
 	}
@@ -214,7 +215,7 @@ func TestGetTargetEgressTuples_NoRules(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 	}
-	tuples := expandEgressRules(networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("expected no tuples, got %d", len(tuples))
 	}
@@ -228,7 +229,7 @@ func TestGetTargetIngressTuples_Match(t *testing.T) {
 		map[string]string{"app": "backend"},
 		map[string]string{"app": "frontend"},
 	)
-	tuples := expandIngressRules(networkPolicy, buildTestIndex(nodes))
+	tuples := expandIngressRules(&networkPolicy, buildTestIndex(nodes))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 ingress tuple, got %d", len(tuples))
 	}
@@ -249,7 +250,7 @@ func TestGetTargetIngressTuples_NilPodSelector(t *testing.T) {
 			},
 		},
 	}
-	tuples := expandIngressRules(networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("nil PodSelector should produce no tuples, got %d", len(tuples))
 	}
@@ -259,7 +260,7 @@ func TestGetTargetIngressTuples_NoRules(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 	}
-	tuples := expandIngressRules(networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("expected no tuples, got %d", len(tuples))
 	}
@@ -466,7 +467,7 @@ func TestGenerateTuples_PortsPropagated(t *testing.T) {
 		t.Fatal("expected at least 1 tuple")
 	}
 	for _, tuple := range tuples {
-		if tuple.Port.Port != 8080 {
+		if len(tuple.Ports) != 1 || tuple.Ports[0].Port != 8080 {
 			t.Errorf("tuple missing expected port: %+v", tuple)
 		}
 	}

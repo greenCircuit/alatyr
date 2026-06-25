@@ -16,6 +16,11 @@ func (s *source) Membership(workload models.WorkloadNode, nsLabels map[string]st
 		m.Provider = SourceName
 		m.Mode = "ambient"
 	}
+	if workload.Namespace == RootNamespace || workload.Namespace == IngressNamespace {
+		m.Provider = SourceName
+		m.Mode = "ambient"
+	}
+
 	return m
 }
 
@@ -72,86 +77,61 @@ func ValidateExternalRules(membership *models.MeshMembership, nodePolices map[st
 	if !membership.InMesh || membership.Mode != "ambient" {
 		return errors
 	}
-	for engineName, policyEngine := range nodePolices {
-		// id of nodes dest if they are missing port for istio ingress
-		missingPortIn := make(map[string]bool)
-		missingPortOut := make(map[string]bool)
-		// id of nodes dest if they have access to istio ingress
-		workingIngressDst := make(map[string]bool)
-		workingEgressDst := make(map[string]bool)
+	// all mismanaged policies will be stored here and will be deleted if correct one are found
+	seenInErr := make(map[string]models.NodeRule)
+	seenOutErr := make(map[string]models.NodeRule)
+
+	for engine, policyEngine := range nodePolices {
 		for _, rule := range policyEngine.Rules {
-			// checking allow ingress
-			if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
-				// no port defined, 0 is default value
-				if rule.Port.Port == 0 || rule.Port.Port == ZtunnelHBONEPort {
-					workingIngressDst[rule.DstID] = true
-					// remove from missing list because with port 0, all ports are open
-					_, ok := missingPortIn[rule.DstID]
-					if ok {
-						delete(missingPortIn, rule.DstID)
-					} else {
-						workingIngressDst[rule.DstID] = true
-					}
-					// port defined	that is not allow
-				} else {
-					_, ok := workingIngressDst[rule.DstID]
-					// destination is not marked as able to reach
-					if !ok {
-						if rule.Port.Port != ZtunnelHBONEPort {
-							missingPortIn[rule.DstID] = true
+			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, rule.DstID, rule.Contributor.Name, rule.Contributor.Namespace)                      
+			// need to check only if ports are defined
+				if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
+					missingPort := true
+					for _, port := range rule.Ports {
+						_, ok := seenInErr[ruleKey]
+						if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
+							missingPort = false
+							if ok {
+								delete(seenInErr, ruleKey)
+							}
+						}
+
+						if missingPort && !ok {
+							seenInErr[ruleKey] = rule
 						}
 					}
-
 				}
-			}
-			if rule.Direction == models.DirectionEgress && rule.Action == models.ActionAllow {
-				// no port defined, 0 is default value
-				if rule.Port.Port == 0 || rule.Port.Port == ZtunnelHBONEPort {
-					workingEgressDst[rule.DstID] = true
-					// remove from missing list because with port 0, all ports are open
-					_, ok := missingPortOut[rule.DstID]
-					if ok {
-						delete(missingPortOut, rule.DstID)
-					} else {
-						workingEgressDst[rule.DstID] = true
-					}
-					// port defined	that is not allow
-				} else {
-					_, ok := workingEgressDst[rule.DstID]
-					// destination is not marked as able to reach
-					if !ok {
-						if rule.Port.Port != ZtunnelHBONEPort {
-							missingPortOut[rule.DstID] = true
+
+				if rule.Direction == models.DirectionEgress && rule.Action == models.ActionAllow {
+					missingPort := true
+					for _, port := range rule.Ports {
+						_, ok := seenOutErr[ruleKey]
+						if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
+							missingPort = false
+							if ok {
+								delete(seenOutErr, ruleKey)
+							}
+						}
+
+						if missingPort && !ok {
+							seenOutErr[ruleKey] = rule
 						}
 					}
+				}
 
-				}
-			}
-		}
-		// finished for loop all policies for an engine
-		// going over maps of all remaining misconfigured to find what rule associated with this id and policy engine
-		for ruleId := range missingPortIn{
-			for _, rule := range policyEngine.Rules {
-				if rule.DstID == ruleId {
-					for _, policyRef :=range rule.Contributors {
-						errMsg := fmt.Sprintf("Missing ingress rule for policy engine: %s, name: %s, ns: %s need add port %d to ingress rule for istio ambient to work", engineName, policyRef.Name, policyRef.Namespace, ZtunnelHBONEPort)
-						errors = append(errors, errMsg)
-					}
-				}
 			}
 		}
 
-		for ruleId := range missingPortOut{
-			for _, rule := range policyEngine.Rules {
-				if rule.DstID == ruleId {
-					for _, policyRef :=range rule.Contributors {
-						errMsg := fmt.Sprintf("Missing egress rule for policy engine: %s, name: %s, ns: %s need add port %d to ingress rule for istio ambient to work", engineName, policyRef.Name, policyRef.Namespace, ZtunnelHBONEPort)
-						errors = append(errors, errMsg)
-					}
-				}
-			}
-		}
-
+	// found all errors at this point need to build msgs
+	for _, rule := range seenInErr {
+		errMsg := fmt.Sprintf("Missing ingress rule for policy engine: %s, name: %s, ns: %s need add port %d to ingress rule for istio ambient to work", rule.Contributor.Source, rule.Contributor.Name, rule.Contributor.Namespace, ZtunnelHBONEPort)
+		errors = append(errors, errMsg)
 	}
+
+	for _, rule := range seenOutErr {
+		errMsg := fmt.Sprintf("Missing egress rule for policy engine: %s, name: %s, ns: %s need add port %d to egress rule for istio ambient to work", rule.Contributor.Source, rule.Contributor.Name, rule.Contributor.Namespace, ZtunnelHBONEPort)
+		errors = append(errors, errMsg)
+	}
+
 	return errors
 }
