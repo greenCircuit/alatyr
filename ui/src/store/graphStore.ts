@@ -28,11 +28,15 @@ interface GraphState {
   nodeInfoLoading:         boolean;
   searchQuery:             string;
   layoutAlgorithm:         string;
+  view:                    'graph' | 'tables';
 
   reachabilitySource:      WorkloadNode | null;
   reachability:            ReachabilityResult | null;
   reachabilityLoading:     boolean;
   reachabilityTarget:      WorkloadNode | null;
+
+  edgeReachability:        ReachabilityResult | null;
+  edgeReachabilityLoading: boolean;
 
   loadClusterState:            () => Promise<void>;
   loadGraph:                   () => Promise<void>;
@@ -51,6 +55,7 @@ interface GraphState {
   setSelectedEdges:            (edges: PolicyEdge[]) => void;
   setSearchQuery:              (q: string) => void;
   setLayoutAlgorithm:          (algo: string) => void;
+  setView:                     (view: 'graph' | 'tables') => void;
 
   pinReachabilitySource:       (node: WorkloadNode) => void;
   clearReachability:           () => void;
@@ -88,11 +93,15 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   nodeInfoLoading:         false,
   searchQuery:             '',
   layoutAlgorithm:         'dagre',
+  view:                    'graph',
 
   reachabilitySource:      null,
   reachability:            null,
   reachabilityLoading:     false,
   reachabilityTarget:      null,
+
+  edgeReachability:        null,
+  edgeReachabilityLoading: false,
 
   loadClusterState: async () => {
     try {
@@ -208,7 +217,28 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       get().loadNodeInfo(node.id, node.namespace);
     }
   },
-  setSelectedEdges: (edges) => set({ selectedEdges: edges, selectedNode: null, nodeInfo: null }),
+  setSelectedEdges: (edges) => {
+    set({ selectedEdges: edges, selectedNode: null, nodeInfo: null, edgeReachability: null });
+    // Edges in a bundle share src/dst, so one /api/reachable call covers them
+    // all. Skip namespace-scoped edges — the matcher expects workload IDs and
+    // a "ns → ns" verdict isn't a meaningful answer for the user.
+    if (edges.length === 0) return;
+    const edge = edges[0];
+    if (edge.level === 'namespace') return;
+    const nodes = get().allNodes;
+    const src = nodes.find((n) => n.id === edge.source);
+    const dst = nodes.find((n) => n.id === edge.target);
+    if (!src || !dst) return;
+    set({ edgeReachabilityLoading: true });
+    fetchReachability(src.id, src.namespace || src.id, dst.id, dst.namespace || dst.id)
+      .then((result) => {
+        // Bail if user moved on mid-fetch — selectedEdges replaced or cleared.
+        const current = get().selectedEdges;
+        if (current.length === 0 || current[0].id !== edge.id) return;
+        set({ edgeReachability: result, edgeReachabilityLoading: false });
+      })
+      .catch(() => set({ edgeReachabilityLoading: false }));
+  },
 
   pinReachabilitySource: (node) =>
     set({ reachabilitySource: node, reachability: null, reachabilityTarget: null }),
@@ -228,6 +258,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
   setSearchQuery:       (q)     => set({ searchQuery: q }),
   setLayoutAlgorithm:   (algo)  => set({ layoutAlgorithm: algo }),
+  setView:              (view)  => set({ view }),
 
   filteredNodes: () => _filteredNodes(get()),
   filteredEdges: () => _filteredEdges(get()),

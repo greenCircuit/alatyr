@@ -13,7 +13,6 @@ import cola from 'cytoscape-cola';
 import fcose from 'cytoscape-fcose';
 import { useGraphStore } from '../../store/graphStore';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
-import DetailPanel from '../DetailPanel';
 import { buildElements, buildAggregatedElements } from './parts/elements';
 import { edgeEngines } from './parts/bundling';
 import { STYLE } from './parts/styles';
@@ -378,8 +377,6 @@ export default function PolicyGraph() {
       </div>
 
       <Legend open={legendOpen} onToggle={() => setLegendOpen((o) => !o)} />
-
-      <DetailPanel />
     </div>
   );
 }
