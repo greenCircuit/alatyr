@@ -14,6 +14,7 @@ export function ViewControls() {
     showEngineIcons, toggleEngineIcons,
     setSearchQuery, setLayoutAlgorithm,
     loadGraph, loading,
+    view, setView,
   } = useGraphStore();
 
   return (
@@ -24,6 +25,25 @@ export function ViewControls() {
       >
         NetPol Visualizer
       </span>
+
+      <div className="btn-group btn-group-sm" role="group" aria-label="View mode">
+        <button
+          type="button"
+          className={`btn ${view === 'graph' ? 'btn-warning' : 'btn-outline-secondary'}`}
+          onClick={() => setView('graph')}
+          title="Graph view — spatial reachability"
+        >
+          ◉ Graph
+        </button>
+        <button
+          type="button"
+          className={`btn ${view === 'tables' ? 'btn-warning' : 'btn-outline-secondary'}`}
+          onClick={() => setView('tables')}
+          title="Table view — audit, hygiene, search"
+        >
+          ▤ Tables
+        </button>
+      </div>
 
       <input
         type="text"

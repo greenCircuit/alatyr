@@ -6,15 +6,17 @@
 import { useGraphStore } from '../../store/graphStore';
 import { SEVERITY_COLOR } from '../../data/policies';
 import s from './DetailPanel.module.css';
-import { PolicyRow, RuleRow, PolicyRefRow, EngineBadge } from './parts/policy';
+import { PolicyRow, RuleRow, PolicyRefRow, EngineBadge, EdgeReachabilityBanner, EndpointCard, AffectedPairsList, PolicyHeader, groupEdgesByPair } from './parts/policy';
 import { MeshCard } from './parts/mesh';
 import { ReachabilityPane } from './parts/reachability';
 import { StatusBadges } from './parts/status';
 
 export default function DetailPanel() {
   const {
+    allNodes,
     selectedNode, selectedEdges, nodeInfo, nodeInfoLoading,
     reachabilitySource, reachability, reachabilityLoading, reachabilityTarget,
+    edgeReachability, edgeReachabilityLoading,
     setSelectedNode, setSelectedEdges, pinReachabilitySource, clearReachability,
   } = useGraphStore();
 
@@ -29,7 +31,7 @@ export default function DetailPanel() {
     ? 'Reachability'
     : selectedNode
       ? 'Workload'
-      : `${selectedEdges.length} polic${selectedEdges.length === 1 ? 'y' : 'ies'}`;
+      : 'Connection';
 
   return (
     <div className={`text-light border border-secondary rounded shadow ${s.panel} ${reachActive ? s.panelWide : ''}`}>
@@ -180,18 +182,46 @@ export default function DetailPanel() {
           </div>
         )}
 
-        {selectedEdges.length > 0 && (
-          <>
-            {selectedEdges.length > 1 && (
-              <div className={`text-secondary mb-2 ${s.smallText}`}>
-                {selectedEdges.length} policies on this connection
+        {selectedEdges.length > 0 && (() => {
+          // Bundle from a graph-edge click always shares one (src, dst) pair.
+          // Bundle from a Policies-table click groups by policy and can span
+          // many pairs — in that case show the pair list and let the user
+          // narrow, instead of lying with endpoint cards from edges[0] only.
+          const first = selectedEdges[0];
+          const pairs = groupEdgesByPair(selectedEdges);
+          const multiPair = pairs.length > 1;
+          // For ns-level edges, first.source/target are the `ns-<name>` nodes —
+          // resolved here so EndpointCard can render labels and ns labels just
+          // like a workload edge. Without this the panel showed neither side.
+          const src = multiPair ? undefined : allNodes.find((n) => n.id === first.source);
+          const dst = multiPair ? undefined : allNodes.find((n) => n.id === first.target);
+          if (multiPair) {
+            // Policies-table bundle — one policy, many pairs. The PolicyHeader
+            // carries shared identity (name/engine/ns/action/directions) once
+            // and AffectedPairsList stands in for the per-rule view.
+            return (
+              <>
+                <PolicyHeader edges={selectedEdges} />
+                <AffectedPairsList pairs={pairs} nodes={allNodes} onSelect={setSelectedEdges} />
+              </>
+            );
+          }
+          return (
+            <>
+              <EdgeReachabilityBanner result={edgeReachability} loading={edgeReachabilityLoading} />
+              <div className="d-flex flex-column gap-1 mb-3">
+                <EndpointCard role="src" node={src} />
+                <EndpointCard role="dst" node={dst} />
               </div>
-            )}
-            <div className={selectedEdges.length > 1 ? s.policyGrid : ''}>
-              {selectedEdges.map((p) => <PolicyRow key={p.id} p={p} />)}
-            </div>
-          </>
-        )}
+              <div className={`text-secondary mb-2 ${s.smallText}`}>
+                Policies ({selectedEdges.length})
+              </div>
+              <div className={selectedEdges.length > 1 ? s.policyGrid : ''}>
+                {selectedEdges.map((p) => <PolicyRow key={p.id} p={p} />)}
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

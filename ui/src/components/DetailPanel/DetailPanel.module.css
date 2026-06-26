@@ -4,13 +4,15 @@
   right: 12px;
   width: auto;
   max-width: min(720px, calc(100vw - 24px));
-  /* Parent (PolicyGraph container) is position: relative — using `100%`
+  /* Parent (App view container) is position: relative — using `100%`
      here measures against the parent's actual height, not the viewport.
      Survives zoom because parent height tracks layout, not vh. Panel still
      shrinks to fit short content (no empty bottom space). */
   max-height: calc(100% - 24px);
   overflow-y: auto;
-  z-index: 10;
+  /* Above Bootstrap's sticky-top (1020) — TablesView uses sticky table headers
+     and sticky tab bar, both of which would otherwise paint over the panel. */
+  z-index: 1030;
   background: #1a1e22ee;
 }
 

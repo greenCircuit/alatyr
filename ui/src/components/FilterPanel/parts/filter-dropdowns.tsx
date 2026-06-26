@@ -48,7 +48,7 @@ export function NamespaceDropdown() {
       {open && (
         <div
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 200 }}
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1030, minWidth: 200 }}
         >
           <input
             type="text"
@@ -128,7 +128,7 @@ export function StatusDropdown() {
       {open && (
         <div
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 200 }}
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1030, minWidth: 200 }}
         >
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
@@ -207,7 +207,7 @@ export function PolicySourceDropdown() {
       {open && (
         <div
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 160 }}
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1030, minWidth: 160 }}
         >
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
@@ -274,7 +274,7 @@ export function ActionDropdown() {
       {open && (
         <div
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 140 }}
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1030, minWidth: 140 }}
         >
           {[0, 1].map((action) => (
             <div key={action} className="form-check mb-1">
@@ -324,7 +324,7 @@ export function DirectionDropdown() {
       {open && (
         <div
           className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 100, minWidth: 140 }}
+          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1030, minWidth: 140 }}
         >
           {['ingress', 'egress'].map((direction) => (
             <div key={direction} className="form-check mb-1">
