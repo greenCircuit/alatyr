@@ -16,7 +16,15 @@
       "Bash(git *)",
       "Bash(npx vitest *)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Read(//tmp/**)",
+      "Bash(curl -fs http://localhost:8080/api/cluster-state)",
+      "Bash(curl -s \"http://localhost:8080/api/graph?namespaces=authz-debug,authz-src\")",
+      "Bash(./tests/run.sh istio/test_edges.py)",
+      "Bash(KEEP=1 timeout 30 bash -c ' *)",
+      "Bash(BACKEND_URL=http://localhost:8080 KUBECONFIG=/app/tests/.cache/kubeconfig pytest istio/test_edges.py -vv)",
+      "Bash(/app/tests/.bin/kwokctl get *)",
+      "Bash(/app/tests/.bin/kwokctl create *)"
     ]
   }
 }

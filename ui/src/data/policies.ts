@@ -112,6 +112,14 @@ export interface PolicyRef {
   direction?: string;    // "ingress" | "egress" | "both"
 }
 
+// Labels that caused a workload to be selected on one side of a rule.
+// labelSelector = pod-selector matchLabels; nsSelector = namespaceSelector matchLabels.
+// matchExpressions are not surfaced yet — backend drops them today.
+export interface PolicySelector {
+  labelSelector?: Record<string, string>;
+  nsSelector?:    Record<string, string>;
+}
+
 // NodeRule mirrors backend store.NodeRule. Backend resolves the rule's DstID
 // into a human label + namespace so the UI doesn't need to look it up against
 // the graph node list. SrcID is omitted — clicked node is always the source.
@@ -126,6 +134,8 @@ export interface NodeRule {
   dstId:        string;
   dstLabel?:    string;      // empty for CIDR / unresolved IDs
   dstNamespace?: string;
+  srcSelector?: PolicySelector;
+  dstSelector?: PolicySelector;
 }
 
 // Per-engine policy entry inside NodeInfo.policies.

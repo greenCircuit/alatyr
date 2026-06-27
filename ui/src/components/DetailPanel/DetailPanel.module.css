@@ -99,3 +99,21 @@
 .fieldLabel {
   color: #6c757d;
 }
+
+/* Accent-bar callout: left-border tinted with a dynamic color set by the
+   consumer via --accent. Used by issues callout (warning), engine cards,
+   direction blocks, reachability banners. Keeps inline style usage to a
+   single CSS variable instead of layout properties. */
+.calloutAccent {
+  border-left-color: var(--accent);
+  border-left-width: 5px;
+}
+
+.calloutAccentThin {
+  border-left-color: var(--accent);
+  border-left-width: 4px;
+}
+
+.calloutAccentText {
+  color: var(--accent);
+}

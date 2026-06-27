@@ -3,15 +3,17 @@ package models
 // Rule is an engine-emitted allow/deny between two workloads.
 // Produced by every PolicySource implementation; consumed by graph rendering.
 type Rule struct {
-	SrcID        string      `json:"srcId"`
-	DstID        string      `json:"dstId"`
-	Ports        []Port      `json:"ports"`
-	Direction    Direction   `json:"direction"`
-	Contributor  PolicyRef   `json:"contributor,omitempty"`
-	L7Match      *L7Match    `json:"l7Match,omitempty"` // nil for L3-only engines (k8s); optional for istio
-	Action       RuleAction  `json:"action"`            // zero-value = ActionAllow; istio DENY policies stamp ActionDeny
-	AllPorts	 bool		 `json:"allPorts"`
-	AllL7		 bool 		 `json:"allL7"`
+	SrcID           string      	`json:"srcId"`
+	DstID           string      	`json:"dstId"`
+	Ports           []Port      	`json:"ports"`
+	Direction       Direction   	`json:"direction"`
+	Contributor     PolicyRef  		`json:"contributor,omitempty"`
+	L7Match         *L7Match	    `json:"l7Match,omitempty"` // nil for L3-only engines (k8s); optional for istio
+	Action          RuleAction	    `json:"action"`            // zero-value = ActionAllow; istio DENY policies stamp ActionDeny
+	AllPorts	    bool		 	`json:"allPorts"`
+	AllL7		    bool 		 	`json:"allL7"`
+	SrcSelector     PolicySelector  `json:"srcSelector"`
+	DstSelector     PolicySelector  `json:"dstSelector"`
 }
 
 type RuleAction int
@@ -33,3 +35,11 @@ type PolicyRef struct {
 	Action    string    `json:"action,omitempty"`    // "allow" | "deny" | "" (unknown / k8s allow-style)
 	Direction Direction `json:"direction,omitempty"`
 }
+
+// all different ways policy can select src and dst workloads
+// will show show why workloads belong to policy
+type PolicySelector struct {
+	LabelSelector  map[string]string  `json:"labelSelector,omitempty"`
+	NsSelector     map[string]string  `json:"nsSelector,omitempty"`
+}
+

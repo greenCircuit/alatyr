@@ -3,6 +3,7 @@
 // workload detail (single-node click), or edge list (one or more selected
 // edges). Each view delegates row/badge rendering to parts/ siblings.
 
+import type { CSSProperties } from 'react';
 import { useGraphStore } from '../../store/graphStore';
 import { SEVERITY_COLOR } from '../../data/policies';
 import s from './DetailPanel.module.css';
@@ -74,48 +75,31 @@ export default function DetailPanel() {
         )}
 
         {!reachActive && selectedNode && (
-          <div className="d-flex flex-column gap-2">
-            <div className={s.fieldRow}>
-              <div className={s.fieldLabel}>Name:</div>
-              <div className="fw-semibold text-break">{selectedNode.label}</div>
-            </div>
-            <div className={s.fieldRow}>
-              <div className={s.fieldLabel}>Namespace:</div>
-              <div>{selectedNode.namespace || '—'}</div>
-            </div>
-            <div className={s.fieldRow}>
-              <div className={s.fieldLabel}>Type:</div>
-              <div>{selectedNode.type}</div>
-            </div>
-
-            {nodeInfo?.issues && nodeInfo.issues.length > 0 && (
-              <div
-                className="border rounded p-2 d-flex flex-column gap-1"
-                style={{ borderLeftColor: SEVERITY_COLOR.warning, borderLeftWidth: 5, borderColor: SEVERITY_COLOR.warning }}
-              >
-                <div
-                  className="fw-semibold text-uppercase"
-                  style={{ color: SEVERITY_COLOR.warning }}
-                >
-                  ⚠ {nodeInfo.issues.length} issue{nodeInfo.issues.length > 1 ? 's' : ''} detected
-                </div>
-                <ul className={`ps-3 mb-0 ${s.smallText} text-light`}>
-                  {nodeInfo.issues.map((issue, i) => <li key={i}>{issue}</li>)}
-                </ul>
+          <div className="d-flex flex-column gap-3">
+            {/* Identity header: name as page title, namespace + type as
+                subtitle. Pin-reachability is the headline action and sits
+                next to the title — promoting it from middle-of-flow. */}
+            <div className="d-flex flex-column gap-1">
+              <div className="d-flex justify-content-between align-items-start gap-2">
+                <div className="fs-5 fw-bold text-break">{selectedNode.label}</div>
+                {!reachabilitySource && (
+                  <button
+                    className="btn btn-sm btn-info flex-shrink-0"
+                    onClick={() => pinReachabilitySource(selectedNode)}
+                  >
+                    Pin as reachability source
+                  </button>
+                )}
               </div>
-            )}
+              <div className="d-flex align-items-center gap-2 small">
+                <span className="text-secondary">{selectedNode.namespace || '—'}</span>
+                <span className="badge bg-secondary">{selectedNode.type}</span>
+              </div>
+            </div>
 
-            {!reachabilitySource && (
-              <button
-                className="btn btn-sm btn-outline-info align-self-start"
-                onClick={() => pinReachabilitySource(selectedNode)}
-              >
-                Pin as reachability source
-              </button>
-            )}
             <div>
-              <div className="text-secondary">Labels</div>
-              <div className="d-flex flex-column align-items-start gap-1 mt-1">
+              <div className="text-uppercase text-secondary small fw-semibold mb-1">Labels</div>
+              <div className="d-flex flex-wrap gap-1">
                 {Object.entries(selectedNode.labels).map(([k, v]) => (
                   <span key={k} className={`badge bg-secondary ${s.badgeSm}`}>{k}={v}</span>
                 ))}
@@ -123,10 +107,26 @@ export default function DetailPanel() {
               </div>
             </div>
 
-            <div>
-              <div className="text-secondary">Status (effective)</div>
+            {/* Effective verdict — hero. Boxed so it reads as the answer,
+                not a label-value row. Per-engine cards below are evidence. */}
+            <div className="border border-secondary rounded p-3">
+              <div className="text-uppercase text-secondary small fw-semibold mb-2">Effective status</div>
               <StatusBadges keys={selectedNode.statuses ?? []} />
             </div>
+
+            {nodeInfo?.issues && nodeInfo.issues.length > 0 && (
+              <div
+                className={`border rounded p-2 d-flex flex-column gap-1 ${s.calloutAccent}`}
+                style={{ '--accent': SEVERITY_COLOR.warning, borderColor: SEVERITY_COLOR.warning } as CSSProperties}
+              >
+                <div className={`fw-semibold text-uppercase ${s.calloutAccentText}`}>
+                  ⚠ {nodeInfo.issues.length} issue{nodeInfo.issues.length > 1 ? 's' : ''} detected
+                </div>
+                <ul className={`ps-3 mb-0 ${s.smallText} text-light`}>
+                  {nodeInfo.issues.map((issue, i) => <li key={i}>{issue}</li>)}
+                </ul>
+              </div>
+            )}
 
             {(() => {
               const engines = new Set<string>([
@@ -136,27 +136,27 @@ export default function DetailPanel() {
               if (engines.size === 0) return null;
               return (
                 <div>
-                  <div className="text-secondary">By policy engine</div>
+                  <div className="text-uppercase text-secondary small fw-semibold mb-1">Per-engine evidence</div>
                   {nodeInfoLoading && (
-                    <div className="text-secondary small mt-1">Loading rules + policies…</div>
+                    <div className="text-secondary small mb-1">Loading rules + policies…</div>
                   )}
-                  <div className="d-flex flex-column gap-2 mt-1">
+                  <div className="d-flex flex-column gap-2">
                     {[...engines].map((engine) => {
                       const keys = selectedNode.statusesBySource?.[engine] ?? [];
                       const info = nodeInfo?.policies?.[engine];
                       return (
-                        <div key={engine} className="border border-secondary rounded p-2 mt-4">
+                        <div key={engine} className="border border-secondary rounded p-2">
                           <EngineBadge engine={engine} />
-                          <StatusBadges keys={keys} />
+                          {selectedNode.statusesBySource?.[engine] && <StatusBadges keys={keys} />}
                           {info?.policies && info.policies.length > 0 && (
-                            <div className="mt-2">
-                              <div className="mt-4">Selecting policies</div>
+                            <div className="mt-3">
+                              <div className="text-uppercase text-secondary small fw-semibold mb-1">Selecting policies</div>
                               {info.policies.map((policyRef, i) => <PolicyRefRow key={i} policyRef={policyRef} />)}
                             </div>
                           )}
                           {info?.rules && info.rules.length > 0 && (
-                            <div className="mt-2">
-                              <div className="mt-4">Outbound rules</div>
+                            <div className="mt-3">
+                              <div className="text-uppercase text-secondary small fw-semibold mb-1">Outbound rules</div>
                               {info.rules.map((rule, i) => <RuleRow key={i} rule={rule} />)}
                             </div>
                           )}
@@ -170,8 +170,8 @@ export default function DetailPanel() {
 
             {nodeInfo?.mesh && Object.keys(nodeInfo.mesh).length > 0 && (
               <div>
-                <div className="text-secondary">Mesh</div>
-                <div className="d-flex flex-column gap-2 mt-1">
+                <div className="text-uppercase text-secondary small fw-semibold mb-1">Mesh</div>
+                <div className="d-flex flex-column gap-2">
                   {Object.entries(nodeInfo.mesh).map(([source, m]) => (
                     <MeshCard key={source} source={source} membership={m} />
                   ))}

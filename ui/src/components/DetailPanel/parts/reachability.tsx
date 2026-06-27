@@ -3,6 +3,7 @@
 // per-engine and per-source breakdowns share visual language with the
 // workload-detail view.
 
+import type { CSSProperties } from 'react';
 import type {
   ReachabilityResult,
   EngineVerdict,
@@ -27,11 +28,11 @@ function DirectionBlock({ label, dir, direction }: {
   const denyCount  = dir.denyMatches?.length  ?? 0;
   return (
     <div
-      className="rounded p-2 mb-2 border border-secondary"
-      style={{ borderLeftColor: tint, borderLeftWidth: 4 }}
+      className={`rounded p-2 mb-2 border border-secondary ${s.calloutAccentThin}`}
+      style={{ '--accent': tint } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
-        <span className="fw-semibold" style={{ color: tint }}>{arrow} {label}</span>
+        <span className={`fw-semibold ${s.calloutAccentText}`}>{arrow} {label}</span>
         <div className="d-flex gap-1 flex-wrap">
           {allowCount > 0 && (
             <span className="badge" style={{ background: SEVERITY_COLOR.secure }}>
@@ -73,8 +74,8 @@ function EngineCard({ name, ev }: { name: string; ev: EngineVerdict }) {
               : '#6c757d';
   return (
     <div
-      className="border border-secondary rounded p-2 mb-2"
-      style={{ borderLeftColor: color, borderLeftWidth: 5 }}
+      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
+      style={{ '--accent': color } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-2">
         <span className="fw-semibold">{name}</span>
@@ -162,8 +163,8 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
               : '#6c757d';
   return (
     <div
-      className="border border-secondary rounded p-2 mb-2"
-      style={{ borderLeftColor: color, borderLeftWidth: 5 }}
+      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
+      style={{ '--accent': color } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-1">
         <span className="fw-semibold">mesh · {name}</span>
