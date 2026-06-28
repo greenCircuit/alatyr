@@ -155,6 +155,8 @@ func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models
 		Action:       rule.Action,
 		Contributor:  rule.Contributor,
 		DstID:        rule.DstID,
+		DstSelector:  rule.DstSelector,
+		SrcSelector:  rule.SrcSelector,
 	}
 	if dst, ok := idIndex[rule.DstID]; ok {
 		view.DstLabel = dst.Label

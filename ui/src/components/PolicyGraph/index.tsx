@@ -92,7 +92,7 @@ export default function PolicyGraph() {
     selectedPolicySources, selectedActions, selectedDirections,
     selectedNode,
     setSelectedNode, setSelectedEdges,
-    loadGraph, loadClusterState, loading, error,
+    loading, error,
     layoutAlgorithm,
     reachabilitySource, reachabilityTarget,
     pinReachabilitySource,
@@ -180,7 +180,6 @@ export default function PolicyGraph() {
   // (after layout adds new badges, or the engine-icon toggle flips)
   useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, applyDimming]);
 
-  useEffect(() => { loadClusterState(); loadGraph(); }, []);
 
   // Mount once: create Cytoscape instance and wire event handlers
   useEffect(() => {

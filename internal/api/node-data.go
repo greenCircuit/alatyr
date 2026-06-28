@@ -39,8 +39,7 @@ func (s *Server) getNodeInfo(c echo.Context) error {
 	// check for istio issues if part of istio ambient mode
 	_, ok := memberships[meshistio.SourceName] 
 	if ok {
-		istioAmbientIssues := meshistio.ValidateExternalRules(memberships[meshistio.SourceName], policies)
-		
+		istioAmbientIssues := meshistio.ValidateExternalRules(s.cache, memberships[meshistio.SourceName], policies)
 		meshIssues = append(meshIssues, istioAmbientIssues...)
 	}
 

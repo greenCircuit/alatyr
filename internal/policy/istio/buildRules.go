@@ -54,15 +54,29 @@ func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]
 
 func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []models.Rule {
 	var rulesMatrix []models.Rule
+	var dstSelector models.PolicySelector
+	if authzPolicy.Spec.Selector != nil && authzPolicy.Spec.Selector.MatchLabels != nil {
+		dstSelector.LabelSelector = authzPolicy.Spec.Selector.MatchLabels
+	}
+	
 	rules := authzPolicy.Spec.Rules
 	ruleAction := actionFromSpec(authzPolicy.Spec.Action)
 	for ruleIndex, rule := range rules {
 		var matchWorkloads []models.WorkloadNode
 
+
+		nsFrom := []string{}
 		for _, fromBlock := range rule.From {
 			workloads := expandFromSource(fromBlock.Source, authzPolicy.Namespace, index)
 			matchWorkloads = append(matchWorkloads, workloads...)
+			if fromBlock.Source != nil && fromBlock.Source.Namespaces != nil {
+				nsFrom = append(nsFrom, fromBlock.Source.Namespaces...)
+			}
 		}
+		var srcSelector models.PolicySelector
+		srcSelector.Namespaces = nsFrom
+
+
 
 		contributor := models.PolicyRef{
 			Source:    sourceName,
@@ -80,6 +94,8 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 					Action:      ruleAction,
 					AllPorts:    true,
 					AllL7:       true,
+					SrcSelector: srcSelector,
+					DstSelector: dstSelector,
 				})
 			}
 			continue
@@ -88,6 +104,8 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 		for _, toBlock := range rule.To {
 			var rulePorts []models.Port
 			var ruleL7 models.L7Match
+
+
 			ports, l7policies := expandToOperation(toBlock.Operation)
 			rulePorts = ports
 			ruleL7 = l7policies
@@ -113,6 +131,8 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 						L7Match:     l7Ptr,
 						AllPorts:    true,
 						AllL7:       allL7,
+						SrcSelector: srcSelector,
+						DstSelector: dstSelector,
 					})
 					continue
 				}
@@ -126,6 +146,8 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 					L7Match:     l7Ptr,
 					AllPorts:    false,
 					AllL7:       allL7,
+					SrcSelector: srcSelector,
+					DstSelector: dstSelector,
 				})
 			}
 		}

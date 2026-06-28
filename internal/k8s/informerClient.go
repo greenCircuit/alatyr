@@ -133,6 +133,10 @@ func (c *InformerClient) GetPolicies(ns string) ([]*networkingv1.NetworkPolicy, 
 	return c.npLister.NetworkPolicies(ns).List(labels.Everything())
 }
 
+func (c *InformerClient) GetK8sPolicyByName(ns string, name string) (*networkingv1.NetworkPolicy, error) {
+	return c.npLister.NetworkPolicies(ns).Get(name)
+}
+
 func (c *InformerClient) GetNs(ns string) (*corev1.Namespace, error) {
 	return c.nsLister.Get(ns)
 }
@@ -166,3 +170,17 @@ func (c *InformerClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuth
 	return c.paLister.PeerAuthentications(ns).List(labels.Everything())
 }
 
+
+func (c *InformerClient) GetAuthorizationPoliciesByName(ns string, name string) (*istiosec.AuthorizationPolicy, error) {
+	if c.apLister == nil {
+		return nil, nil
+	}
+	return c.apLister.AuthorizationPolicies(ns).Get(name)
+}
+
+func (c *InformerClient) GetPeerAuthenticationsByName(ns string, name string) (*istiosec.PeerAuthentication, error) {
+	if c.paLister == nil {
+		return nil, nil
+	}
+	return c.paLister.PeerAuthentications(ns).Get(name)
+}

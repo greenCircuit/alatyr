@@ -32,6 +32,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/node-info", s.getNodeInfo)
 	e.GET("/api/cluster-state", s.handleClusterState)
 	e.GET("/api/reachable", s.getReachability)
+	e.GET("/api/manifest", s.getPolicyManifest)
 }
 
 func (s *Server) RegisterUI(e *echo.Echo, uiFS fs.FS) {

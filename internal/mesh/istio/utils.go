@@ -59,6 +59,17 @@ func inAmbientMesh(workloadLabels, nsLabels map[string]string) bool {
 	return nsLabels[AmbientEnrollmentKey] == AmbientEnrollmentValue
 }
 
+// participatesInMesh reports whether a workload is reachable over HBONE — either
+// label-enrolled, or a system component in the root / ingress namespace, whose
+// ztunnel/gateway pods always speak HBONE even without the enrollment label.
+// Mirrors the namespace rule in Membership so the 15008 gate and membership agree.
+func participatesInMesh(workload models.WorkloadNode, nsLabels map[string]string) bool {
+	if workload.Namespace == RootNamespace || workload.Namespace == IngressNamespace {
+		return true
+	}
+	return inAmbientMesh(workload.Labels, nsLabels)
+}
+
 // effectiveMode returns the per-port override if set, else Verdict.
 // port=0 means no port specified.
 func effectiveMode(state *models.MtlsState, port uint32) models.MeshScope {

@@ -29,12 +29,3 @@ export function StatusBadges({ keys }: { keys: StatusKey[] }) {
     </div>
   );
 }
-
-// verdictColor maps reachability verdicts to the project palette. Lives here
-// because StatusBadges + reachability columns both read from the SEVERITY
-// vocabulary, keeping color tokens grouped.
-export function verdictColor(verdict: string): string {
-  if (verdict === 'allow') return SEVERITY_COLOR.secure;
-  if (verdict === 'deny')  return SEVERITY_COLOR.high;
-  return SEVERITY_COLOR.caution;
-}

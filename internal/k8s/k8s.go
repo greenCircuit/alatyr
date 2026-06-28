@@ -16,4 +16,9 @@ type KubernetesClient interface {
 	GetNs(ns string) (*corev1.Namespace, error)
 	GetAuthorizationPolicies(ns string) ([]*istiosec.AuthorizationPolicy, error)
 	GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error)
+
+	// single-object fetch by name, for on-demand manifest view
+	GetK8sPolicyByName(ns string, name string) (*networkingv1.NetworkPolicy, error)
+	GetAuthorizationPoliciesByName(ns string, name string) (*istiosec.AuthorizationPolicy, error)
+	GetPeerAuthenticationsByName(ns string, name string) (*istiosec.PeerAuthentication, error)
 }

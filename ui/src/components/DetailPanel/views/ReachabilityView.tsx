@@ -3,6 +3,7 @@
 // per-engine and per-source breakdowns share visual language with the
 // workload-detail view.
 
+import type { CSSProperties } from 'react';
 import type {
   ReachabilityResult,
   EngineVerdict,
@@ -13,9 +14,9 @@ import type {
 } from '../../../data/policies';
 import { SEVERITY_COLOR } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
-import { DIR_COLOR, PolicyRefList, RuleRow } from './policy';
-import { MTLS_VERDICT_COLOR } from './mesh';
-import { verdictColor } from './status';
+import { PolicyRefList, RuleRow } from '../shared/rows';
+import { ManifestButton } from '../shared/ManifestModal';
+import { DIR_COLOR, MTLS_VERDICT_COLOR, verdictColor } from '../shared/presentation';
 
 function DirectionBlock({ label, dir, direction }: {
   label:     string;
@@ -27,11 +28,11 @@ function DirectionBlock({ label, dir, direction }: {
   const denyCount  = dir.denyMatches?.length  ?? 0;
   return (
     <div
-      className="rounded p-2 mb-2 border border-secondary"
-      style={{ borderLeftColor: tint, borderLeftWidth: 4 }}
+      className={`rounded p-2 mb-2 border border-secondary ${s.calloutAccentThin}`}
+      style={{ '--accent': tint } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
-        <span className="fw-semibold" style={{ color: tint }}>{arrow} {label}</span>
+        <span className={`fw-semibold ${s.calloutAccentText}`}>{arrow} {label}</span>
         <div className="d-flex gap-1 flex-wrap">
           {allowCount > 0 && (
             <span className="badge" style={{ background: SEVERITY_COLOR.secure }}>
@@ -73,8 +74,8 @@ function EngineCard({ name, ev }: { name: string; ev: EngineVerdict }) {
               : '#6c757d';
   return (
     <div
-      className="border border-secondary rounded p-2 mb-2"
-      style={{ borderLeftColor: color, borderLeftWidth: 5 }}
+      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
+      style={{ '--accent': color } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-2">
         <span className="fw-semibold">{name}</span>
@@ -108,8 +109,13 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
         </div>
       </div>
       {membership.mtls?.effectiveSource?.name && (
-        <div className={`text-secondary ${s.smallText}`}>
-          From PA: {membership.mtls.effectiveSource.namespace}/{membership.mtls.effectiveSource.name}
+        <div className={`text-secondary d-flex align-items-center gap-2 ${s.smallText}`}>
+          <span>From PA: {membership.mtls.effectiveSource.namespace}/{membership.mtls.effectiveSource.name}</span>
+          <ManifestButton
+            kind="pa"
+            namespace={membership.mtls.effectiveSource.namespace}
+            name={membership.mtls.effectiveSource.name}
+          />
         </div>
       )}
     </div>
@@ -162,8 +168,8 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
               : '#6c757d';
   return (
     <div
-      className="border border-secondary rounded p-2 mb-2"
-      style={{ borderLeftColor: color, borderLeftWidth: 5 }}
+      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
+      style={{ '--accent': color } as CSSProperties}
     >
       <div className="d-flex justify-content-between align-items-center mb-1">
         <span className="fw-semibold">mesh · {name}</span>
@@ -171,8 +177,9 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
       </div>
       <div className={`text-secondary ${s.smallText}`}>{v.reason}</div>
       {v.effectiveSource?.name && (
-        <div className={`text-secondary ${s.smallText} mt-1`}>
-          Forced by: {v.effectiveSource.namespace}/{v.effectiveSource.name}
+        <div className={`text-secondary d-flex align-items-center gap-2 ${s.smallText} mt-1`}>
+          <span>Forced by: {v.effectiveSource.namespace}/{v.effectiveSource.name}</span>
+          <ManifestButton kind="pa" namespace={v.effectiveSource.namespace} name={v.effectiveSource.name} />
         </div>
       )}
     </div>
@@ -211,7 +218,7 @@ function ResultColumn({ result, engines }: {
   );
 }
 
-export function ReachabilityPane({ src, dst, result }: {
+function ReachabilityGrid({ src, dst, result }: {
   src:    WorkloadNode;
   dst:    WorkloadNode;
   result: ReachabilityResult;
@@ -223,5 +230,46 @@ export function ReachabilityPane({ src, dst, result }: {
       <WorkloadColumn node={dst} role="DST" engines={engines} policiesKey="dstPolicies" mesh={result.dstMesh} />
       <ResultColumn result={result} engines={engines} />
     </div>
+  );
+}
+
+// Full reachability region: the pinned-source banner (always shown once a
+// source is pinned), a loading hint while the verdict computes, and the
+// three-column grid once a target is clicked and the result lands.
+export function ReachabilityView({ source, target, loading, result, onClear }: {
+  source:  WorkloadNode;
+  target:  WorkloadNode | null;
+  loading: boolean;
+  result:  ReachabilityResult | null;
+  onClear: () => void;
+}) {
+  return (
+    <>
+      <div className="border border-info rounded p-2 mb-2">
+        <div className="d-flex justify-content-between align-items-center">
+          <div>
+            <span className="badge bg-info text-dark me-2">SRC</span>
+            <span className="fw-semibold">{source.label}</span>
+            <span className="text-secondary"> / {source.namespace || '—'}</span>
+          </div>
+          <button className="btn btn-sm btn-outline-light" onClick={onClear}>
+            Cancel
+          </button>
+        </div>
+        <div className={`text-secondary mt-1 ${s.smallText}`}>
+          {target
+            ? <>Target: {target.label}</>
+            : <>Click another node to check reachability</>}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-secondary small mb-2">Computing reachability…</div>
+      )}
+
+      {result && target && (
+        <ReachabilityGrid src={source} dst={target} result={result} />
+      )}
+    </>
   );
 }

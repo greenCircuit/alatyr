@@ -72,7 +72,7 @@ func (s *source) CanReach(ctx context.Context, srcWorkload, dstWorkload models.W
 
 // ValidateExternalRule flags ambient workloads whose other-engine ingress
 // rules restrict ports without allowing the ztunnel HBONE port.
-func ValidateExternalRules(membership *models.MeshMembership, nodePolices map[string]models.NodeInfo) []string {
+func ValidateExternalRules(cache * models.Cache, membership *models.MeshMembership, nodePolices map[string]models.NodeInfo) []string {
 	var errors []string
 	if !membership.InMesh || membership.Mode != "ambient" {
 		return errors
@@ -83,7 +83,14 @@ func ValidateExternalRules(membership *models.MeshMembership, nodePolices map[st
 
 	for engine, policyEngine := range nodePolices {
 		for _, rule := range policyEngine.Rules {
-			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, rule.DstID, rule.Contributor.Name, rule.Contributor.Namespace)                      
+			// HBONE (15008) only applies when the other end is a mesh peer.
+			// External CIDR dsts (0.0.0.0/0) and non-ambient workloads never
+			// tunnel, so restricting their ports is correct — don't flag them.
+			dstWorkload, dstNsLabels := cache.Workload(rule.DstID, rule.DstNamespace)
+			if dstWorkload == nil || !participatesInMesh(*dstWorkload, dstNsLabels) {
+				continue
+			}
+			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, rule.DstID, rule.Contributor.Name, rule.Contributor.Namespace)
 			// need to check only if ports are defined
 				if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
 					missingPort := true
@@ -95,7 +102,6 @@ func ValidateExternalRules(membership *models.MeshMembership, nodePolices map[st
 								delete(seenInErr, ruleKey)
 							}
 						}
-
 						if missingPort && !ok {
 							seenInErr[ruleKey] = rule
 						}
