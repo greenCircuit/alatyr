@@ -1,19 +1,42 @@
-.panel {
+/* Right-anchored overlay dock: holds the manifest drawer (left) + DetailPanel
+   (right) in a flex row so the panel stays pinned to the right edge and the
+   YAML drawer opens to its LEFT without shifting the panel. Empty dock is
+   click-through so it never blocks the canvas/table behind it. */
+.rightDock {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: auto;
-  max-width: min(720px, calc(100vw - 24px));
-  /* Parent (App view container) is position: relative — using `100%`
-     here measures against the parent's actual height, not the viewport.
-     Survives zoom because parent height tracks layout, not vh. Panel still
-     shrinks to fit short content (no empty bottom space). */
-  max-height: calc(100% - 24px);
-  overflow-y: auto;
+  bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: flex-start;
+  pointer-events: none;
   /* Above Bootstrap's sticky-top (1020) — TablesView uses sticky table headers
      and sticky tab bar, both of which would otherwise paint over the panel. */
   z-index: 1030;
-  background: #1a1e22ee;
+}
+.rightDock > * {
+  pointer-events: auto;
+}
+
+.panel {
+  width: auto;
+  max-width: min(720px, calc(100vw - 24px));
+  /* Dock has a fixed height (top/bottom 12); fill it and scroll, but still
+     shrink to fit short content (no empty bottom space). */
+  max-height: 100%;
+  overflow-y: auto;
+  /* Glassmorphism: blur whatever graph sits behind the panel so busy
+     backgrounds don't bleed through and hurt text legibility. Slightly
+     more opaque base than before + a hairline border and shadow to lift
+     the panel off the canvas. -webkit- prefix for Safari. */
+  background: #1a1e22cc;
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #00000066;
 }
 
 /* Wide variant — engaged only when a reachability source is pinned.
@@ -98,4 +121,74 @@
 
 .fieldLabel {
   color: #6c757d;
+}
+
+/* Accent-bar callout: left-border tinted with a dynamic color set by the
+   consumer via --accent. Used by issues callout (warning), engine cards,
+   direction blocks, reachability banners. Keeps inline style usage to a
+   single CSS variable instead of layout properties. */
+.calloutAccent {
+  border-left-color: var(--accent);
+  border-left-width: 5px;
+}
+
+.calloutAccentThin {
+  border-left-color: var(--accent);
+  border-left-width: 4px;
+}
+
+/* Raw-manifest drawer: a flex child of .rightDock, sits to the LEFT of the
+   DetailPanel. flex-shrink:0 keeps its width; the panel yields space instead. */
+.manifestDrawer {
+  width: min(560px, 45vw);
+  max-height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1a1e22;
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px #000000aa;
+}
+
+/* Code surface: darker than the dialog so it reads as a distinct terminal
+   region. Both-axis scroll — wrapping would lie about YAML indentation, so
+   long lines scroll horizontally instead of folding. */
+.yamlBlock {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0; /* let the flex child scroll instead of growing the dialog */
+  overflow: auto;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 2;
+  color: #c9d1d9;
+  white-space: pre; /* preserve indentation; never wrap */
+  word-break: normal;
+}
+
+/* Selector lines in the YAML that match a selected workload's labels — shows
+   how the policy selected this workload. Amber tint + left bar to read against
+   the dark code surface. */
+.yamlHighlight {
+  background: #ffd70026;
+  box-shadow: inset 2px 0 0 #ffd700;
+  border-radius: 2px;
+}
+
+/* YAML token colors — GitHub-dark palette tuned for the #0d1117 code surface. */
+.yamlKey     { color: #fe9f98; }            /* mapping keys */
+.yamlStr     { color: #a5d6ff; }            /* string scalars (quoted + plain) */
+.yamlNum     { color: #f0883e; }            /* numbers */
+.yamlBool    { color: #a5d6ff; }            /* true / false / null / ~ */
+.yamlComment { color: #8b949e; font-style: italic; }
+.yamlPunct   { color: #8b949e; }            /* `:` `-` `---` */
+
+.calloutAccentText {
+  color: var(--accent);
 }

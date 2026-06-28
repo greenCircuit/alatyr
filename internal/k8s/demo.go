@@ -185,3 +185,26 @@ func (c *DemoClient) GetAuthorizationPolicies(ns string) ([]*istiosec.Authorizat
 func (c *DemoClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error) {
 	return c.peerAuthentications[ns], nil
 }
+
+func (c *DemoClient) GetK8sPolicyByName(ns string, name string) (*networkingv1.NetworkPolicy, error) {
+	return findByName(c.policies[ns], name)
+}
+
+func (c *DemoClient) GetAuthorizationPoliciesByName(ns string, name string) (*istiosec.AuthorizationPolicy, error) {
+	return findByName(c.authorizationPolicies[ns], name)
+}
+
+func (c *DemoClient) GetPeerAuthenticationsByName(ns string, name string) (*istiosec.PeerAuthentication, error) {
+	return findByName(c.peerAuthentications[ns], name)
+}
+
+// findByName returns the item whose metadata name matches, or a not-found error.
+func findByName[T interface{ GetName() string }](items []T, name string) (T, error) {
+	for _, item := range items {
+		if item.GetName() == name {
+			return item, nil
+		}
+	}
+	var zero T
+	return zero, fmt.Errorf("not found: %q", name)
+}

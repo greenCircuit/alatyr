@@ -165,8 +165,8 @@ function PolicyCountChips({
   );
 }
 
-function LabelChips({ labels }: { labels: Record<string, string> }) {
-  const entries = Object.entries(labels);
+function LabelChips({ labels }: { labels: Record<string, string> | null | undefined }) {
+  const entries = Object.entries(labels ?? {});
   if (entries.length === 0) return <span className="text-secondary">—</span>;
   const shown = entries.slice(0, 3);
   const hidden = entries.length - shown.length;

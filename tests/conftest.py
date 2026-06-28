@@ -167,3 +167,17 @@ def get_reachability(api) -> Callable[..., dict]:
         response.raise_for_status()
         return response.json()
     return _get
+
+
+@pytest.fixture
+def get_manifest(api) -> Callable[..., requests.Response]:
+    """Hit /api/manifest for one policy object. Returns the raw Response so
+    callers can assert on status (200 vs 400) — manifest fetches straight from
+    the apiserver, not the graph cache, so error paths are part of the contract.
+    """
+    def _get(kind: str, namespace: str, name: str) -> requests.Response:
+        return api.get(
+            f"{BACKEND_URL}/api/manifest",
+            params={"kind": kind, "namespace": namespace, "name": name},
+        )
+    return _get

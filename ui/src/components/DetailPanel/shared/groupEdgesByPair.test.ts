@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupEdgesByPair } from './policy';
+import { groupEdgesByPair } from './groupEdgesByPair';
 import type { PolicyEdge } from '../../../data/policies';
 
 const edge = (id: string, source: string, target: string): PolicyEdge => ({

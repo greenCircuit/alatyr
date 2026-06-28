@@ -9,7 +9,8 @@ import type { PolicyEdge } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import { engineMeta } from '../../data/engines';
 import { EngineLogo } from '../../data/engineIcons';
-import { DirectionBadge } from '../DetailPanel/parts/policy';
+import { DirectionBadge } from '../DetailPanel/shared/badges';
+import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
 
 type Col = 'name' | 'engine' | 'namespace' | 'action' | 'direction' | 'rules' | 'reach';
@@ -143,15 +144,21 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
               <span className="badge bg-warning text-dark">{row.dstCount}</span>
             </td>
             <td className="text-end">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary"
-                onClick={(e) => openInGraph(row, e)}
-                title="Show this policy in the graph"
-                style={{ whiteSpace: 'nowrap' }}
-              >
-                ◉ Graph
-              </button>
+              <div className="d-flex gap-1 justify-content-end align-items-center">
+                {/* stop row-select fire from the YAML modal trigger */}
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ManifestButton kind={row.engine} namespace={row.namespace} name={row.name} />
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={(e) => openInGraph(row, e)}
+                  title="Show this policy in the graph"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  ◉ Graph
+                </button>
+              </div>
             </td>
           </tr>
         ))}

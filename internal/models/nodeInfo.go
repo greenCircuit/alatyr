@@ -12,6 +12,8 @@ type NodeRule struct {
 	DstID        string      `json:"dstId"`
 	DstLabel     string      `json:"dstLabel,omitempty"`
 	DstNamespace string      `json:"dstNamespace,omitempty"`
+	SrcSelector  PolicySelector  `json:"srcSelector,omitempty"`
+	DstSelector  PolicySelector  `json:"dstSelector,omitempty"`
 }
 
 // NodeInfo bundles per-engine data for one workload: rules where the node is

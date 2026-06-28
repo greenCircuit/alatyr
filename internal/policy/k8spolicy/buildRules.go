@@ -53,7 +53,17 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.To {
-			out = append(out, expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)...)
+			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)
+			for _, rule := range matchRules {
+				rule.SrcSelector.LabelSelector = networkPolicy.Spec.PodSelector.MatchLabels
+				if peer.PodSelector != nil {
+					rule.DstSelector.LabelSelector = peer.PodSelector.MatchLabels
+				}
+				if peer.NamespaceSelector != nil {
+					rule.DstSelector.NsSelector = peer.NamespaceSelector.MatchLabels
+				}
+				out = append(out, rule)
+			}
 		}
 	}
 	return out
@@ -64,7 +74,17 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
 		ports := convertPorts(rule.Ports)
 		for _, peer := range rule.From {
-			out = append(out, expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)...)
+			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)
+			for _, rule := range matchRules {
+				if peer.PodSelector != nil {
+					rule.SrcSelector.LabelSelector = peer.PodSelector.MatchLabels
+				}
+				if peer.NamespaceSelector != nil {
+					rule.SrcSelector.NsSelector = peer.NamespaceSelector.MatchLabels
+				}
+				rule.DstSelector.LabelSelector = networkPolicy.Spec.PodSelector.MatchLabels
+				out = append(out, rule)
+			}
 		}
 	}
 	return out

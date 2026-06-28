@@ -6,15 +6,8 @@
 import type { MeshMembership, MtlsState, MtlsSource } from '../../../data/policies';
 import { SEVERITY_COLOR } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
-
-// Color-codes mTLS verdict so the badge reads at a glance. Reused by the
-// reachability MeshSideCard, so exported.
-export const MTLS_VERDICT_COLOR: Record<string, string> = {
-  strict:     SEVERITY_COLOR.secure,
-  permissive: SEVERITY_COLOR.caution,
-  disable:    SEVERITY_COLOR.high,
-  unset:      '#6c757d',
-};
+import { MTLS_VERDICT_COLOR } from './presentation';
+import { ManifestButton } from './ManifestModal';
 
 function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boolean }) {
   const scope = src.meshScope;
@@ -25,12 +18,13 @@ function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boo
     >
       <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
         <div className="fw-semibold text-break">{src.namespace}/{src.name}</div>
-        <div className="d-flex gap-1 flex-shrink-0">
+        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
           {isEffective && <span className="badge bg-success">effective</span>}
           <span className="badge" style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#6c757d', color: '#1a1d20' }}>
             {scope}
           </span>
           <span className="badge bg-secondary">{src.meshSource}</span>
+          <ManifestButton kind="pa" namespace={src.namespace} name={src.name} />
         </div>
       </div>
       {src.portModes && Object.keys(src.portModes).length > 0 && (
