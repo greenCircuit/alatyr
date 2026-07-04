@@ -91,6 +91,13 @@
   text-align: left;
 }
 
+/* Unenforced coverage chip: hollow + dashed so it reads as "present but inert"
+   — distinct from the solid enforced badges without borrowing an error color.
+   Bootstrap's .border is solid only, so the dashed style lives here. */
+.noEffect {
+  border-style: dashed !important;
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -178,6 +185,15 @@
 .yamlHighlight {
   background: #ffd70026;
   box-shadow: inset 2px 0 0 #ffd700;
+  border-radius: 2px;
+}
+
+/* Peer side of a rule (the other endpoint) — teal, distinct from the amber
+   this-node highlight so an operator can tell which selector lines matched the
+   clicked workload vs the peer without decoding a legend. */
+.yamlHighlightPeer {
+  background: #22d3ee26;
+  box-shadow: inset 2px 0 0 #22d3ee;
   border-radius: 2px;
 }
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability } from '../api/client';
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeInfo, ReachabilityResult } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
 
 interface GraphState {
@@ -24,7 +24,7 @@ interface GraphState {
   showEngineIcons:         boolean;
   selectedNode:            WorkloadNode | null;
   selectedEdges:           PolicyEdge[];
-  nodeInfo:                NodeInfo | null;
+  nodeInfo:                NodeDetail | null;
   nodeInfoLoading:         boolean;
   searchQuery:             string;
   layoutAlgorithm:         string;

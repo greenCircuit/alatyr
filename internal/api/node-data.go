@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	meshistio "graph/internal/mesh/istio"
 	"graph/internal/models"
 	"graph/internal/store"
-	meshistio "graph/internal/mesh/istio"
 )
 
 // NodeDetail bundles policy-engine + mesh-source results + interop issues
@@ -14,9 +14,10 @@ import (
 // cross-cutting misconfig findings that don't belong inside any single
 // policy or mesh entry (e.g. ambient pod with NP missing ztunnel allowance).
 type NodeDetail struct {
-	Policies map[string]models.NodeInfo        `json:"policies"`
-	Mesh     map[string]*models.MeshMembership `json:"mesh,omitempty"`
-	Issues   []string                          `json:"issues,omitempty"`
+	PolicyNeighbors map[string]store.NodeNeighbors    `json:"neighbors"`
+	Mesh            map[string]*models.MeshMembership `json:"mesh,omitempty"`
+	Issues          []string                          `json:"issues,omitempty"`
+	
 }
 
 // return all rules + mesh state touching given node; lazy-populate cache for
@@ -28,25 +29,26 @@ func (s *Server) getNodeInfo(c echo.Context) error {
 	if ns == "" || nodeId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing params"})
 	}
-	
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	meshSources := s.store.MeshSources()
 	memberships := store.GetWorkloadMesh(c.Request().Context(), s.cache, meshSources, nodeId, ns)
-	policies:= store.GetNodeData(s.cache, nodeId, ns) 
+	nodeNeighbors := store.BuildNodeNeighbor(s.cache, nodeId)
 	var meshIssues []string
 	// check for istio issues if part of istio ambient mode
-	_, ok := memberships[meshistio.SourceName] 
+	policies := store.GetNodeData(s.cache, nodeId, ns)
+	_, ok := memberships[meshistio.SourceName]
 	if ok {
 		istioAmbientIssues := meshistio.ValidateExternalRules(s.cache, memberships[meshistio.SourceName], policies)
 		meshIssues = append(meshIssues, istioAmbientIssues...)
 	}
 
 	detail := NodeDetail{
-		Policies: policies,
-		Mesh:     memberships,
-		Issues:   meshIssues,
+		PolicyNeighbors: nodeNeighbors,
+		Mesh:            memberships,
+		Issues:          meshIssues,
 	}
 	return c.JSON(http.StatusOK, detail)
 }

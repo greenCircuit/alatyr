@@ -12,6 +12,7 @@ type Rule struct {
 	Action          RuleAction	    `json:"action"`            // zero-value = ActionAllow; istio DENY policies stamp ActionDeny
 	AllPorts	    bool		 	`json:"allPorts"`
 	AllL7		    bool 		 	`json:"allL7"`
+	Coverage 		Coverage		`json:"coverage,omitempty"` // "" | "deny-all" | "allow-all"
 	SrcSelector     PolicySelector  `json:"srcSelector"`
 	DstSelector     PolicySelector  `json:"dstSelector"`
 }
@@ -22,6 +23,16 @@ const (
 	ActionAllow RuleAction = iota
 	ActionDeny
 )
+
+type Coverage string
+const (
+	CoverageDenyAll   	 Coverage = "deny all"
+	CoverageAllowAll  	 Coverage = "allow all"
+	CoverageAllowAllNs	 Coverage = "allow all ns"
+	CoverageRestricted	 Coverage = "restricted"
+	CoverageUnenforced	 Coverage = "unenforced"
+	CoverageAudit   	 Coverage = "audit"
+) 
 
 // PolicyRef points back to a specific policy (and rule within it) that
 // contributed to a Rule. Rendered in the detail panel.

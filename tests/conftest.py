@@ -138,9 +138,11 @@ def get_cluster_state(api) -> Callable[[], dict]:
 def get_node_info(api) -> Callable[..., dict]:
     """Hit /api/node-info for one workload.
 
-    Returns the per-engine map: `{engineName: {rules: [...], policies: [...]}}`.
-    Engines that have no rules AND no selecting policies for the node are
-    omitted from the response. Reads from the cache populated by /api/graph.
+    Returns the full detail body: `{neighbors: {engineName: {In, Out}}, mesh?,
+    issues?}`. `neighbors` is per-engine adjacency — In = node is the rule
+    destination, Out = node is the source. Every registered engine gets a key
+    (empty In/Out = no neighbors, not an absent key). Reads from the cache
+    populated by /api/graph.
     """
     def _get(node_id: str, namespace: str) -> dict:
         response = api.get(

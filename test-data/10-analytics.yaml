@@ -1,0 +1,161 @@
+# analytics — a pure k8s NetworkPolicy tier with NO service mesh (no ambient
+# label, no Istio policies, no HBONE). Proves the tool reads a plain-Kubernetes
+# shop, not just a mesh. Clean top-to-bottom pipeline; every arrow is intra-ns.
+#
+#   internet(0.0.0.0/0) ─▶ ingest ─▶ enrich ─▶ warehouse
+#
+#   ingest     internet-ingress   (public collection endpoint on 443)
+#   enrich     ns-ingress-access  (reached only by ingest)
+#   warehouse  air-gapped         (ingress from enrich only; egress denied)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: analytics
+  labels:
+    kubernetes.io/metadata.name: analytics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest
+  namespace: analytics
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ingest
+  template:
+    metadata:
+      labels:
+        app: ingest
+    spec:
+      containers:
+        - name: ingest
+          image: registry.example.com/analytics/ingest:1.4.0
+          ports:
+            - containerPort: 443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrich
+  namespace: analytics
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: enrich
+  template:
+    metadata:
+      labels:
+        app: enrich
+    spec:
+      containers:
+        - name: enrich
+          image: registry.example.com/analytics/enrich:1.4.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: warehouse
+  namespace: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: warehouse
+  template:
+    metadata:
+      labels:
+        app: warehouse
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - containerPort: 5432
+---
+# ingest: public collection endpoint. Ingress straight from the internet on 443;
+# egress only to enrich. -> internet-ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingest-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: ingest
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: enrich
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# enrich: reachable only from ingest; writes to the warehouse. -> ns-ingress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: enrich-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: enrich
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ingest
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: warehouse
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# warehouse: written to by enrich only; no egress at all. -> air-gapped
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: warehouse-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: warehouse
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: enrich
+      ports:
+        - protocol: TCP
+          port: 5432

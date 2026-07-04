@@ -8,7 +8,6 @@ import (
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
 
-
 // Note: Istio AuthorizationPolicy is ingress-only at the L3 layer — it gates
 // traffic INTO the selected workload. Egress is handled by Sidecar /
 // ServiceEntry resources (out of scope here). All produced rules use
@@ -52,6 +51,70 @@ func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]
 	return utils.IndexLabelMatch(authzPolicy.Spec.Selector.MatchLabels, nsIndex.LabelIndex)
 }
 
+// spec.rules: {}
+func expandBlanketRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule{
+		ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
+		// field is not even defined
+		var computedCoverage models.Coverage
+		if ruleAction == models.ActionAllow {
+			computedCoverage = models.CoverageDenyAll
+		} else {
+			computedCoverage = models.CoverageUnenforced
+		}
+
+		rule := models.Rule{
+			Direction:   models.DirectionIngress,
+			Action:      ruleAction,
+			AllPorts:    true,
+			AllL7:       true,
+			Coverage:    computedCoverage,
+		}
+		return rule
+}
+
+// spec.rules: - {}
+func expandCatchAllRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule{
+		ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
+		// field is not even defined
+		var computedCoverage models.Coverage
+		if ruleAction == models.ActionAllow {
+			computedCoverage = models.CoverageUnenforced
+		} else {
+			computedCoverage = models.CoverageDenyAll
+		}
+
+		rule := models.Rule{
+			Direction:   models.DirectionIngress,
+			Action:      ruleAction,
+			AllPorts:    true,
+			AllL7:       true,
+			Coverage:    computedCoverage,
+		}
+		return rule
+}
+
+// spec.rules[to] = {}
+func isEmptyToOperation(toBlock *istioapi.Rule_To) bool {
+	if toBlock == nil || toBlock.Operation == nil {
+		return true
+	}
+	operation := toBlock.Operation
+	return len(operation.Hosts) == 0 && len(operation.NotHosts) == 0 &&
+		len(operation.Ports) == 0 && len(operation.NotPorts) == 0 &&
+		len(operation.Methods) == 0 && len(operation.NotMethods) == 0 &&
+		len(operation.Paths) == 0 && len(operation.NotPaths) == 0
+}
+
+// spec.rules[].to all operations empty (no port/L7 narrowing)
+func isEmptyToOperations(to []*istioapi.Rule_To) bool {
+	for _, toBlock := range to {
+		if !isEmptyToOperation(toBlock) {
+			return false
+		}
+	}
+	return true
+}
+
 func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]models.NSIndex) []models.Rule {
 	var rulesMatrix []models.Rule
 	var dstSelector models.PolicySelector
@@ -60,11 +123,23 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 	}
 	
 	rules := authzPolicy.Spec.Rules
-	ruleAction := actionFromSpec(authzPolicy.Spec.Action)
+	ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
+
+	// no rules section defined will be deny all policy
+	// spec.rules: {}
+	if len(rules) == 0 {
+		contributor := models.PolicyRef{
+			Source:    sourceName,
+			Name:      authzPolicy.Name,
+			Namespace: authzPolicy.Namespace,
+		}
+		rule := expandBlanketRule(authzPolicy)
+		rule.Contributor = contributor
+		rulesMatrix = append(rulesMatrix, rule)
+	}
+
 	for ruleIndex, rule := range rules {
 		var matchWorkloads []models.WorkloadNode
-
-
 		nsFrom := []string{}
 		for _, fromBlock := range rule.From {
 			workloads := expandFromSource(fromBlock.Source, authzPolicy.Namespace, index)
@@ -76,8 +151,6 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 		var srcSelector models.PolicySelector
 		srcSelector.Namespaces = nsFrom
 
-
-
 		contributor := models.PolicyRef{
 			Source:    sourceName,
 			Name:      authzPolicy.Name,
@@ -85,7 +158,22 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 			RuleIndex: ruleIndex,
 		}
 
+		// spec.rules: - {}, it is array with empty rule defined
+		if len(rules[0].To) == 0 && len(rules[0].From) == 0 {
+			rule := expandCatchAllRule(authzPolicy)
+			rule.Contributor = contributor
+			rulesMatrix = append(rulesMatrix, rule)
+			continue
+		}
+
+		// no extra rules will assume that allow/deny all
 		if len(rule.To) == 0 {
+			var coverageComputed models.Coverage
+			if ruleAction == models.ActionAllow {
+				coverageComputed = models.CoverageAllowAll
+			} else {
+				coverageComputed = models.CoverageUnenforced
+			}
 			for _, workload := range matchWorkloads {
 				rulesMatrix = append(rulesMatrix, models.Rule{
 					DstID:       workload.ID,
@@ -96,15 +184,36 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 					AllL7:       true,
 					SrcSelector: srcSelector,
 					DstSelector: dstSelector,
+					Coverage:    coverageComputed,
 				})
 			}
 			continue
 		}
 
+		// no from = any source; empty To = no port/L7 narrowing → allow-all.
+		// matchWorkloads is empty here, so the matrix-mult below emits nothing;
+		// synthesize one marker. DstID stays "" — buildRulesByNs swap fills it
+		// from the selected workload (getSourceNodes), SrcID stays "" = any source.
+		if len(rule.From) == 0 && isEmptyToOperations(rule.To) {
+			coverage := models.CoverageAllowAll
+			if ruleAction == models.ActionDeny {
+				coverage = models.CoverageDenyAll
+			}
+			rulesMatrix = append(rulesMatrix, models.Rule{
+				Direction:   models.DirectionIngress,
+				Contributor: contributor,
+				Action:      ruleAction,
+				AllPorts:    true,
+				AllL7:       true,
+				DstSelector: dstSelector,
+				Coverage:    coverage,
+			})
+			continue
+		}
+		// have to blocks
 		for _, toBlock := range rule.To {
 			var rulePorts []models.Port
 			var ruleL7 models.L7Match
-
 
 			ports, l7policies := expandToOperation(toBlock.Operation)
 			rulePorts = ports
@@ -118,36 +227,58 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 				l7Ptr = &l7Copy
 				allL7 = false
 			}
-			
 
-			// do matrix multiplication to find all rules that can exists from this policy
-			for _, workload := range matchWorkloads {
-				if len(rulePorts) == 0 {
-					rulesMatrix = append(rulesMatrix, models.Rule{
-						DstID:       workload.ID,
-						Direction:   models.DirectionIngress,
-						Contributor: contributor,
-						Action:      ruleAction,
-						L7Match:     l7Ptr,
-						AllPorts:    true,
-						AllL7:       allL7,
-						SrcSelector: srcSelector,
-						DstSelector: dstSelector,
-					})
-					continue
+			// any source (no from) + narrowed To. no workloads to multiply
+			// against; emit one marker. DstID stays "" → buildRulesByNs swap
+			// fills it from the selected workload.
+			if len(matchWorkloads) == 0 {
+				allPorts := len(rulePorts) == 0
+
+				// ports-only narrowing = still allow-all shape; L7 = restricted
+				coverage := models.CoverageAllowAll
+				if !ruleL7.IsEmpty() {
+					coverage = models.CoverageRestricted
 				}
 
 				rulesMatrix = append(rulesMatrix, models.Rule{
-					DstID:       workload.ID,
-					Ports:       rulePorts,
 					Direction:   models.DirectionIngress,
 					Contributor: contributor,
 					Action:      ruleAction,
 					L7Match:     l7Ptr,
-					AllPorts:    false,
+					AllPorts:    allPorts,
 					AllL7:       allL7,
 					SrcSelector: srcSelector,
 					DstSelector: dstSelector,
+					Ports:       rulePorts,
+					Coverage:    coverage,
+				})
+				continue
+			}
+			// do matrix multiplication to find all rules that can exists from this policy
+			for _, workload := range matchWorkloads {
+				var allPorts bool
+				if len(rulePorts) == 0 {
+					allPorts = true
+				}
+				
+				// determine what type of coverage depending on node type
+				coverage := models.CoverageRestricted  // default
+				if workload.Type == models.NodeTypeNamespace {
+					coverage = models.CoverageAllowAllNs
+				}
+
+				rulesMatrix = append(rulesMatrix, models.Rule{
+					DstID:       workload.ID,
+					Direction:   models.DirectionIngress,
+					Contributor: contributor,
+					Action:      ruleAction,
+					L7Match:     l7Ptr,
+					AllPorts:    allPorts,
+					AllL7:       allL7,
+					SrcSelector: srcSelector,
+					DstSelector: dstSelector,
+					Ports: 		 rulePorts,		
+					Coverage:    coverage,				
 				})
 			}
 		}

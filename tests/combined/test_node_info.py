@@ -1,22 +1,22 @@
-"""Node-info endpoint (`/api/node-info`) — per-engine rules + selecting
-policies for a single workload, plus mesh membership + interop issues.
+"""Node-info endpoint (`/api/node-info`) — per-engine policy *neighbors* for a
+single workload, plus mesh membership + interop issues.
 
-Backend logic: `internal/store/buildStore.go::GetNodeData` (policies) +
-`GetWorkloadMesh` (mesh) + `ValidateNodeMesh` (issues). Response shape:
-    {policies: {engineName: {rules, policies}}, mesh?: {...}, issues?: [...]}
+Backend logic: `internal/store/buildNodeNeighbor.go::BuildNodeNeighbor`
+(neighbors) + `GetWorkloadMesh` (mesh) + `ValidateExternalRules` (issues).
+Response shape:
+    {neighbors: {engineName: {In, Out}}, mesh?: {...}, issues?: [...]}
 
-An engine is omitted from `policies` entirely when it has neither a matching
-rule nor a selecting policy for the node — that "silence is meaningful"
-contract is what these tests guard. `mesh` is always present (at least one
-entry per registered mesh source).
+`neighbors` is adjacency per engine, keyed by `PolicySource.Name()`:
+  - `In`  = clicked node is the rule destination (a peer talks *to* it)
+  - `Out` = clicked node is the rule source      (it talks *to* a peer)
+Each entry is a `NeighborRef{Rule, Workload}` — the matched rule plus the
+resolved peer workload. No json tags on the Go structs, so keys are PascalCase
+(`In`/`Out`/`Rule`/`Workload`); nil slices serialize to `null`.
 
-Two viewpoints per policy:
-  - the workload the policy selects (`policies` populated, `rules` may be empty)
-  - the workload that appears as a rule's source (`rules` populated, `policies`
-    only when a separate policy also selects it)
-
-`GetNodeData` returns only outbound-style rules (`rule.SrcID == nodeId`).
-Inbound matches are deliberately excluded — assertions below assume that.
+Unlike the old `policies` contract, an engine is *not* omitted when it has no
+data — every registered engine gets a key with empty (`null`) In/Out. So
+"silence" is an engine present with no neighbors, not an absent key. Walks every
+namespace bucket, so cross-ns neighbors are included (the branch's fix).
 """
 
 from istio import scenarios as istio_scenarios
@@ -31,75 +31,90 @@ def _ids(graph: dict) -> tuple[str, str]:
     return frontend["id"], backend["id"]
 
 
-def test_node_with_no_policies_returns_empty_map(get_graph, get_node_info):
-    # Empty cluster → no engine has data for the workload → `policies` is `{}`.
+def _neighbors(info: dict, engine: str) -> dict:
+    # Tolerate absent engine key and null slices — both mean "no neighbors".
+    entry = info["neighbors"].get(engine) or {}
+    return {"in": entry.get("In") or [], "out": entry.get("Out") or []}
+
+
+def _peer_labels(refs: list) -> list[str]:
+    return [ref["Workload"]["label"] for ref in refs]
+
+
+def _policy_names(refs: list) -> list[str]:
+    return [ref["Rule"].get("contributor", {}).get("name") for ref in refs]
+
+
+def _has_any_neighbor(info: dict) -> bool:
+    return any(
+        _neighbors(info, engine)["in"] or _neighbors(info, engine)["out"]
+        for engine in info["neighbors"]
+    )
+
+
+def test_node_with_no_policies_has_no_neighbors(get_graph, get_node_info):
+    # Empty cluster → no rule touches the workload → every engine present with
+    # empty In/Out.
     graph = get_graph(NS_A)
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
 
-    assert info["policies"] == {}
+    assert not _has_any_neighbor(info)
 
 
-def test_selecting_policy_appears_under_its_engine(get_graph, get_node_info):
-    # k8s `allow-fe-be` selects backend. Backend's node-info should list it
-    # under the k8s engine; istio has no data → istio key absent.
+def test_inbound_neighbor_lists_source(get_graph, get_node_info):
+    # k8s `allow-fe-be` (frontend→backend) → backend is the destination, so
+    # frontend shows under backend's k8s `In`. istio has no rule → no neighbors.
     k8s_scenarios.apply("allow_fe_to_be")
     graph = get_graph(NS_A)
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
-    policies = info["policies"]
+    k8s = _neighbors(info, "k8s")
 
-    assert "k8s" in policies
-    policy_names = [policy["name"] for policy in policies["k8s"]["policies"]]
-    assert "allow-fe-be" in policy_names
-    # istio sees nothing — engine entry must be omitted, not present-but-empty
-    assert "istio" not in policies
+    assert "frontend" in _peer_labels(k8s["in"])
+    assert "allow-fe-be" in _policy_names(k8s["in"])
+    # istio sees nothing — present but empty
+    istio = _neighbors(info, "istio")
+    assert not istio["in"] and not istio["out"]
 
 
-def test_outbound_rule_source_lists_its_rule(get_graph, get_node_info):
-    # `allow-fe-be` produces a rule with SrcID=frontend, DstID=backend.
-    # Querying frontend's node-info returns that rule under `rules`.
-    # Frontend isn't selected by any policy, so `policies` is empty —
-    # but the engine entry still appears because `rules` is non-empty.
+def test_outbound_neighbor_lists_destination(get_graph, get_node_info):
+    # Same `allow-fe-be` rule from frontend's viewpoint: frontend is the source,
+    # so backend shows under frontend's k8s `Out`.
     k8s_scenarios.apply("allow_fe_to_be")
     graph = get_graph(NS_A)
     frontend_id, _ = _ids(graph)
 
     info = get_node_info(frontend_id, NS_A)
-    policies = info["policies"]
+    k8s = _neighbors(info, "k8s")
 
-    assert "k8s" in policies
-    assert len(policies["k8s"]["rules"]) >= 1
+    assert "backend" in _peer_labels(k8s["out"])
 
 
-def test_istio_policy_visible_on_selected_workload(get_graph, get_node_info):
-    # Istio AuthorizationPolicy selecting backend → backend's node-info has an
-    # istio entry. k8s remains silent because no k8s policy is applied.
+def test_istio_neighbor_visible_on_selected_workload(get_graph, get_node_info):
+    # Istio AuthorizationPolicy allowing ns-b → backend (ingress) → backend is
+    # the destination, so istio `In` is non-empty. k8s stays silent.
     istio_scenarios.apply("allow_b_to_backend_in_a")
     graph = get_graph(NS_A, NS_B)
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
-    policies = info["policies"]
 
-    assert "istio" in policies
-    assert policies["istio"]["policies"], "istio policies list should not be empty"
-    assert "k8s" not in policies
+    assert _neighbors(info, "istio")["in"], "istio inbound neighbors should not be empty"
+    k8s = _neighbors(info, "k8s")
+    assert not k8s["in"] and not k8s["out"]
 
 
-def test_both_engines_listed_when_each_has_data(get_graph, get_node_info):
-    # k8s + istio policies both select backend → both engine keys present,
-    # each with its own policies list.
+def test_both_engines_have_neighbors_when_each_has_data(get_graph, get_node_info):
+    # k8s + istio both target backend → both engines carry inbound neighbors.
     k8s_scenarios.apply("allow_fe_to_be")
     istio_scenarios.apply("allow_b_to_backend_in_a")
     graph = get_graph(NS_A, NS_B)
     _, backend_id = _ids(graph)
 
     info = get_node_info(backend_id, NS_A)
-    policies = info["policies"]
 
-    assert "k8s" in policies and "istio" in policies
-    assert policies["k8s"]["policies"], "k8s policies missing"
-    assert policies["istio"]["policies"], "istio policies missing"
+    assert _neighbors(info, "k8s")["in"], "k8s inbound missing"
+    assert _neighbors(info, "istio")["in"], "istio inbound missing"

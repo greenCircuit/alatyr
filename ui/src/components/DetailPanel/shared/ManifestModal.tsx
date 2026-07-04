@@ -79,10 +79,18 @@ function tokenizeLine(line: string) {
 // any line that is exactly one of the selected workload's labels (`key: value`),
 // so the operator sees which selector entries matched. Line-exact (trimmed) match
 // avoids false positives — e.g. "loki" inside "name: loki-ingress" won't light.
-function renderYaml(yaml: string, highlight: Set<string>) {
+// Two-tier: peer lines (teal) take precedence over this-node lines (amber) so a
+// selector line shared by both sides reads as the peer's. A line in neither set
+// renders plain.
+function renderYaml(yaml: string, nodeSet: Set<string>, peerSet: Set<string>) {
   return yaml.split('\n').map((line, index) => {
     const prefix = index === 0 ? '' : '\n';
-    const className = highlight.has(line.trim()) ? s.yamlHighlight : undefined;
+    const trimmed = line.trim();
+    const className = peerSet.has(trimmed)
+      ? s.yamlHighlightPeer
+      : nodeSet.has(trimmed)
+        ? s.yamlHighlight
+        : undefined;
     return <span key={index} className={className}>{prefix}{tokenizeLine(line)}</span>;
   });
 }
@@ -94,18 +102,19 @@ type LoadState =
 
 // ManifestButton is the entry affordance dropped into a policy card's badge
 // cluster: an outline "YAML" button that opens the shared drawer for that policy.
-export function ManifestButton({ kind, namespace, name, highlight }: {
-  kind:       string;
-  namespace:  string;
-  name:       string;
-  highlight?: string[];
+export function ManifestButton({ kind, namespace, name, highlight, highlightPeer }: {
+  kind:           string;
+  namespace:      string;
+  name:           string;
+  highlight?:     string[];
+  highlightPeer?: string[];
 }) {
   const open = useManifestStore((store) => store.open);
   return (
     <button
       type="button"
       className={`btn btn-sm btn-outline-secondary py-0 px-1 ${s.smallText}`}
-      onClick={() => open({ kind, namespace, name, highlight })}
+      onClick={() => open({ kind, namespace, name, highlight, highlightPeer })}
     >
       YAML
     </button>
@@ -126,17 +135,19 @@ export function ManifestDrawer() {
       namespace={target.namespace}
       name={target.name}
       highlight={target.highlight}
+      highlightPeer={target.highlightPeer}
       onClose={close}
     />
   );
 }
 
-function ManifestModal({ kind, namespace, name, highlight, onClose }: {
-  kind:       string;   // policySource: "k8s" | "istio" | "pa"
-  namespace:  string;
-  name:       string;
-  highlight?: string[];
-  onClose:    () => void;
+function ManifestModal({ kind, namespace, name, highlight, highlightPeer, onClose }: {
+  kind:           string;   // policySource: "k8s" | "istio" | "pa"
+  namespace:      string;
+  name:           string;
+  highlight?:     string[];
+  highlightPeer?: string[];
+  onClose:        () => void;
 }) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
   const [copied, setCopied] = useState(false);
@@ -154,6 +165,7 @@ function ManifestModal({ kind, namespace, name, highlight, onClose }: {
     }
     return set;
   }, [highlight, nodeLabels]);
+  const peerSet = useMemo(() => new Set(highlightPeer ?? []), [highlightPeer]);
 
   function load() {
     setState({ phase: 'loading' });
@@ -223,7 +235,7 @@ function ManifestModal({ kind, namespace, name, highlight, onClose }: {
         )}
 
         {state.phase === 'ready' && (
-          <pre className={s.yamlBlock}>{renderYaml(state.manifest.yaml, highlightSet)}</pre>
+          <pre className={s.yamlBlock}>{renderYaml(state.manifest.yaml, highlightSet, peerSet)}</pre>
         )}
       </div>
     </div>

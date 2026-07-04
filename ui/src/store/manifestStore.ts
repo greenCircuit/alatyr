@@ -8,8 +8,11 @@ export interface ManifestTarget {
   namespace:  string;
   name:       string;
   // "key: value" lines to highlight in the YAML (the selectors relevant to this
-  // trigger). When omitted, the drawer falls back to the selected node's labels.
-  highlight?: string[];
+  // trigger). `highlight` = this-node side (amber); `highlightPeer` = the other
+  // endpoint's side (teal). When both omitted, the drawer falls back to the
+  // selected node's labels on the amber class.
+  highlight?:     string[];
+  highlightPeer?: string[];
 }
 
 interface ManifestState {

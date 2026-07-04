@@ -48,10 +48,64 @@ func getSourceNodes(networkPolicy *networkingv1.NetworkPolicy, index map[string]
 	return utils.IndexLabelMatch(networkPolicy.Spec.PodSelector.MatchLabels, nsIndex.LabelIndex)
 }
 
+// egressLocked reports whether the policy governs egress: "Egress" listed in
+// PolicyTypes. Egress is never implied — only ingress is.
+func egressLocked(networkPolicy *networkingv1.NetworkPolicy) bool {
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		if policyType == networkingv1.PolicyTypeEgress {
+			return true
+		}
+	}
+	return false
+}
+
+// ingressLocked reports whether the policy governs ingress. Omitted PolicyTypes
+// implies Ingress per k8s, so an empty list still locks ingress.
+func ingressLocked(networkPolicy *networkingv1.NetworkPolicy) bool {
+	if len(networkPolicy.Spec.PolicyTypes) == 0 {
+		return true
+	}
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		if policyType == networkingv1.PolicyTypeIngress {
+			return true
+		}
+	}
+	return false
+}
+
 func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
 	var out []models.Rule
+
+	// No egress rules: deny-all when egress is locked, otherwise the policy
+	// doesn't govern egress at all — recorded as unenforced so it still shows.
+	if len(networkPolicy.Spec.Egress) == 0 {
+		coverage := models.CoverageUnenforced
+		if egressLocked(networkPolicy) {
+			coverage = models.CoverageDenyAll
+		}
+		return append(out, models.Rule{
+			Direction:   models.DirectionEgress,
+			Coverage:    coverage,
+			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
+		})
+	}
+
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
 		ports := convertPorts(rule.Ports)
+
+		// empty peer list = allow-all destinations
+		if len(rule.To) == 0 {
+			out = append(out, models.Rule{
+				Direction:   models.DirectionEgress,
+				Coverage:    models.CoverageAllowAll,
+				Ports:       ports,
+				AllPorts:    len(ports) == 0,
+				AllL7:       true,
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex},
+			})
+			continue
+		}
+
 		for _, peer := range rule.To {
 			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)
 			for _, rule := range matchRules {
@@ -62,6 +116,7 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 				if peer.NamespaceSelector != nil {
 					rule.DstSelector.NsSelector = peer.NamespaceSelector.MatchLabels
 				}
+
 				out = append(out, rule)
 			}
 		}
@@ -71,8 +126,37 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 
 func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
 	var out []models.Rule
+
+	// No ingress rules: deny-all when ingress is locked (always, unless
+	// PolicyTypes explicitly lists only Egress), otherwise unenforced.
+	if len(networkPolicy.Spec.Ingress) == 0 {
+		coverage := models.CoverageUnenforced
+		if ingressLocked(networkPolicy) {
+			coverage = models.CoverageDenyAll
+		}
+		return append(out, models.Rule{
+			Direction:   models.DirectionIngress,
+			Coverage:    coverage,
+			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
+		})
+	}
+
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
 		ports := convertPorts(rule.Ports)
+
+		// empty peer list = allow-all sources
+		if len(rule.From) == 0 {
+			out = append(out, models.Rule{
+				Direction:   models.DirectionIngress,
+				Coverage:    models.CoverageAllowAll,
+				Ports:       ports,
+				AllPorts:    len(ports) == 0,
+				AllL7:       true,
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex},
+			})
+			continue
+		}
+
 		for _, peer := range rule.From {
 			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)
 			for _, rule := range matchRules {
@@ -96,7 +180,8 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []models.Rule {
 	var dstIDs []string
 
-	// namespace only
+	coverage := models.CoverageRestricted       
+	// namespace only set correct coverage enum
 	if peer.PodSelector == nil && peer.NamespaceSelector != nil {
 		if isCatchAll(peer.NamespaceSelector.MatchLabels, len(peer.NamespaceSelector.MatchExpressions)) {
 			return nil
@@ -115,6 +200,7 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		if isCatchAll(peer.PodSelector.MatchLabels, len(peer.PodSelector.MatchExpressions)) {
 			if nsIndex.NSNode != nil {
 				dstIDs = append(dstIDs, nsIndex.NSNode.ID)
+				coverage = models.CoverageAllowAllNs
 			}
 		} else {
 			for _, target := range utils.IndexLabelMatch(peer.PodSelector.MatchLabels, nsIndex.LabelIndex) {
@@ -136,6 +222,7 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 			if catchAllPod {
 				if nsIndex.NSNode != nil {
 					dstIDs = append(dstIDs, nsIndex.NSNode.ID)
+					coverage = models.CoverageAllowAllNs
 				}
 				continue
 			}
@@ -165,6 +252,7 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 			Ports:        ports,
 			Direction:    direction,
 			Contributor:  contributor,
+			Coverage:     coverage,
 			AllL7: 		  true,
 		}
 
