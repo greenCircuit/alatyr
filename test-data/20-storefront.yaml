@@ -1,0 +1,315 @@
+# storefront — the public app tier (in mesh). Shaped as a clean left-to-right
+# request flow so the graph reads at a glance: names + arrows tell the story
+# without anyone touching a filter.
+#
+#   internet(0.0.0.0/0) ─▶ web ─▶ orders-api     web ─▶ payments   (the one real
+#                            └───▶ sessions                         cross-ns arrow)
+#                    checkout ─▶ orders-api, sessions      (second frontend)
+#                    redis-cache ⇄ ns-storefront           (catch-all, contained)
+#                    catalog                               (unprotected island)
+#
+# orders-api's cross-namespace + checkout's ns-egress-access are badge-only: their
+# egress targets (database, kube-system) aren't in this demo, so no arrow renders
+# — the badge shows policy intent without adding a line.
+#
+#   web          internet-ingress + internet-egress + cross-namespace  (public front door; egress internet + payments)
+#   checkout     internet-ingress + ns-egress-access  (egress locked to kube-system; ingress left open)
+#   orders-api   l7-applied + cross-namespace          (Istio host/method ALLOW; egress to database)
+#   sessions     ns-ingress-access                     (memcached; in-ns callers only)
+#   redis-cache  ns-full-access                        (podSelector: {} both directions)
+#   catalog      internet-full                         (no policy — the honest gap)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storefront
+  labels:
+    kubernetes.io/metadata.name: storefront
+    istio.io/dataplane-mode: ambient
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: storefront
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        tier: frontend
+    spec:
+      containers:
+        - name: web
+          image: registry.example.com/storefront/web:2.8.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: storefront
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+        tier: frontend
+    spec:
+      containers:
+        - name: checkout
+          image: registry.example.com/storefront/checkout:2.8.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: storefront
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog
+  template:
+    metadata:
+      labels:
+        app: catalog
+        tier: frontend
+    spec:
+      containers:
+        - name: catalog
+          image: registry.example.com/storefront/catalog:2.8.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cache
+  namespace: storefront
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cache
+  template:
+    metadata:
+      labels:
+        app: redis-cache
+    spec:
+      containers:
+        - name: redis
+          image: docker.io/library/redis:7.2-alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: storefront
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+        tier: backend
+    spec:
+      containers:
+        - name: orders-api
+          image: registry.example.com/storefront/orders-api:2.8.1
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sessions
+  namespace: storefront
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sessions
+  template:
+    metadata:
+      labels:
+        app: sessions
+    spec:
+      containers:
+        - name: memcached
+          image: docker.io/library/memcached:1.6-alpine
+---
+# orders-api: served by web/checkout in-ns; egress to the orders DB (cross-ns).
+# -> cross-namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orders-api-netpol
+  namespace: storefront
+spec:
+  podSelector:
+    matchLabels:
+      app: orders-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+        - podSelector:
+            matchLabels:
+              app: checkout
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 15008
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 15008
+---
+# sessions: memcached, reachable only from web/checkout in-ns. -> ns-ingress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sessions-netpol
+  namespace: storefront
+spec:
+  podSelector:
+    matchLabels:
+      app: sessions
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Istio ambient: allow ztunnel HBONE
+    - ports:
+        - protocol: TCP
+          port: 15008
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+        - podSelector:
+            matchLabels:
+              app: checkout
+      ports:
+        - protocol: TCP
+          port: 11211
+        - protocol: TCP
+          port: 15008
+---
+# orders-api: Istio L7 ALLOW gated on the internal Host header + methods.
+# -> l7-applied
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: orders-api-allow-host
+  namespace: storefront
+spec:
+  selector:
+    matchLabels:
+      app: orders-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - storefront
+      to:
+        - operation:
+            hosts: ["orders.internal.example.com"]
+            methods: ["GET", "POST"]
+---
+# web: the internet-facing front door — ingress straight from the public internet
+# (0.0.0.0/0) on 443; egress to the external payment gateway/CDN plus cross-ns to
+# payments. -> internet-ingress + internet-egress + cross-namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-netpol
+  namespace: storefront
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: payments
+---
+# checkout: egress locked to kube-system (DNS/internal) via namespaceSelector,
+# but ingress is deliberately left open — the "locked the front door, forgot the
+# back" footgun. Egress-only policyType -> ingress stays unconstrained.
+# -> internet-ingress + ns-egress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: checkout-netpol
+  namespace: storefront
+spec:
+  podSelector:
+    matchLabels:
+      app: checkout
+  policyTypes:
+    - Egress
+  egress:
+    # Istio ambient: allow ztunnel HBONE
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+---
+# redis-cache: catch-all intra-namespace ingress + egress. -> ns-full-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-open-namespace
+  namespace: storefront
+spec:
+  podSelector:
+    matchLabels:
+      app: redis-cache
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}

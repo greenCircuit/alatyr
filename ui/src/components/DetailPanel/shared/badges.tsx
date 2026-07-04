@@ -6,6 +6,7 @@ import type { L7Match } from '../../../data/policies';
 import { engineMeta } from '../../../data/engines';
 import { EngineLogo } from '../../../data/engineIcons';
 import { DIR_COLOR } from './presentation';
+import s from '../DetailPanel.module.css';
 
 // Engine provenance chip — brand logo + name. Shared by the edge panel and the
 // workload panel's per-engine cards so the same brand-colored mark that rides
@@ -22,6 +23,30 @@ export function EngineBadge({ engine }: { engine: string }) {
       <EngineLogo engine={engine} size={12} /> {engine}
     </span>
   );
+}
+
+// Coverage posture chip — the rule's blanket state. 'restricted' (specific
+// peers, the default) renders nothing; only the notable postures get a badge so
+// a deny-all / allow-all jumps out. Danger for deny-all, amber for the allow-all
+// family (open on purpose but worth flagging). 'unenforced' is a state, not an
+// action — it renders hollow (present but inert) as "No effect", never paired
+// with a deny/allow verb.
+const COVERAGE_BADGE: Record<string, { cls: string; text: string; title: string }> = {
+  'deny all':     { cls: 'bg-danger',            text: 'deny all',    title: 'Policy denies all traffic in this direction' },
+  'allow all':    { cls: 'bg-warning text-dark', text: 'allow all',   title: 'Policy allows all traffic in this direction — no restriction' },
+  'allow all ns': { cls: 'bg-warning text-dark', text: 'allow all ns', title: 'Allows every workload in the peer namespace' },
+  'unenforced':   {
+    cls: `bg-transparent border border-secondary text-secondary ${s.noEffect}`,
+    text: '⊘ No effect',
+    title: 'Policy exists but selects no traffic — nothing is blocked or allowed. Likely a dead or misconfigured control.',
+  },
+};
+
+export function CoverageBadge({ coverage }: { coverage?: string }) {
+  if (!coverage) return null;
+  const meta = COVERAGE_BADGE[coverage];
+  if (!meta) return null; // 'restricted' / unknown → default, no badge
+  return <span className={`badge ${meta.cls}`} title={meta.title}>{meta.text}</span>;
 }
 
 export function DirectionBadge({ direction }: { direction: string }) {

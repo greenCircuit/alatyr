@@ -6,9 +6,7 @@ import (
 	"graph/internal/models"
 )
 
-// GetNodeData returns per-engine NodeInfo for the workload. Inbound rules
-// (DstID == nodeId) are deliberately excluded for now; will be added when
-// click-on-node UI needs them.
+// GetNodeData returns per-engine NodeInfo for the workload. In same ns only
 func GetNodeData(data *models.Cache, nodeId string, ns string) map[string]models.NodeInfo {
 	idIndex := buildWorkloadIDIndex(data)
 	out := map[string]models.NodeInfo{}

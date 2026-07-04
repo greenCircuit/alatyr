@@ -35,4 +35,13 @@ type DirectionVerdict struct {
 	DenyMatches  []models.NodeRule `json:"denyMatches,omitempty"`
 	Reason       string     `json:"reason"`
 }                                                                                                     
-		
+
+type NeighborRef struct {
+	Rule     models.Rule
+	Workload models.WorkloadNode
+}
+
+type NodeNeighbors struct {
+	In 		[]NeighborRef
+	Out		[]NeighborRef
+}

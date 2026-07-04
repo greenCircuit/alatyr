@@ -1,0 +1,312 @@
+# payments — the regulated tier. Both engines carry weight here; this is the
+# "locked down for real" namespace and the richest single-workload story.
+# Policy is almost entirely intra-namespace so the graph stays contained — the
+# only deliberate cross-ns edges are the Istio DENY from observability and one
+# scoped k8s egress. Capability breadth is carried by per-node badges, not arrows.
+#
+#   payments-api      air-gapped + l7-applied   (Istio ALLOW L7 methods/paths;
+#                                                 Istio DENY from observability;
+#                                                 namespace STRICT mTLS)
+#   ledger-db         lan-full                  (private-CIDR ingress + egress)
+#   webhook-receiver  ns-egress-access          (egress to kube-system only)
+#   payout-worker     internet-egress
+#   fraud-check       internet-egress
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  labels:
+    kubernetes.io/metadata.name: payments
+    istio.io/dataplane-mode: ambient
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+        tier: backend
+    spec:
+      containers:
+        - name: payments-api
+          image: registry.example.com/payments/payments-api:4.1.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-db
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger-db
+  template:
+    metadata:
+      labels:
+        app: ledger-db
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-receiver
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webhook-receiver
+  template:
+    metadata:
+      labels:
+        app: webhook-receiver
+        tier: backend
+    spec:
+      containers:
+        - name: webhook-receiver
+          image: registry.example.com/payments/webhook-receiver:4.1.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payout-worker
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payout-worker
+  template:
+    metadata:
+      labels:
+        app: payout-worker
+    spec:
+      containers:
+        - name: payout-worker
+          image: registry.example.com/payments/payout-worker:4.1.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-check
+  namespace: payments
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-check
+  template:
+    metadata:
+      labels:
+        app: fraud-check
+    spec:
+      containers:
+        - name: fraud-check
+          image: registry.example.com/payments/fraud-check:4.1.0
+---
+# payments-api: fully scoped. Ingress only from in-ns callers (+ ztunnel HBONE);
+# egress only to the in-ns ledger. No internet, no LAN, no cross-ns. -> air-gapped
+# Paired with the Istio L7 ALLOW below (README rule: keep Istio ALLOW off any
+# workload whose k8s policy grants internet-egress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payments-api-netpol
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: payments-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Istio ambient: allow ztunnel HBONE
+    - ports:
+        - protocol: TCP
+          port: 15008
+    - from:
+        - podSelector:
+            matchLabels:
+              app: webhook-receiver
+        - podSelector:
+            matchLabels:
+              app: payout-worker
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Istio ambient: allow ztunnel HBONE
+    - ports:
+        - protocol: TCP
+          port: 15008
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ledger-db
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# payments-api: Istio L7 ALLOW gated on methods + paths. -> l7-applied
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: payments-api-allow-l7
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: payments-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/payments/sa/webhook-receiver
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/charge", "/refund"]
+            ports: ["8080"]
+---
+# payments-api: Istio DENY — the analytics tier must never reach the payments
+# API. Renders as a separate deny-styled edge, one deliberate cross-ns arrow.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: payments-api-deny-analytics
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: payments-api
+  action: DENY
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - analytics
+---
+# Namespace-wide STRICT mTLS. Selectorless + no port rules = clean STRICT for the
+# whole namespace (no misconfiguration Issue). Shows in each workload's detail
+# panel as verdict: strict.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: payments-strict
+  namespace: payments
+spec:
+  mtls:
+    mode: STRICT
+---
+# ledger-db: reachable from the private CIDR and dials out to the private CIDR
+# (managed backup target). -> lan-full
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ledger-db-netpol
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: ledger-db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# webhook-receiver: ingress locked to in-ns; egress only to kube-system (DNS +
+# internal services) via namespaceSelector. -> ns-egress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhook-receiver-netpol
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: webhook-receiver
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+---
+# payout-worker: dials the external banking/ACH gateway over TLS. -> internet-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payout-worker-netpol
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: payout-worker
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# fraud-check: calls an external scoring API over TLS. -> internet-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fraud-check-netpol
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: fraud-check
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

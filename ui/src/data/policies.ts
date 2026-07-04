@@ -141,10 +141,52 @@ export interface NodeRule {
   dstSelector?: PolicySelector;
 }
 
-// Per-engine policy entry inside NodeInfo.policies.
-export interface NodeInfoEngine {
-  rules:    NodeRule[] | null;
-  policies: PolicyRef[] | null;
+// Rule mirrors backend models.Rule — the raw engine-emitted rule carried inside
+// a NeighborRef. Endpoints (srcId/dstId) are real node ids; the resolved peer
+// travels alongside in NeighborRef.Workload.
+// Coverage mirrors backend models.Coverage — the rule's blanket posture. Blank
+// on a normal peer rule; 'restricted' = specific peers (default), the rest are
+// engine-detected blanket states. 'deny all' / 'allow all' / 'unenforced' arrive
+// with the opposite endpoint blank (no real peer); 'allow all ns' rides a real
+// namespace peer.
+export type Coverage =
+  | 'deny all'
+  | 'allow all'
+  | 'allow all ns'
+  | 'restricted'
+  | 'unenforced';
+
+export interface Rule {
+  srcId:        string;
+  dstId:        string;
+  ports:        Port[];
+  direction:    string;
+  contributor?: PolicyRef;
+  l7Match?:     L7Match;
+  action:       number;      // 0 = Allow, 1 = Deny
+  coverage?:    Coverage;    // blanket posture; blank/'restricted' = specific peers
+  allPorts?:    boolean;
+  allL7?:       boolean;
+  srcSelector?: PolicySelector;
+  dstSelector?: PolicySelector;
+}
+
+// NeighborRef mirrors store.NeighborRef: one policy rule touching the clicked
+// node plus the resolved peer workload. Workload is blank (id === '') for
+// unresolved ids (external CIDR) — fall back to the raw id from Rule.
+// NOTE: backend NeighborRef/NodeNeighbors carry no json tags, so keys are
+// PascalCase (Rule/Workload/In/Out) unlike the rest of the API.
+export interface NeighborRef {
+  Rule:     Rule;
+  Workload: WorkloadNode;
+}
+
+// NodeNeighbors mirrors store.NodeNeighbors: peers per direction. In = clicked
+// node is the destination; Out = clicked node is the source. No dedup — one
+// entry per rule, so multiple rules on the same pair each appear.
+export interface NodeNeighbors {
+  In:  NeighborRef[] | null;
+  Out: NeighborRef[] | null;
 }
 
 // Mesh types ------------------------------------------------------------
@@ -180,13 +222,13 @@ export interface MeshMembership {
   mtls?:     MtlsState;
 }
 
-// /api/node-info response. Policies key = engine name (k8spolicy/istio);
-// Mesh key = mesh source name (currently only "istio"). Issues = cross-cutting
-// interop findings (e.g. ambient pod missing ztunnel allowance).
-export interface NodeInfo {
-  policies: Record<string, NodeInfoEngine>;
-  mesh?:    Record<string, MeshMembership>;
-  issues?:  string[];
+// /api/node-info response. neighbors key = engine name (k8s/istio); Mesh key =
+// mesh source name (currently only "istio"). Issues = cross-cutting interop
+// findings (e.g. ambient pod missing ztunnel allowance).
+export interface NodeDetail {
+  neighbors: Record<string, NodeNeighbors>;
+  mesh?:     Record<string, MeshMembership>;
+  issues?:   string[];
 }
 
 // Reachability verdict between two nodes, returned by /api/reachable.

@@ -134,6 +134,20 @@ func (b *Builder) fetchNsIndex(ns string) (models.NSIndex, error) {
 	return graph.AssembleNsIndex(pods, cronJobs, nsObj), nil
 }
 
+func GetByNodeInNs(data *models.Cache, nodeId string, nodeNs string) (models.WorkloadNode, error) {
+	_, ok := data.NsIndex[nodeNs]
+	if !ok {
+		return models.WorkloadNode{}, fmt.Errorf("couldn't find requested ns %s", nodeNs)
+	}
+	for _, node := range data.NsIndex[nodeNs].Workloads {
+		if node.ID == nodeId {
+			return node, nil
+		}
+	}
+
+	return models.WorkloadNode{}, fmt.Errorf("couldn't find node: %s in ns: %s", nodeId, nodeNs)
+
+}
 
 // buildWorkloadIDIndex collects every cached workload into a flat ID → node
 // lookup so cross-namespace rule destinations can be resolved to labels.

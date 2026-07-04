@@ -1,0 +1,241 @@
+# mesh-conflicts — the one box to find every cross-engine disagreement and Istio
+# mTLS misconfiguration, so nobody hunts across the cluster. Three connected
+# workloads, zero islands, zero cross-namespace arrows — every footgun rides on a
+# visible in-box edge plus the clicked node's detail panel.
+#
+#   plaintext-client ─▶ dual-verdict-api   two opposite edges on the SAME
+#                                          endpoints: k8s ALLOWs, Istio DENYs.
+#                                          Cross-engine conflict, on the graph.
+#   plaintext-client ─▶ strict-server      one k8s-allowed edge carrying TWO
+#                                          footguns at once:
+#                                            • mTLS mismatch — client DISABLEs
+#                                              mTLS, server requires STRICT.
+#                                            • missing HBONE — both rules allow
+#                                              8080 only; ambient tunnels over
+#                                              15008, which they forget.
+#
+#   Detail-panel-only Issues, folded onto the three nodes (no extra islands):
+#     strict-server     two PeerAuthentications at the same scope -> "duplicate
+#                       at scope" (oldest STRICT wins, so the mismatch holds).
+#     dual-verdict-api  its only PeerAuthentication is UNSET -> "all peer
+#                       authentications are set to Unset".
+#     plaintext-client  mTLS DISABLE (drives the mismatch above).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mesh-conflicts
+  labels:
+    kubernetes.io/metadata.name: mesh-conflicts
+    istio.io/dataplane-mode: ambient
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dual-verdict-api
+  namespace: mesh-conflicts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dual-verdict-api
+  template:
+    metadata:
+      labels:
+        app: dual-verdict-api
+    spec:
+      containers:
+        - name: api
+          image: registry.example.com/demo/dual-verdict-api:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strict-server
+  namespace: mesh-conflicts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strict-server
+  template:
+    metadata:
+      labels:
+        app: strict-server
+    spec:
+      containers:
+        - name: api
+          image: registry.example.com/demo/strict-server:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plaintext-client
+  namespace: mesh-conflicts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plaintext-client
+  template:
+    metadata:
+      labels:
+        app: plaintext-client
+    spec:
+      containers:
+        - name: client
+          image: registry.example.com/demo/plaintext-client:1.0.0
+---
+# dual-verdict-api: k8s ALLOWs ingress from plaintext-client (in-ns, + HBONE so
+# this edge itself is mesh-correct)...
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dual-verdict-allow
+  namespace: mesh-conflicts
+spec:
+  podSelector:
+    matchLabels:
+      app: dual-verdict-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Istio ambient: allow ztunnel HBONE
+    - ports:
+        - protocol: TCP
+          port: 15008
+    - from:
+        - podSelector:
+            matchLabels:
+              app: plaintext-client
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# ...while Istio DENYs the exact same source. Same endpoints, opposite verdict,
+# rendered as two separate edges (different engine + action).
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: dual-verdict-deny
+  namespace: mesh-conflicts
+spec:
+  selector:
+    matchLabels:
+      app: dual-verdict-api
+  action: DENY
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/mesh-conflicts/sa/plaintext-client
+---
+# dual-verdict-api: its only PeerAuthentication is UNSET, so Istio falls back to
+# the install default (permissive) — usually not what the author intended.
+# Detail panel flags "all peer authentications are set to Unset".
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: dual-verdict-unset
+  namespace: mesh-conflicts
+spec:
+  selector:
+    matchLabels:
+      app: dual-verdict-api
+  mtls:
+    mode: UNSET
+---
+# The mTLS-mismatch + missing-HBONE pair. This k8s policy draws the edge:
+# plaintext-client reaches strict-server on 8080 ONLY. Both ends are ambient, so
+# real traffic arrives over ztunnel HBONE (15008), which this rule never allows
+# — deliberately omits the "- ports: 15008" block the other policies carry.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: client-to-server-allow
+  namespace: mesh-conflicts
+spec:
+  podSelector:
+    matchLabels:
+      app: strict-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: plaintext-client
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Same footgun on the egress side — 8080 only, no 15008 to the ambient peer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plaintext-client-egress
+  namespace: mesh-conflicts
+spec:
+  podSelector:
+    matchLabels:
+      app: plaintext-client
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: strict-server
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# strict-server requires STRICT mTLS. This is the older PA, so it wins precedence
+# and the mismatch verdict below holds.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: strict-server-strict
+  namespace: mesh-conflicts
+  creationTimestamp: "2024-01-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: strict-server
+  mtls:
+    mode: STRICT
+---
+# A second PeerAuthentication selects the same workload at the same scope. Istio
+# keeps the oldest (STRICT above) and silently ignores this one; the detail panel
+# flags "duplicate at scope".
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: strict-server-duplicate
+  namespace: mesh-conflicts
+  creationTimestamp: "2024-06-01T00:00:00Z"
+spec:
+  selector:
+    matchLabels:
+      app: strict-server
+  mtls:
+    mode: PERMISSIVE
+---
+# plaintext-client explicitly DISABLEs mTLS. k8s says it may reach strict-server;
+# the mesh refuses the plaintext connection to a STRICT peer. Click either node
+# to see the modes.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: plaintext-client-disable
+  namespace: mesh-conflicts
+spec:
+  selector:
+    matchLabels:
+      app: plaintext-client
+  mtls:
+    mode: DISABLE

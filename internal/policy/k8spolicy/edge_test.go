@@ -119,10 +119,13 @@ func TestBuildAllowTuples_EgressDirection(t *testing.T) {
 	)
 	tuples := buildAllowTuples(buildTestIndex(nodes), []networkingv1.NetworkPolicy{networkPolicy})
 
-	if len(tuples) != 1 {
-		t.Fatalf("expected 1 tuple, got %d", len(tuples))
+	// Policy also implies an ingress lock (k8s: all policies affect Ingress),
+	// so a deny-all ingress marker rides along. Assert on the real allow tuple.
+	allow := rulesWithCoverage(tuples, models.CoverageRestricted)
+	if len(allow) != 1 {
+		t.Fatalf("expected 1 restricted allow tuple, got %d (total %d)", len(allow), len(tuples))
 	}
-	tuple := tuples[0]
+	tuple := allow[0]
 	if tuple.SrcID != nodeFrontend.ID {
 		t.Errorf("egress source: want %s, got %s", nodeFrontend.ID, tuple.SrcID)
 	}
@@ -142,10 +145,13 @@ func TestBuildAllowTuples_IngressDirection(t *testing.T) {
 	)
 	tuples := buildAllowTuples(buildTestIndex(nodes), []networkingv1.NetworkPolicy{networkPolicy})
 
-	if len(tuples) != 1 {
-		t.Fatalf("expected 1 tuple, got %d", len(tuples))
+	// Egress is not locked here → an unenforced egress marker rides along.
+	// Assert on the real allow tuple.
+	allow := rulesWithCoverage(tuples, models.CoverageRestricted)
+	if len(allow) != 1 {
+		t.Fatalf("expected 1 restricted allow tuple, got %d (total %d)", len(allow), len(tuples))
 	}
-	tuple := tuples[0]
+	tuple := allow[0]
 	if tuple.SrcID != nodeFrontend.ID {
 		t.Errorf("ingress source: want %s (sender), got %s", nodeFrontend.ID, tuple.SrcID)
 	}
@@ -215,9 +221,14 @@ func TestGetTargetEgressTuples_NoRules(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 	}
+	// Bare policy: no PolicyTypes → egress not locked. Recorded as unenforced
+	// (visible in the table) rather than dropped, but never deny-all.
 	tuples := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
-	if len(tuples) != 0 {
-		t.Errorf("expected no tuples, got %d", len(tuples))
+	if len(tuples) != 1 {
+		t.Fatalf("expected 1 egress marker, got %d", len(tuples))
+	}
+	if tuples[0].Coverage != models.CoverageUnenforced {
+		t.Errorf("egress not locked → want unenforced, got %q", tuples[0].Coverage)
 	}
 }
 
@@ -260,9 +271,13 @@ func TestGetTargetIngressTuples_NoRules(t *testing.T) {
 	networkPolicy := networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 	}
+	// Bare policy: empty PolicyTypes implies Ingress lock → deny-all ingress.
 	tuples := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
-	if len(tuples) != 0 {
-		t.Errorf("expected no tuples, got %d", len(tuples))
+	if len(tuples) != 1 {
+		t.Fatalf("expected 1 ingress marker, got %d", len(tuples))
+	}
+	if tuples[0].Coverage != models.CoverageDenyAll {
+		t.Errorf("ingress implied-locked → want deny-all, got %q", tuples[0].Coverage)
 	}
 }
 

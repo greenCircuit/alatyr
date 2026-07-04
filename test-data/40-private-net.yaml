@@ -1,0 +1,151 @@
+# private-net — workloads that bridge to on-prem / private (RFC1918) networks.
+# This box exists to exercise the LAN badges nothing else does: private-CIDR
+# ingress and egress. No mesh, no cross-namespace arrows — each workload talks
+# only to a private CIDR block, which renders as its own node.
+#
+#   10.0.0.0/8      ⇄ vpn-gw        lan-full    (in + out to the corp network)
+#   192.168.0.0/16  ─▶ ldap-proxy   lan-ingress (directory reached from the LAN)
+#   backup-agent    ─▶ 172.16.0.0/12  lan-egress (ships backups off to private DC)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: private-net
+  labels:
+    kubernetes.io/metadata.name: private-net
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpn-gw
+  namespace: private-net
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vpn-gw
+  template:
+    metadata:
+      labels:
+        app: vpn-gw
+    spec:
+      containers:
+        - name: vpn-gw
+          image: registry.example.com/netops/vpn-gw:3.2.0
+          ports:
+            - containerPort: 1194
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ldap-proxy
+  namespace: private-net
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ldap-proxy
+  template:
+    metadata:
+      labels:
+        app: ldap-proxy
+    spec:
+      containers:
+        - name: ldap-proxy
+          image: registry.example.com/netops/ldap-proxy:3.2.0
+          ports:
+            - containerPort: 636
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backup-agent
+  namespace: private-net
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backup-agent
+  template:
+    metadata:
+      labels:
+        app: backup-agent
+    spec:
+      containers:
+        - name: backup-agent
+          image: registry.example.com/netops/backup-agent:3.2.0
+---
+# vpn-gw: terminates tunnels from the corporate network and dials back into it.
+# Ingress + egress both to the private 10.0.0.0/8 range. -> lan-full
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vpn-gw-netpol
+  namespace: private-net
+spec:
+  podSelector:
+    matchLabels:
+      app: vpn-gw
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 1194
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 1194
+---
+# ldap-proxy: directory endpoint reached from the office LAN; no egress.
+# -> lan-ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ldap-proxy-netpol
+  namespace: private-net
+spec:
+  podSelector:
+    matchLabels:
+      app: ldap-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 636
+  egress: []
+---
+# backup-agent: ships backups off to a private data-centre range; nothing reaches
+# it. -> lan-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-agent-netpol
+  namespace: private-net
+spec:
+  podSelector:
+    matchLabels:
+      app: backup-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.16.0.0/12
+      ports:
+        - protocol: TCP
+          port: 443

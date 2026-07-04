@@ -71,3 +71,8 @@ func IndexLabelMatch(selectors map[string]string, labelIndex map[string][]*model
 func MakeLabelIndexKey(key, value string) string {
 	return key + "=" + value
 }
+
+// search ns index and return matching nodes
+func NSIndexByLabel() {
+
+}

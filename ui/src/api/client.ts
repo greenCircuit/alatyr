@@ -1,4 +1,4 @@
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeInfo, ReachabilityResult } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult } from '../data/policies';
 
 export interface Graph {
   nodes: WorkloadNode[];
@@ -26,11 +26,11 @@ export function fetchClusterState(): Promise<ClusterState> {
   });
 }
 
-export function fetchNodeInfo(nodeId: string, namespace: string): Promise<NodeInfo> {
+export function fetchNodeInfo(nodeId: string, namespace: string): Promise<NodeDetail> {
   const params = new URLSearchParams({ nodeId, namespace });
   return fetch(`/api/node-info?${params.toString()}`).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<NodeInfo>;
+    return r.json() as Promise<NodeDetail>;
   });
 }
 
