@@ -1,46 +1,89 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"graph/internal/api"
 	"graph/internal/config"
 	"graph/internal/k8s"
+	"graph/internal/logging"
 	"graph/internal/store"
 )
 
 func main() {
-	config.MustLoad(os.Getenv("CONFIG_PATH"))
+	logger := logging.New(logging.LevelFromEnv())
+	slog.SetDefault(logger)
+
+	cfg, err := config.Load(os.Getenv("CONFIG_PATH"))
+	if err != nil {
+		logger.Error("config load failed",
+			slog.String("phase", "startup"),
+			slog.String("path", os.Getenv("CONFIG_PATH")),
+			slog.String("error", err.Error()),
+		)
+		os.Exit(1)
+	}
+	config.Install(cfg)
 
 	var client k8s.KubernetesClient
 	if os.Getenv("DEMO_MODE") == "true" {
 		demo, err := k8s.NewDemoClient(demoDataFS, "test-data")
 		if err != nil {
-			log.Fatalf("failed to load demo data: %v", err)
+			logger.Error("demo data load failed",
+				slog.String("phase", "startup"),
+				slog.String("error", err.Error()),
+			)
+			os.Exit(1)
 		}
 		client = demo
 	} else {
 		stopCh := make(chan struct{})
-		defer close(stopCh)                                       
+		defer close(stopCh)
 		real, err := k8s.NewInformerClient(os.Getenv("KUBECONFIG"), stopCh)
 		if err != nil {
-			log.Fatalf("failed to create k8s client: %v", err)
+			logger.Error("k8s informer client init failed",
+				slog.String("phase", "startup"),
+				slog.String("kubeconfig", os.Getenv("KUBECONFIG")),
+				slog.String("error", err.Error()),
+			)
+			os.Exit(1)
 		}
 		client = real
 	}
 
 	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+	e.Use(middleware.Recover())
+	e.Use(logging.Middleware(logger))
 
-	builder := store.NewBuilder(client)
-	server := api.New(client, builder)
+	builder := store.NewBuilder(client, logger)
+	server := api.New(client, builder, logger)
 	server.RegisterRoutes(e)
-	server.RegisterUI(e, uiFS)
+	if err := server.RegisterUI(e, uiFS); err != nil {
+		logger.Error("register UI failed",
+			slog.String("phase", "startup"),
+			slog.String("error", err.Error()),
+		)
+		os.Exit(1)
+	}
 
 	port := os.Getenv("BACKEND_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	log.Fatal(e.Start(":" + port))
+	logger.Info("http server starting",
+		slog.String("phase", "startup"),
+		slog.String("port", port),
+	)
+	if err := e.Start(":" + port); err != nil {
+		logger.Error("http server exited",
+			slog.String("phase", "runtime"),
+			slog.String("error", err.Error()),
+		)
+		os.Exit(1)
+	}
 }

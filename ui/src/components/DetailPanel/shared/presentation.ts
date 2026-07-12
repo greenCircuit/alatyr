@@ -4,6 +4,28 @@
 // columns all read from.
 
 import { SEVERITY_COLOR } from '../../../data/policies';
+import type { DirectionReason } from '../../../data/policies';
+import type { ChipState } from './reachability';
+
+// Per-direction reason → chip label + bootstrap badge class. Blocked reasons go
+// red/amber; permitted / no-opinion stay quiet. Shared by the Tier-1 blocker
+// list and the Tier-2 per-direction breakdown.
+export const REASON_META: Record<DirectionReason, { label: string; badge: string }> = {
+  'permitted':       { label: 'permitted',                   badge: 'bg-success' },
+  'no-opinion':      { label: 'no policy',                   badge: 'bg-secondary' },
+  'explicit-deny':   { label: 'explicit deny',               badge: 'bg-danger' },
+  'default-deny':    { label: 'default-deny',                badge: 'bg-danger' },
+  'locked-no-match': { label: 'blocked · no matching rule',  badge: 'bg-warning text-dark' },
+};
+
+// Selecting-policy chip accent per join state. Green opens the path, red blocks
+// it, amber is the widen target, grey did nothing to this verdict.
+export const CHIP_STATE: Record<ChipState, { accent: string; label: string; muted: boolean }> = {
+  permitter: { accent: SEVERITY_COLOR.secure,  label: 'permits',   muted: false },
+  blocker:   { accent: SEVERITY_COLOR.high,     label: 'blocks',    muted: false },
+  'near-miss': { accent: SEVERITY_COLOR.caution, label: 'near-miss', muted: false },
+  inert:     { accent: '#6c757d',               label: '',          muted: true  },
+};
 
 // Direction tint + arrow. Match graph arrow colors so panel → canvas is a
 // visual hand-off. Same hex values as style/edgeStyles.ts.

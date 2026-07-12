@@ -1,0 +1,171 @@
+package store
+
+import (
+	"context"
+	"log/slog"
+
+	"graph/internal/config"
+	"graph/internal/logging"
+	"graph/internal/mesh"
+	"graph/internal/models"
+	"graph/internal/utils"
+)
+
+// GetIssues runs every issue detector over the cache and returns the combined
+// findings. Endpoint-facing aggregator.
+func GetIssues(ctx context.Context, data *models.Cache) []models.Issue {
+	var issues []models.Issue
+	policyIssues := PolicyIssues(ctx, data)
+	dnsIssues := MissingDns(ctx, data)
+	issues = append(issues, policyIssues...)
+	issues = append(issues, dnsIssues...)
+	return  issues
+}
+
+
+func MissingDns(ctx context.Context, data *models.Cache) []models.Issue {
+	logger := logging.FromCtx(ctx)
+
+	// resolve DNS target from config
+	cfg := config.Get()
+	dnsNsIdx, ok := data.NsIndex[cfg.DNSNamespace]
+	if !ok {
+		return nil
+	}
+	matches := utils.IndexLabelMatch(cfg.DNSLabels, dnsNsIdx.LabelIndex)
+	if len(matches) == 0 {
+		logger.Warn("missing dns: no workload matched DNS selector",
+			slog.String("phase", "missing_dns"),
+			slog.String("dns_ns", cfg.DNSNamespace),
+		)
+		return nil
+	}
+	dnsNode := matches[0]
+	dnsNodeID := dnsNode.ID
+	dnsNsID := ""
+	if dnsNsIdx.NSNode != nil {
+		dnsNsID = dnsNsIdx.NSNode.ID
+	}
+
+	// walk every cached workload as src. Per-engine egress verdict via
+	// collectToSide — Permitted or NoOpinion skip, everything else flags.
+	var issues []models.Issue
+	for _, srcNsIdx := range data.NsIndex {
+		srcNsID := ""
+		if srcNsIdx.NSNode != nil {
+			srcNsID = srcNsIdx.NSNode.ID
+		}
+		for i := range srcNsIdx.Workloads {
+			src := &srcNsIdx.Workloads[i]
+			if src.Type == models.NodeTypeNamespace || src.ID == dnsNodeID {
+				continue
+			}
+			for engineName, eval := range data.EvaluationResults {
+				verdict := collectToSide(eval.NodeRules[srcNsID], eval.NodeRules[src.ID], dnsNsID, dnsNodeID, data.WorkloadByID)
+				if verdict.Reason == ReasonPermitted || verdict.Reason == ReasonNoOpinion {
+					continue
+				}
+				issues = append(issues, models.Issue{
+					Type:    models.NoDNSEgress,
+					Message: "cluster DNS blocked: " + string(verdict.Reason),
+					Engine:  engineName,
+					Src:     src,
+					Dst:     dnsNode,
+					EgressCulprits: verdict.Culprits,
+					EgressReason:   verdict.Reason,
+				})
+			}
+		}
+	}
+	return issues
+}
+
+// PolicyIssues flags policy conflicts: an ALLOW rule whose src→dst path is
+// still blocked once every engine's rules + locks are intersected — one policy
+// permits the edge while another denies or locks it out. Mesh is excluded on
+// purpose; transport-layer blocks are a separate class (MeshConflicts).
+func PolicyIssues(ctx context.Context, data *models.Cache) []models.Issue {
+	var issues []models.Issue
+	checkedPolicy := make(map[string]bool) // srcId-dstId already evaluated
+	var noMesh []mesh.MeshSource           // policy-only: skip transport layer
+	prober := newReachabilityProber(data, noMesh)
+
+	for _, eval := range data.EvaluationResults {
+		for _, nsRules := range eval.AllowByNs {
+			for _, rule := range nsRules {
+				if rule.Action != models.ActionAllow {
+					continue
+				}
+				checkIndex := rule.SrcID + "-" + rule.DstID
+				if checkedPolicy[checkIndex] {
+					continue
+				}
+				checkedPolicy[checkIndex] = true
+
+				// Unresolved endpoints (CIDR dst, unloaded ns) aren't probeable
+				// pairs — skip without logging, they're expected, not errors.
+				srcNode, srcOk := data.WorkloadByID[rule.SrcID]
+				if !srcOk {
+					continue
+				}
+				dstNode, dstOk := data.WorkloadByID[rule.DstID]
+				if !dstOk {
+					continue
+				}
+
+				verdict := prober.probe(ctx, rule.SrcID, srcNode.Namespace, rule.DstID, dstNode.Namespace)
+				if verdict.Verdict != "deny" {
+					continue
+				}
+
+				conflictType := models.PolicyConflicts
+				var fineAllowed fineAllows
+				// An ns-node endpoint blocks at namespace granularity while the
+				// culprit's own pod-level clauses may still permit specific pods.
+				// Classify from those fine-grained paths, not the coarse probe.
+				if srcNode.Type == models.NodeTypeNamespace || dstNode.Type == models.NodeTypeNamespace {
+					conflictType, fineAllowed = classifyLayering(ctx, prober, verdict, srcNode.Namespace, dstNode.Namespace)
+				}
+
+				// A conflict is one engine permitting while another blocks. The
+				// allow that surfaced this pair may live in a different engine than
+				// the blocker (istio allows, k8s denies), so attribute each issue to
+				// the engine that actually blocks — reading culprits off engineName
+				// would pull them from the permitting engine and show none.
+				for blockEngine, engineVerdict := range verdict.Engines {
+					if engineVerdict.Status != "deny" {
+						continue
+					}
+					// Partial issues also carry the layering evidence: the
+					// policies that permitted the verified pod paths, MINUS this
+					// row's own culprits — a baseline policy is both blocker and
+					// fine tier, and echoing it as evidence is duplication. What
+					// remains is the counterpart tier (the coarse ns-level allow).
+					ingressAllowed := dedupContributors(engineVerdict.Ingress.AllowMatches)
+					egressAllowed := dedupContributors(engineVerdict.Egress.AllowMatches)
+					if conflictType == models.IssuesPartial {
+						ingressAllowed = mergePolicyRefs(ingressAllowed,
+							excludePolicyRefs(fineAllowed.ingress, engineVerdict.Ingress.Culprits))
+						egressAllowed = mergePolicyRefs(egressAllowed,
+							excludePolicyRefs(fineAllowed.egress, engineVerdict.Egress.Culprits))
+					}
+					issues = append(issues, models.Issue{
+						Type:            conflictType,
+						Message:         blockEngine + " blocks a permitted path",
+						Engine:          blockEngine,
+						Src:             &srcNode,
+						Dst:             &dstNode,
+						IngressCulprits: engineVerdict.Ingress.Culprits,
+						EgressCulprits:  engineVerdict.Egress.Culprits,
+						IngressReason:   engineVerdict.Ingress.Reason,
+						EgressReason:    engineVerdict.Egress.Reason,
+						IngressAllowed:  ingressAllowed,
+						EgressAllowed:   egressAllowed,
+					})
+				}
+			}
+		}
+	}
+	return issues
+}
+

@@ -1,0 +1,110 @@
+/*
+ * Utility classes filling gaps Bootstrap does not cover.
+ * Tailwind-inspired names for familiarity; no Tailwind runtime.
+ * Prefer these over inline style={{ ... }}. Reserve inline styles
+ * for values computed from state (dynamic colors, widths, etc.).
+ */
+
+/* Font sizes below Bootstrap's fs-6 (~16px). */
+.fs-9  { font-size: 9px; }
+.fs-10 { font-size: 10px; }
+.fs-11 { font-size: 11px; }
+.fs-12 { font-size: 12px; }
+.fs-13 { font-size: 13px; }
+.fs-18 { font-size: 18px; }
+.fs-22 { font-size: 22px; }
+
+/* Cursor. */
+.cursor-pointer { cursor: pointer; }
+
+/* Letter spacing / tracking (uppercase eyebrow labels). */
+.tracking-wide  { letter-spacing: 0.06em; }
+.tracking-wider { letter-spacing: 0.08em; }
+
+/* Line height. */
+.leading-tight { line-height: 1.4; }
+
+/* Min-width utilities. */
+.min-w-0   { min-width: 0; }
+.min-w-140 { min-width: 140px; }
+.min-w-160 { min-width: 160px; }
+.min-w-180 { min-width: 180px; }
+.min-w-260 { min-width: 260px; }
+
+/* Min-height utilities. */
+.min-h-0  { min-height: 0; }
+.min-h-44 { min-height: 44px; }
+
+/* Fixed-width table columns (px). */
+.w-120 { width: 120px; }
+.w-130 { width: 130px; }
+.w-160 { width: 160px; }
+.w-170 { width: 170px; }
+
+/* Max-width utility (truncate cells). */
+.max-w-180 { max-width: 180px; }
+
+/* Full inset (position: absolute; inset: 0). */
+.inset-0 {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+}
+
+/* Dropdown/popover shell used by FilterPanel dropdowns. */
+.dropdown-panel {
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    z-index: 1060;
+}
+.dropdown-panel-sm  { min-width: 140px; }
+.dropdown-panel-md  { min-width: 160px; }
+.dropdown-panel-lg  { min-width: 200px; }
+.dropdown-panel-xl  { min-width: 240px; }
+
+/* Canvas background (PolicyGraph container). */
+.bg-canvas { background: #0d0f11; }
+
+/* Slate background (neutral chip on dark surfaces). */
+.bg-slate { background: #495057; }
+
+/* Badge text-on-color (dark ink on tinted badge backgrounds). */
+.text-ink-dark { color: #1a1d20; }
+
+/* Transform origin top-left (badge overlay layer). */
+.origin-top-left { transform-origin: 0 0; }
+
+/* Font weight normal helper (override Bootstrap badge bold). */
+.fw-normal-force { font-weight: normal; }
+
+/* Opacity transition helper (legend dim). */
+.transition-opacity { transition: opacity 0.15s; }
+
+/* Rotate/flip transition helper (chevron indicator toggle). */
+.rotate-flip {
+    display: inline-block;
+    transition: transform 120ms;
+}
+
+/* Dashed border variant. */
+.border-dashed { border-style: dashed; }
+
+/* Accent-colored 5px left border stripe (color set inline from state). */
+.border-l-5 { border-left-width: 5px; }
+
+/* Legend swatch (small round color dot). */
+.swatch-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* Extra-small spinner (10px, below Bootstrap's spinner-border-sm). */
+.spinner-xs {
+    width: 10px;
+    height: 10px;
+}

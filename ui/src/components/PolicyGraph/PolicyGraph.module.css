@@ -1,0 +1,47 @@
+/* PolicyGraph canvas root: flex:1 (basis 0), used by App shell. */
+.canvas {
+    flex: 1;
+    background: #0d0f11;
+}
+
+/* Centered loading/error overlay pinned inside the canvas. */
+.centeredOverlay {
+    z-index: 20;
+}
+.centeredOverlay.loading { color: #adb5bd; }
+.centeredOverlay.error   { color: #dc3545; }
+
+/* HTML overlay layer that mirrors the Cytoscape pan/zoom via JS. */
+.overlayLayer   { pointer-events: none; }
+.badgeLayer     { transform-origin: 0 0; }
+
+/* Single node's badge group. Small gap between individual chips. */
+.badgeGroup { gap: 2px; }
+
+/* Engine-icon chip painted at each edge midpoint. Centered via translate. */
+.iconChip {
+    display: flex;
+    gap: 1px;
+    padding: 1px;
+    background: #0d0f11cc;
+    border-radius: 3px;
+    transform: translate(-50%, -50%);
+}
+
+/* Issue marker chip — ⚠ + optional count on a solid tier-colored pill
+   (background set inline). Filled + outlined so it pops against both the dark
+   canvas and node fills. Centered on its anchor point (node corner / below
+   edge midpoint) via translate. */
+.issueMark {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border: 1px solid #0d0f11;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 17px;
+    box-shadow: 0 0 6px #000c;
+    transform: translate(-50%, -50%);
+}

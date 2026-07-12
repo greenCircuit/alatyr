@@ -4,7 +4,6 @@
 // these components stay tuned to the detail-panel layout.
 
 import type { MeshMembership, MtlsState, MtlsSource } from '../../../data/policies';
-import { SEVERITY_COLOR } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
 import { MTLS_VERDICT_COLOR } from './presentation';
 import { ManifestButton } from './ManifestModal';
@@ -12,15 +11,12 @@ import { ManifestButton } from './ManifestModal';
 function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boolean }) {
   const scope = src.meshScope;
   return (
-    <div
-      className={`border border-secondary rounded p-2 mb-1 ${s.smallText}`}
-      style={isEffective ? { borderColor: SEVERITY_COLOR.secure, borderWidth: 2 } : undefined}
-    >
+    <div className={`rounded p-2 mb-1 ${isEffective ? 'border border-2 border-success' : 'border border-secondary'} ${s.smallText}`}>
       <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
         <div className="fw-semibold text-break">{src.namespace}/{src.name}</div>
         <div className="d-flex gap-1 flex-shrink-0 align-items-center">
           {isEffective && <span className="badge bg-success">effective</span>}
-          <span className="badge" style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#6c757d', color: '#1a1d20' }}>
+          <span className="badge text-ink-dark" style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#6c757d' }}>
             {scope}
           </span>
           <span className="badge bg-secondary">{src.meshSource}</span>
@@ -48,8 +44,8 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
       <div className="d-flex align-items-center gap-2">
         <span className="text-secondary">Verdict</span>
         <span
-          className="badge text-uppercase"
-          style={{ background: MTLS_VERDICT_COLOR[mtls.verdict] ?? '#6c757d', color: '#1a1d20' }}
+          className="badge text-uppercase text-ink-dark"
+          style={{ background: MTLS_VERDICT_COLOR[mtls.verdict] ?? '#6c757d' }}
         >
           {mtls.verdict}
         </span>
@@ -66,8 +62,8 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
             {Object.entries(mtls.portOverrides).map(([port, mode]) => (
               <span
                 key={port}
-                className="badge"
-                style={{ background: MTLS_VERDICT_COLOR[mode] ?? '#6c757d', color: '#1a1d20' }}
+                className="badge text-ink-dark"
+                style={{ background: MTLS_VERDICT_COLOR[mode] ?? '#6c757d' }}
               >
                 {port}: {mode}
               </span>

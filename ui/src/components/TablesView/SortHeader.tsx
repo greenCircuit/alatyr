@@ -23,13 +23,12 @@ export function SortHeader<K extends string>({
   const arrow = !active ? '' : sort.dir === 'asc' ? '▲' : '▼';
   return (
     <th
-      className={`text-${align} user-select-none`}
+      className={`text-${align} user-select-none cursor-pointer text-nowrap`}
       role="button"
       onClick={() => onSort(col)}
-      style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
     >
       {label}
-      <span className="text-secondary ms-1" style={{ fontSize: 10 }}>{arrow}</span>
+      <span className="text-secondary ms-1 fs-10">{arrow}</span>
     </th>
   );
 }

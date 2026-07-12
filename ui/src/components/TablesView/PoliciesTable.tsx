@@ -5,15 +5,16 @@
 // emits.
 
 import { useMemo, useState } from 'react';
-import type { PolicyEdge } from '../../data/policies';
+import type { PolicyEdge, Issue } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
-import { engineMeta } from '../../data/engines';
-import { EngineLogo } from '../../data/engineIcons';
+import { EngineBadge } from '../../data/engineIcons';
 import { DirectionBadge } from '../DetailPanel/shared/badges';
 import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
+import { IssueChip } from './WorkloadsTable';
+import { policyIssueKey, type IssueIndex } from '../../store/issueIndex';
 
-type Col = 'name' | 'engine' | 'namespace' | 'action' | 'direction' | 'rules' | 'reach';
+type Col = 'name' | 'engine' | 'namespace' | 'action' | 'direction' | 'rules' | 'reach' | 'issues';
 
 // Ingress before egress before 'both' — matches DirectionDropdown order and
 // the badge order shown in PolicyHeader.
@@ -29,11 +30,12 @@ interface PolicyRow {
   edges: PolicyEdge[];
   srcCount: number;
   dstCount: number;
+  issues: Issue[];
 }
 
-export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
+export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEdge[]; policyIssues: IssueIndex }) {
   const setSelectedEdges = useGraphStore((s) => s.setSelectedEdges);
-  const setView = useGraphStore((s) => s.setView);
+  const setView          = useGraphStore((s) => s.setView);
   const [sort, setSort] = useState<SortState<Col>>({ col: null, dir: 'asc' });
 
   const rows = useMemo(() => {
@@ -52,6 +54,7 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
           edges: [],
           srcCount: 0,
           dstCount: 0,
+          issues: policyIssues.get(policyIssueKey(e.policySource, e.namespace, e.policyName)) ?? [],
         };
         grouped.set(key, row);
       }
@@ -82,11 +85,12 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
         case 'direction': return sign * a.directions.join(',').localeCompare(b.directions.join(','));
         case 'rules':     return sign * (a.edges.length - b.edges.length);
         case 'reach':     return sign * ((a.srcCount + a.dstCount) - (b.srcCount + b.dstCount));
+        case 'issues':    return sign * (a.issues.length - b.issues.length);
         default:          return 0;
       }
     });
     return list;
-  }, [edges, sort]);
+  }, [edges, sort, policyIssues]);
 
   const onSort = (col: Col) => setSort((s) => nextSort(s, col));
 
@@ -102,7 +106,7 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
   }
 
   return (
-    <table className="table table-dark table-sm table-hover mb-0" style={{ fontSize: 13 }}>
+    <table className="table table-dark table-sm table-hover mb-0 fs-13">
       <thead className="sticky-top bg-dark">
         <tr>
           <SortHeader col="name"      label="Policy"     sort={sort} onSort={onSort} />
@@ -112,6 +116,7 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
           <SortHeader col="direction" label="Direction"  sort={sort} onSort={onSort} />
           <SortHeader col="rules"     label="Rules"      sort={sort} onSort={onSort} />
           <SortHeader col="reach"     label="Endpoints"  sort={sort} onSort={onSort} />
+          <SortHeader col="issues"    label="Issues"     sort={sort} onSort={onSort} />
           <th />
         </tr>
       </thead>
@@ -121,10 +126,10 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
             key={row.key}
             role="button"
             onClick={() => selectRow(row)}
-            style={{ cursor: 'pointer' }}
+            className="cursor-pointer"
           >
             <td className="text-break fw-semibold">{row.name}</td>
-            <td><EngineCell engine={row.engine} /></td>
+            <td><EngineBadge engine={row.engine} /></td>
             <td>{row.namespace || '—'}</td>
             <td>
               {row.action === 1
@@ -143,6 +148,9 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
               <span className="text-secondary ms-2">dst </span>
               <span className="badge bg-warning text-dark">{row.dstCount}</span>
             </td>
+            <td onClick={(e) => e.stopPropagation()}>
+              <IssueChip issues={row.issues} />
+            </td>
             <td className="text-end">
               <div className="d-flex gap-1 justify-content-end align-items-center">
                 {/* stop row-select fire from the YAML modal trigger */}
@@ -151,10 +159,9 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
                 </span>
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-secondary"
+                  className="btn btn-sm btn-outline-secondary text-nowrap"
                   onClick={(e) => openInGraph(row, e)}
                   title="Show this policy in the graph"
-                  style={{ whiteSpace: 'nowrap' }}
                 >
                   ◉ Graph
                 </button>
@@ -167,15 +174,3 @@ export default function PoliciesTable({ edges }: { edges: PolicyEdge[] }) {
   );
 }
 
-function EngineCell({ engine }: { engine: string }) {
-  const { label, color } = engineMeta(engine);
-  return (
-    <span
-      className="badge d-inline-flex align-items-center gap-1"
-      title={label}
-      style={{ background: '#11151a', border: `1px solid ${color}`, color: '#e9ecef' }}
-    >
-      <EngineLogo engine={engine} size={12} /> {engine}
-    </span>
-  );
-}

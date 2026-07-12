@@ -9,5 +9,15 @@ type EvaluationResult struct {
 	// saving node polices
 	PolicyStatuses map[string]PolicyStatus // workloadID → per-engine PolicyStatus
 	NodePolicies   map[string][]PolicyRef  // workloadID → policies that select it
+	NodeRules      map[string]NodeRules	   // workloadId → to all policies
 
+}
+
+type NodeRules struct {
+    Ingress DirectionRules
+    Egress  DirectionRules
+}
+type DirectionRules struct {
+    Allow []Rule
+    Deny  []Rule
 }

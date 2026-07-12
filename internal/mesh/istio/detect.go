@@ -3,6 +3,7 @@ package istio
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"graph/internal/models"
 )
@@ -50,6 +51,20 @@ func (s *source) CanReach(ctx context.Context, srcWorkload, dstWorkload models.W
 	srcMtls, srcErr := s.ResolveMtls(ctx, srcWorkload, srcNsLabels)
 	dstMtls, dstErr := s.ResolveMtls(ctx, dstWorkload, dstNsLabels)
 	if srcErr != nil || dstErr != nil || srcMtls == nil || dstMtls == nil {
+		attrs := []slog.Attr{
+			slog.String("phase", "mesh_can_reach"),
+			slog.String("src_id", srcWorkload.ID),
+			slog.String("src_ns", srcWorkload.Namespace),
+			slog.String("dst_id", dstWorkload.ID),
+			slog.String("dst_ns", dstWorkload.Namespace),
+		}
+		if srcErr != nil {
+			attrs = append(attrs, slog.String("src_error", srcErr.Error()))
+		}
+		if dstErr != nil {
+			attrs = append(attrs, slog.String("dst_error", dstErr.Error()))
+		}
+		s.log.LogAttrs(ctx, slog.LevelWarn, "mesh PA resolve failed", attrs...)
 		return models.MeshVerdict{Verdict: "unknown", Reason: "could not resolve PAs"}
 	}
 

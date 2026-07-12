@@ -213,7 +213,7 @@ function ManifestModal({ kind, namespace, name, highlight, highlightPeer, onClos
         </div>
       </div>
 
-      <div className="p-3 d-flex flex-column" style={{ minHeight: 0 }}>
+      <div className="p-3 d-flex flex-column min-h-0">
         {state.phase === 'loading' && (
           <div className="text-secondary small py-4 text-center">Fetching…</div>
         )}

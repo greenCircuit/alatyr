@@ -15,11 +15,24 @@ import { useGraphStore } from '../../store/graphStore';
 import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
 import { buildElements, buildAggregatedElements } from './parts/elements';
 import { edgeEngines } from './parts/bundling';
+import { buildIssueMarks, pairKey, type IssueMark } from './parts/issueMarkers';
 import { STYLE } from './parts/styles';
 import { StatusBadge, Legend, type BadgeNode } from './parts/legend';
 import { EngineLogo } from '../../data/engineIcons';
+import { SEVERITY_COLOR } from '../../data/policies';
+import s from './PolicyGraph.module.css';
 
 interface EdgeIcon { id: string; engines: string[] }
+// One rendered issue marker: element id + resolved mark. Node markers pin to
+// the node's top-right corner, edge markers hang below the edge midpoint.
+interface ElementIssueMark extends IssueMark { id: string }
+
+// Filled pill: tier color as background, text color picked for contrast
+// (white on red, near-black on amber).
+const TIER_STYLE: Record<IssueMark['tier'], { background: string; color: string }> = {
+  blocking: { background: SEVERITY_COLOR.high,    color: '#fff' },
+  warning:  { background: SEVERITY_COLOR.warning, color: '#1a1d20' },
+};
 
 cytoscape.use(dagre);
 cytoscape.use(cola);
@@ -31,9 +44,13 @@ export default function PolicyGraph() {
   const badgeLayerRef = useRef<HTMLDivElement>(null);
   const [badgeNodes, setBadgeNodes] = useState<BadgeNode[]>([]);
   const [edgeIcons, setEdgeIcons]   = useState<EdgeIcon[]>([]);
+  const [nodeIssueMarks, setNodeIssueMarks] = useState<ElementIssueMark[]>([]);
+  const [edgeIssueMarks, setEdgeIssueMarks] = useState<ElementIssueMark[]>([]);
   const [legendOpen, setLegendOpen] = useState(true);
-  const badgeDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
-  const edgeIconDivRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const badgeDivRefs        = useRef<Map<string, HTMLDivElement>>(new Map());
+  const edgeIconDivRefs     = useRef<Map<string, HTMLDivElement>>(new Map());
+  const nodeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
+  const edgeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Refs so layoutstop callback can read latest selection state without stale closures
   const selectedNodeRef       = useRef<WorkloadNode | null>(null);
@@ -71,6 +88,27 @@ export default function PolicyGraph() {
     });
   }, []);
 
+  // Issue markers: node marks at the node's top-right corner (status badges own
+  // the top-left), edge marks below the midpoint (engine icons own above it).
+  const syncIssueMarkPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    nodeIssueDivRefs.current.forEach((div, id) => {
+      const cyNode = cy.getElementById(id);
+      if (cyNode.empty()) return;
+      const bb = cyNode.boundingBox({});
+      div.style.left = `${bb.x2 - 2}px`;
+      div.style.top  = `${bb.y1 + 2}px`;
+    });
+    edgeIssueDivRefs.current.forEach((div, id) => {
+      const edge = cy.getElementById(id);
+      if (edge.empty()) return;
+      const mid = edge.midpoint();
+      div.style.left = `${mid.x}px`;
+      div.style.top  = `${mid.y + 16}px`;
+    });
+  }, []);
+
   // Mirror Cytoscape viewport transform onto the badge overlay layer (no React re-render)
   const syncViewport = useCallback(() => {
     const cy = cyRef.current;
@@ -88,6 +126,7 @@ export default function PolicyGraph() {
     filteredNodes, filteredEdges, selectedNamespaces,
     selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces,
     aggregateByNamespace, showEngineIcons,
+    issues,
     selectedStatuses,
     selectedPolicySources, selectedActions, selectedDirections,
     selectedNode,
@@ -115,6 +154,38 @@ export default function PolicyGraph() {
   // Position icons after they render
   useEffect(() => { syncEdgeIconPositions(); }, [edgeIcons, syncEdgeIconPositions]);
 
+  // Resolve issue marks against the rendered elements whenever issues arrive or
+  // the graph is rebuilt (badgeNodes doubles as the "layout done" cue). A pair
+  // can render as several parallel edges (allow + deny bundles) — the mark goes
+  // on the first one so a conflict shows once, not once per bundle.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) { setNodeIssueMarks([]); setEdgeIssueMarks([]); return; }
+    const marks = buildIssueMarks(issues, aggregateByNamespace);
+    const nodeMarks: ElementIssueMark[] = [];
+    cy.nodes().forEach((cyNode) => {
+      const mark = marks.nodes.get(cyNode.id());
+      if (mark) nodeMarks.push({ id: cyNode.id(), ...mark });
+    });
+    const edgeMarks: ElementIssueMark[] = [];
+    const markedPairs = new Set<string>();
+    cy.edges().forEach((edge) => {
+      const key = pairKey(edge.data('source'), edge.data('target'));
+      if (markedPairs.has(key)) return;
+      const mark = marks.pairs.get(key);
+      if (mark) {
+        markedPairs.add(key);
+        edgeMarks.push({ id: edge.id(), ...mark });
+      }
+    });
+    setNodeIssueMarks(nodeMarks);
+    setEdgeIssueMarks(edgeMarks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issues, aggregateByNamespace, badgeNodes]);
+
+  // Position issue markers after they render
+  useEffect(() => { syncIssueMarkPositions(); }, [nodeIssueMarks, edgeIssueMarks, syncIssueMarkPositions]);
+
   // Apply dimming: reach mode > node-click mode > status filter mode.
   // Reach mode suppresses dimming entirely so the operator can scan candidate
   // targets; src/dst get colored borders instead.
@@ -129,6 +200,8 @@ export default function PolicyGraph() {
       if (reachDst) cy.getElementById(reachDst.id).addClass('reach-dst');
       badgeDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       edgeIconDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      nodeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      edgeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       return;
     }
     const node     = selectedNodeRef.current;
@@ -164,6 +237,12 @@ export default function PolicyGraph() {
     edgeIconDivRefs.current.forEach((div, id) => {
       div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
     });
+    nodeIssueDivRefs.current.forEach((div, id) => {
+      div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
+    });
+    edgeIssueDivRefs.current.forEach((div, id) => {
+      div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -178,7 +257,7 @@ export default function PolicyGraph() {
 
   // Re-apply dim state to overlays when the badge or engine-icon list changes
   // (after layout adds new badges, or the engine-icon toggle flips)
-  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, applyDimming]);
+  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, nodeIssueMarks, edgeIssueMarks, applyDimming]);
 
 
   // Mount once: create Cytoscape instance and wire event handlers
@@ -201,7 +280,7 @@ export default function PolicyGraph() {
     let dragRaf: number | null = null;
     cy.on('drag', 'node', () => {
       if (dragRaf !== null) return;
-      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); });
+      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); syncIssueMarkPositions(); });
     });
 
     // Workload / namespace node click – open detail panel for whichever node was tapped.
@@ -324,22 +403,22 @@ export default function PolicyGraph() {
   }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
 
   return (
-    <div style={{ flex: 1, position: 'relative', background: '#0d0f11', overflow: 'hidden' }}>
+    <div className={`position-relative overflow-hidden ${s.canvas}`}>
       {loading && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, color: '#adb5bd' }}>
+        <div className={`position-absolute inset-0 d-flex align-items-center justify-content-center ${s.centeredOverlay} ${s.loading}`}>
           Loading graph…
         </div>
       )}
       {error && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, color: '#dc3545' }}>
+        <div className={`position-absolute inset-0 d-flex align-items-center justify-content-center ${s.centeredOverlay} ${s.error}`}>
           {error}
         </div>
       )}
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} className="w-100 h-100" />
 
       {/* Status badge overlay – graph-space coords, only CSS transform changes on pan/zoom */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-        <div ref={badgeLayerRef} style={{ position: 'absolute', top: 0, left: 0, transformOrigin: '0 0' }}>
+      <div className={`position-absolute inset-0 overflow-hidden ${s.overlayLayer}`}>
+        <div ref={badgeLayerRef} className={`position-absolute top-0 start-0 ${s.badgeLayer}`}>
           {badgeNodes.map(({ id, statuses }) => (
             <div
               key={id}
@@ -347,9 +426,9 @@ export default function PolicyGraph() {
                 if (el) badgeDivRefs.current.set(id, el);
                 else    badgeDivRefs.current.delete(id);
               }}
-              style={{ position: 'absolute', display: 'flex', gap: 2 }}
+              className={`position-absolute d-flex ${s.badgeGroup}`}
             >
-              {statuses.map((s) => <StatusBadge key={s} s={s} />)}
+              {statuses.map((key) => <StatusBadge key={key} s={key} />)}
             </div>
           ))}
 
@@ -363,13 +442,41 @@ export default function PolicyGraph() {
                 if (el) edgeIconDivRefs.current.set(id, el);
                 else    edgeIconDivRefs.current.delete(id);
               }}
-              style={{
-                position: 'absolute', display: 'flex', gap: 1,
-                transform: 'translate(-50%, -50%)',
-                background: '#0d0f11cc', borderRadius: 3, padding: 1,
-              }}
+              className={`position-absolute ${s.iconChip}`}
             >
               {engines.map((engine) => <EngineLogo key={engine} engine={engine} size={13} />)}
+            </div>
+          ))}
+
+          {/* Issue markers — misconfig channel, separate from status badges.
+              Node marks pin top-right; edge marks flag "this allow edge doesn't
+              mean traffic flows" (blocked by another engine). */}
+          {nodeIssueMarks.map(({ id, tier, count }) => (
+            <div
+              key={`ni-${id}`}
+              ref={(el) => {
+                if (el) nodeIssueDivRefs.current.set(id, el);
+                else    nodeIssueDivRefs.current.delete(id);
+              }}
+              className={`position-absolute ${s.issueMark}`}
+              style={TIER_STYLE[tier]}
+            >
+              <span aria-hidden="true">⚠</span>
+              {count > 1 && <span>{count}</span>}
+            </div>
+          ))}
+          {edgeIssueMarks.map(({ id, tier, count }) => (
+            <div
+              key={`ei-${id}`}
+              ref={(el) => {
+                if (el) edgeIssueDivRefs.current.set(id, el);
+                else    edgeIssueDivRefs.current.delete(id);
+              }}
+              className={`position-absolute ${s.issueMark}`}
+              style={TIER_STYLE[tier]}
+            >
+              <span aria-hidden="true">⚠</span>
+              {count > 1 && <span>{count}</span>}
             </div>
           ))}
         </div>

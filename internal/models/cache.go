@@ -6,6 +6,24 @@ package models
 type Cache struct {
 	NsIndex           map[string]NSIndex
 	EvaluationResults map[string]EvaluationResult // keyed by PolicySource.Name()
+	// WorkloadByID resolves any cached node id (workload, cronjob, or ns node)
+	// to its WorkloadNode without a namespace hint. Derived from NsIndex —
+	// callers that mutate NsIndex must call RebuildWorkloadIndex afterwards.
+	WorkloadByID      map[string]WorkloadNode
+}
+
+// RebuildWorkloadIndex regenerates WorkloadByID from NsIndex so consumers get
+// O(1) id lookups instead of scanning every namespace per rule. Not
+// goroutine-safe against concurrent readers — call it where NsIndex writes
+// already hold the store's write lock.
+func (c *Cache) RebuildWorkloadIndex() {
+	index := make(map[string]WorkloadNode)
+	for _, nsIndex := range c.NsIndex {
+		for _, workload := range nsIndex.Workloads {
+			index[workload.ID] = workload
+		}
+	}
+	c.WorkloadByID = index
 }
 
 // Workload resolves a node id within a namespace to its cached WorkloadNode and

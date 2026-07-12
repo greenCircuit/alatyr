@@ -14,7 +14,10 @@ import (
 // allow and deny rules will use this since the way they are working are the same
 // buildRulesByNs expands AuthorizationPolicies into rules, grouped by the
 // policy's namespace for per-ns cache invalidation.
-func buildRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*istiosec.AuthorizationPolicy) map[string][]models.Rule {
+// buildRulesByNs also accumulates the per-node rule index into nodeRules
+// (ingress-only for Istio), keyed by the protected workload. Runs once per
+// action bucket; pass the same nodeRules map to merge allow + deny.
+func buildRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*istiosec.AuthorizationPolicy, nodeRules map[string]*models.NodeRules) map[string][]models.Rule {
 	result := map[string][]models.Rule{}
 	for ns, policies := range policiesByNS {
 		var nsRules []models.Rule
@@ -28,6 +31,19 @@ func buildRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*
 					rule.SrcID = rule.DstID
 					rule.DstID = srcNode.ID
 					nsRules = append(nsRules, rule)
+
+					// index by the protected node (DstID after swap), ingress-only
+					protectedID := rule.DstID
+					bucket, ok := nodeRules[protectedID]
+					if !ok {
+						bucket = &models.NodeRules{}
+						nodeRules[protectedID] = bucket
+					}
+					if rule.Action == models.ActionAllow {
+						bucket.Ingress.Allow = append(bucket.Ingress.Allow, rule)
+					} else {
+						bucket.Ingress.Deny = append(bucket.Ingress.Deny, rule)
+					}
 				}
 			}
 		}

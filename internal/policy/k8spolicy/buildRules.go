@@ -9,7 +9,8 @@ import (
 // buildAllowRulesByNs expands every NetworkPolicy into pod-level allow rules,
 // grouped by the policy's namespace so per-ns cache invalidation can replace
 // one ns's rules without touching others.
-func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) map[string][]models.Rule {
+func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) (map[string][]models.Rule, map[string]models.NodeRules) {
+	policyMap := map[string]*models.NodeRules{}  // have pointer so don't reconstruct map every time update it
 	result := map[string][]models.Rule{}
 	for ns, policies := range policiesByNS {
 		var nsRules []models.Rule
@@ -22,11 +23,38 @@ func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[strin
 				for _, rule := range egressRules {
 					rule.SrcID = srcNode.ID
 					nsRules = append(nsRules, rule)
+
+					// adding things to global map for policy index
+					nodeRules, ok := policyMap[rule.SrcID]
+					if !ok {
+						nodeRules = &models.NodeRules{}
+						policyMap[rule.SrcID] = nodeRules
+					}
+					if rule.Action == models.ActionAllow {
+						nodeRules.Egress.Allow = append(nodeRules.Egress.Allow, rule)
+					} else {
+						nodeRules.Egress.Deny = append(nodeRules.Egress.Deny, rule)
+					}
+
 				}
 				for _, rule := range ingressRules {
 					rule.SrcID = rule.DstID
 					rule.DstID = srcNode.ID
 					nsRules = append(nsRules, rule)
+
+					// adding things to global map for policy index. key by the
+					// protected (selected) node, which after the swap is DstID.
+					protectedID := rule.DstID
+					nodeRules, ok := policyMap[protectedID]
+					if !ok {
+						nodeRules = &models.NodeRules{}
+						policyMap[protectedID] = nodeRules
+					}
+					if rule.Action == models.ActionAllow {
+						nodeRules.Ingress.Allow = append(nodeRules.Ingress.Allow, rule)
+					} else {
+						nodeRules.Ingress.Deny = append(nodeRules.Ingress.Deny, rule)
+					}
 				}
 			}
 		}
@@ -34,7 +62,14 @@ func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[strin
 			result[ns] = nsRules
 		}
 	}
-	return result
+
+	// dereference policy map so return struct so don't mutate state later on as guard
+	nonPointerPolicyMap := make(map[string]models.NodeRules, len(policyMap))
+	for nodeID, nodeRules := range policyMap {
+		nonPointerPolicyMap[nodeID] = *nodeRules
+	}
+
+	return result, nonPointerPolicyMap 
 }
 
 func getSourceNodes(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {

@@ -1,0 +1,125 @@
+/* Left-anchored slide-out drawer for the whole-cluster issue scan. Overlay on
+   top of the graph/table (absolute, not a flex sibling) so canvas renderers
+   don't fight it for layout. Sits above the DetailPanel dock's neighbours but
+   the DetailPanel stays on the right, so the two never overlap. */
+.drawer {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  bottom: 12px;
+  width: min(360px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  background: #1a1e22e6;
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #00000066;
+  z-index: 1030;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ffffff1a;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8f9fa;
+}
+
+.list {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  text-align: left;
+  width: 100%;
+  background: #ffffff0a;
+  border: 1px solid #ffffff14;
+  /* Severity accent bar — colour set inline from SEVERITY_COLOR via --accent,
+     mirroring DetailPanel's .calloutAccent pattern. Reads pre-attentively so
+     red (blocking) clusters apart from amber (hygiene) before any text. */
+  border-left: 4px solid var(--accent, #6c757d);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.item:hover {
+  background: #ffffff14;
+  border-color: #ffffff2e;
+  border-left-color: var(--accent, #6c757d);
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+/* Category tag, not the headline — severity lives in the accent bar now. */
+.typeTag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #adb5bd;
+}
+
+
+/* Sticky group header so Blocking/Warnings labels stay visible while the list
+   scrolls under them. Background matches the drawer so rows don't bleed through. */
+.sectionHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #1a1e22e6;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6c757d;
+  padding: 4px 2px;
+}
+
+.node {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8f9fa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.endpointNs {
+  font-size: 10px;
+  color: #6c757d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.message {
+  font-size: 11px;
+  color: #adb5bd;
+  line-height: 1.35;
+}
+
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #6c757d;
+}

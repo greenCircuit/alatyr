@@ -7,31 +7,16 @@ import { useGraphStore } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { COV } from './coverage';
+import s from './Legend.module.css';
 
 export interface BadgeNode { id: string; statuses: StatusKey[] }
 
-export function StatusBadge({ s }: { s: StatusKey }) {
-  const { symbol, severity, description } = STATUS_CFG[s];
+export function StatusBadge({ s: statusKey }: { s: StatusKey }) {
+  const { symbol, severity, description } = STATUS_CFG[statusKey];
   const bg = SEVERITY_COLOR[severity];
   const title = `${severity}: ${description}`;
   return (
-    <span
-      title={title}
-      style={{
-        display: 'inline-block',
-        background: bg,
-        color: '#fff',
-        fontSize: 7,
-        fontWeight: 700,
-        lineHeight: 1,
-        padding: '2px 3px',
-        borderRadius: 3,
-        letterSpacing: '0.02em',
-        cursor: 'default',
-        userSelect: 'none',
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <span title={title} className={`${s.statusBadge} ${s.inline}`} style={{ background: bg }}>
       {symbol}
     </span>
   );
@@ -40,7 +25,7 @@ export function StatusBadge({ s }: { s: StatusKey }) {
 function Dot({ color, label }: { color: string; label: string }) {
   return (
     <span className="d-flex align-items-center gap-1">
-      <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+      <span className="swatch-dot" style={{ background: color }} />
       {label}
     </span>
   );
@@ -50,37 +35,25 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
   const { selectedStatuses, toggleStatus } = useGraphStore();
 
   return (
-    <div
-      className="position-absolute d-flex align-items-end"
-      style={{ bottom: 12, left: 12, zIndex: 10, gap: 6 }}
-    >
+    <div className={`position-absolute d-flex align-items-end ${s.legendAnchor}`}>
       <button
-        className="btn btn-sm btn-outline-secondary flex-shrink-0"
+        className={`btn btn-sm btn-outline-secondary flex-shrink-0 ${s.legendToggle}`}
         onClick={onToggle}
         title={open ? 'Hide legend' : 'Show legend'}
-        style={{ alignSelf: 'flex-end' }}
       >
         {open ? '‹' : '›'}
       </button>
 
       {/* Clip wrapper — overflow:hidden lets transform slide look clean */}
-      <div style={{ overflow: 'hidden', maxHeight: 'calc(100% - 24px)' }}>
-        <div
-          className="px-3 py-2 rounded d-flex flex-column gap-1"
-          style={{
-            background: '#1a1e22ee', fontSize: 10, color: '#adb5bd', lineHeight: 1.6,
-            maxHeight: 'calc(100vh - 80px)', overflowY: 'auto', boxSizing: 'border-box',
-            transform: open ? 'translateX(0)' : 'translateX(calc(-100% - 6px))',
-            transition: 'transform 0.25s ease',
-          }}
-        >
-          <div className="fw-semibold mb-1" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6c757d' }}>
+      <div className={s.legendClip}>
+        <div className={`px-3 py-2 rounded d-flex flex-column gap-1 ${s.legendPanel} ${open ? s.open : s.closed}`}>
+          <div className={`fw-semibold mb-1 ${s.legendEyebrow}`}>
             Policy coverage
           </div>
           <Dot color={COV.workload}  label="workload policies applied" />
           <Dot color={COV.namespace} label="namespace-selector only" />
           <Dot color={COV.none}      label="no policies (gap)" />
-          <div className="mt-1 pt-1 border-top border-secondary" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6c757d' }}>
+          <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
             Arrows
           </div>
           <Dot color="#4dabf7" label="egress (allow)" />
@@ -88,10 +61,10 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
           <Dot color="#a9e34b" label="both (allow)" />
           <Dot color="#e03131" label="deny" />
           <div className="d-flex gap-2 mt-1">
-            <span style={{ color: '#adb5bd' }}>── workload</span>
-            <span style={{ color: '#adb5bd' }}>╌╌ namespace</span>
+            <span className={s.lineLabel}>── workload</span>
+            <span className={s.lineLabel}>╌╌ namespace</span>
           </div>
-          <div className="mt-1 pt-1 border-top border-secondary" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6c757d' }}>
+          <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
             Badges
           </div>
           {(Object.entries(STATUS_CFG) as [StatusKey, typeof STATUS_CFG[StatusKey]][]).map(([key, cfg]) => {
@@ -102,20 +75,18 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
             return (
               <span
                 key={key}
-                className="d-flex align-items-center gap-1"
+                className="d-flex align-items-center gap-1 cursor-pointer transition-opacity"
                 title={label}
                 onClick={() => toggleStatus(key)}
-                style={{ cursor: 'pointer', opacity: dimmed ? 0.4 : 1, transition: 'opacity 0.15s' }}
+                style={{ opacity: dimmed ? 0.4 : 1 }}
               >
-                <span style={{
-                  background: bg, color: '#fff',
-                  fontSize: 7, fontWeight: 700, padding: '2px 3px', borderRadius: 3, flexShrink: 0,
-                  outline: active ? '1.5px solid #fff' : 'none',
-                  outlineOffset: 1,
-                }}>
+                <span
+                  className={`${s.statusBadge} ${active ? s.active : ''}`}
+                  style={{ background: bg }}
+                >
                   {cfg.symbol}
                 </span>
-                <span style={{ fontSize: 9 }}>{label}</span>
+                <span className="fs-9">{label}</span>
               </span>
             );
           })}

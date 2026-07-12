@@ -6,6 +6,7 @@ import type { PolicyEdge, WorkloadNode, ReachabilityResult } from '../../../data
 import s from '../DetailPanel.module.css';
 import { EndpointCard, EdgeReachabilityBanner } from '../shared/edge-composites';
 import { PolicyRow } from '../shared/rows';
+import { PairIssues } from '../shared/issues';
 
 export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
   edges:               PolicyEdge[];
@@ -23,8 +24,12 @@ export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
     <>
       <EdgeReachabilityBanner result={reachability} loading={reachabilityLoading} />
       <div className="d-flex flex-column gap-1 mb-3">
-        <EndpointCard role="src" node={src} />
-        <EndpointCard role="dst" node={dst} />
+        <EndpointCard role="src" node={src} coverage={first.coverage} />
+        <EndpointCard role="dst" node={dst} coverage={first.coverage} />
+      </div>
+      {/* Findings on this pair — why an allow edge may still not carry traffic. */}
+      <div className="mb-3">
+        <PairIssues srcId={first.source} dstId={first.target} />
       </div>
       <div className={`text-secondary mb-2 ${s.smallText}`}>
         Policies ({edges.length})

@@ -3,7 +3,7 @@
 // Policies-table bundles, the cross-engine reachability banner, and the
 // pair-grouping helper they all key off.
 
-import type { PolicyEdge, WorkloadNode, ReachabilityResult } from '../../../data/policies';
+import type { Coverage, PolicyEdge, WorkloadNode, ReachabilityResult } from '../../../data/policies';
 import { formatPort, realPorts, SEVERITY_COLOR } from '../../../data/policies';
 import { DirectionBadge, EngineBadge } from './badges';
 import { ManifestButton } from './ManifestModal';
@@ -11,15 +11,35 @@ import { verdictColor } from './presentation';
 import type { PairGroup } from './groupEdgesByPair';
 import s from '../DetailPanel.module.css';
 
+// Coverage values that mean "no peer restriction" — the edge intentionally has
+// no target workload. Distinguishes wildcard rules from a target that failed
+// to resolve, so the endpoint card can label it honestly.
+const WILDCARD_COVERAGES: Coverage[] = ['allow all', 'allow all ns', 'deny all', 'unenforced'];
+
+function wildcardLabel(coverage: Coverage): { title: string; subtitle: string } {
+  switch (coverage) {
+    case 'allow all':    return { title: 'any peer',            subtitle: 'no peer restriction' };
+    case 'allow all ns': return { title: 'any workload in ns',  subtitle: 'namespace-wide selector' };
+    case 'deny all':     return { title: 'no peer',             subtitle: 'default-deny' };
+    case 'unenforced':   return { title: 'no peer',             subtitle: 'rule unenforced' };
+    default:             return { title: 'any peer',            subtitle: '—' };
+  }
+}
+
 // EndpointCard shows one side of the edge: name, ns, and the workload's k8s
 // labels. Lives once at the connection-panel level — the endpoints are shared
 // across every policy in the bundle, so rendering per-row would duplicate.
+// coverage is threaded through so a wildcard-target edge (port-only egress,
+// deny-all lock, etc.) reads as "any peer" instead of the confused "dst / —"
+// placeholder we'd get from a missing workload lookup.
 export function EndpointCard({
   role,
   node,
+  coverage,
 }: {
   role: 'src' | 'dst';
   node: WorkloadNode | undefined;
+  coverage?: Coverage;
 }) {
   const badge = role === 'src' ? 'SRC' : 'DST';
   const roleColor = role === 'src' ? 'bg-info' : 'bg-warning';
@@ -28,6 +48,19 @@ export function EndpointCard({
   // their kind in that slot so the row reads "ns-foo / namespace" instead of
   // "ns-foo / —" (which looks like missing data).
   const isNs = node?.type === 'namespace';
+  const isWildcard = !node && !!coverage && WILDCARD_COVERAGES.includes(coverage);
+  if (isWildcard) {
+    const { title, subtitle } = wildcardLabel(coverage!);
+    return (
+      <div className="border border-secondary border-dashed rounded p-2 d-flex flex-column gap-1">
+        <div className="d-flex align-items-center gap-2">
+          <span className={`badge ${roleColor} text-dark flex-shrink-0`}>{badge}</span>
+          <span className="fw-semibold text-secondary fst-italic">{title}</span>
+        </div>
+        <div className="text-secondary fs-11">{subtitle}</div>
+      </div>
+    );
+  }
   const subtitle = isNs ? 'namespace' : (node?.namespace || '—');
   return (
     <div className="border border-secondary rounded p-2 d-flex flex-column gap-1">
@@ -82,11 +115,11 @@ export function EdgeReachabilityBanner({
   const meshEntries = Object.entries(result.mesh ?? {});
   return (
     <div
-      className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}
-      style={{ borderLeftColor: verdictBg, borderLeftWidth: 5 }}
+      className={`border border-secondary rounded p-2 mb-2 border-l-5 ${s.smallText}`}
+      style={{ borderLeftColor: verdictBg }}
     >
       <div className="d-flex align-items-center gap-2 mb-1">
-        <span className="badge" style={{ background: verdictBg, color: '#1a1d20' }}>
+        <span className="badge text-ink-dark" style={{ background: verdictBg }}>
           {result.verdict.toUpperCase()}
         </span>
         <span className="fw-semibold text-light">end-to-end</span>
@@ -99,8 +132,8 @@ export function EdgeReachabilityBanner({
             {engineEntries.map(([name, ev]) => (
               <span
                 key={name}
-                className="badge"
-                style={{ background: engineStatusColor(ev.status), color: '#1a1d20' }}
+                className="badge text-ink-dark"
+                style={{ background: engineStatusColor(ev.status) }}
                 title={ev.status}
               >
                 {name}: {ev.status}
@@ -116,8 +149,8 @@ export function EdgeReachabilityBanner({
             {meshEntries.map(([name, mv]) => (
               <span
                 key={name}
-                className="badge"
-                style={{ background: engineStatusColor(mv.verdict), color: '#1a1d20' }}
+                className="badge text-ink-dark"
+                style={{ background: engineStatusColor(mv.verdict) }}
                 title={mv.reason}
               >
                 {name}: {mv.verdict}
@@ -167,6 +200,30 @@ export function PolicyHeader({ edges }: { edges: PolicyEdge[] }) {
   );
 }
 
+// Inline endpoint label for a pair-list row. Same wildcard handling as
+// EndpointCard so a port-only rule surfaced from the Policies table renders
+// consistently in the affected-workloads list.
+function PairEndpoint({
+  node,
+  rawId,
+  coverage,
+}: {
+  node:     WorkloadNode | undefined;
+  rawId:    string;
+  coverage: Coverage | undefined;
+}) {
+  if (!node && coverage && WILDCARD_COVERAGES.includes(coverage)) {
+    const { title } = wildcardLabel(coverage);
+    return <span className="fw-semibold fst-italic text-secondary">{title}</span>;
+  }
+  return (
+    <>
+      <span className="fw-semibold text-break">{node?.label ?? rawId}</span>
+      <span className="text-secondary">/ {node?.namespace || '—'}</span>
+    </>
+  );
+}
+
 function uniquePortStrings(edges: PolicyEdge[]): string[] {
   const seen = new Set<string>();
   for (const e of edges) {
@@ -211,12 +268,10 @@ export function AffectedPairsList({
             >
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 <span className="badge bg-info text-dark">SRC</span>
-                <span className="fw-semibold text-break">{src?.label ?? pair.src}</span>
-                <span className="text-secondary">/ {src?.namespace || '—'}</span>
+                <PairEndpoint node={src} rawId={pair.src} coverage={pair.edges[0]?.coverage} />
                 <span className="text-secondary">→</span>
                 <span className="badge bg-warning text-dark">DST</span>
-                <span className="fw-semibold text-break">{dst?.label ?? pair.dst}</span>
-                <span className="text-secondary">/ {dst?.namespace || '—'}</span>
+                <PairEndpoint node={dst} rawId={pair.dst} coverage={pair.edges[0]?.coverage} />
               </div>
               <div className="d-flex gap-2 flex-wrap mt-1">
                 {[...directions].map((d) => <DirectionBadge key={d} direction={d} />)}

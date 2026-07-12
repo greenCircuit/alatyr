@@ -150,7 +150,7 @@ func TestBuildRules_RuleIndexAndL7Attachment(t *testing.T) {
 	nsNode := models.WorkloadNode{ID: "ns-ns-a", Type: models.NodeTypeNamespace, Namespace: "ns-a", Labels: map[string]string{"kubernetes.io/metadata.name": "ns-a"}}
 	index := map[string]models.NSIndex{"ns-a": buildFixtureNSIndex([]models.WorkloadNode{target, nsNode})}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)
@@ -208,7 +208,7 @@ func TestExpandRules_MultipleToBlocksPreserved(t *testing.T) {
 	nsNode := models.WorkloadNode{ID: "ns-ns-a", Type: models.NodeTypeNamespace, Namespace: "ns-a", Labels: map[string]string{"kubernetes.io/metadata.name": "ns-a"}}
 	index := map[string]models.NSIndex{"ns-a": buildFixtureNSIndex([]models.WorkloadNode{target, nsNode})}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)
@@ -282,7 +282,7 @@ func TestExpandRules_MultipleFromBlocksPreserved(t *testing.T) {
 		"ns-b": buildFixtureNSIndex([]models.WorkloadNode{nsBObj}),
 	}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)
@@ -329,7 +329,7 @@ func TestExpandRules_NoToBlockStillEmitsRule(t *testing.T) {
 	nsNode := models.WorkloadNode{ID: "ns-ns-a", Type: models.NodeTypeNamespace, Namespace: "ns-a", Labels: map[string]string{"kubernetes.io/metadata.name": "ns-a"}}
 	index := map[string]models.NSIndex{"ns-a": buildFixtureNSIndex([]models.WorkloadNode{target, nsNode})}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)
@@ -361,7 +361,7 @@ func TestExpandRules_AllL7SetWhenNoL7Predicates(t *testing.T) {
 	nsNode := models.WorkloadNode{ID: "ns-ns-a", Type: models.NodeTypeNamespace, Namespace: "ns-a", Labels: map[string]string{"kubernetes.io/metadata.name": "ns-a"}}
 	index := map[string]models.NSIndex{"ns-a": buildFixtureNSIndex([]models.WorkloadNode{target, nsNode})}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)
@@ -400,7 +400,7 @@ func TestExpandRules_DenyActionPropagated(t *testing.T) {
 		"ns-b": buildFixtureNSIndex([]models.WorkloadNode{nsBObj}),
 	}
 
-	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}})
+	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{"ns-a": {authzPolicy}}, map[string]*models.NodeRules{})
 	var rules []models.Rule
 	for _, nsRules := range rulesByNs {
 		rules = append(rules, nsRules...)

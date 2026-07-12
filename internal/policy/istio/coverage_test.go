@@ -31,7 +31,7 @@ func rulesFromPolicy(t *testing.T, authzPolicy *istiosec.AuthorizationPolicy, in
 	t.Helper()
 	rulesByNs := buildRulesByNs(index, map[string][]*istiosec.AuthorizationPolicy{
 		authzPolicy.Namespace: {authzPolicy},
-	})
+	}, map[string]*models.NodeRules{})
 	var out []models.Rule
 	for _, nsRules := range rulesByNs {
 		out = append(out, nsRules...)

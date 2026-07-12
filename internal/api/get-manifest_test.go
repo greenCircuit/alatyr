@@ -34,7 +34,7 @@ func (f *fakeManifestClient) GetPeerAuthenticationsByName(ns, name string) (*ist
 
 func doManifestRequest(t *testing.T, netpol *networkingv1.NetworkPolicy, query string) *httptest.ResponseRecorder {
 	t.Helper()
-	server := New(&fakeManifestClient{netpol: netpol}, nil)
+	server := New(&fakeManifestClient{netpol: netpol}, nil, nil)
 	echoServer := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/api/manifest?"+query, nil)
 	rec := httptest.NewRecorder()

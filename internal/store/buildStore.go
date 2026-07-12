@@ -3,10 +3,13 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
+	"time"
 
 	"graph/internal/graph"
 	"graph/internal/k8s"
+	"graph/internal/logging"
 	"graph/internal/mesh"
 	meshistio "graph/internal/mesh/istio"
 	"graph/internal/models"
@@ -22,26 +25,31 @@ type Builder struct {
 	client       k8s.KubernetesClient
 	sources      []policy.PolicySource
 	meshSources  []mesh.MeshSource
+	log          *slog.Logger
 }
 
-func NewBuilder(client k8s.KubernetesClient) *Builder {
+func NewBuilder(client k8s.KubernetesClient, logger *slog.Logger) *Builder {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Builder{
 		client:      client,
-		sources:     defaultSources(client),
-		meshSources: defaultMeshSources(client),
+		sources:     defaultSources(client, logger),
+		meshSources: defaultMeshSources(client, logger),
+		log:         logger,
 	}
 }
 
-func defaultSources(client k8s.KubernetesClient) []policy.PolicySource {
+func defaultSources(client k8s.KubernetesClient, logger *slog.Logger) []policy.PolicySource {
 	return []policy.PolicySource{
-		k8spolicy.New(client),
-		istio.New(client),
+		k8spolicy.New(client, logger),
+		istio.New(client, logger),
 	}
 }
 
-func defaultMeshSources(client k8s.KubernetesClient) []mesh.MeshSource {
+func defaultMeshSources(client k8s.KubernetesClient, logger *slog.Logger) []mesh.MeshSource {
 	return []mesh.MeshSource{
-		meshistio.New(client),
+		meshistio.New(client, logger),
 	}
 }
 
@@ -68,6 +76,7 @@ func (b *Builder) EngineNames() []string {
 // namespaces and engines; entries for namespaces outside the request are
 // left untouched.
 func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error {
+	started := time.Now()
 	if cache.NsIndex == nil {
 		cache.NsIndex = map[string]models.NSIndex{}
 	}
@@ -83,8 +92,14 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 		wg.Add(1)
 		go func(ns string) {
 			defer wg.Done()
+			nsStart := time.Now()
 			nsIndex, err := b.fetchNsIndex(ns)
 			if err != nil {
+				b.log.Warn("ns index fetch failed",
+					slog.String("phase", "fetch_ns_index"),
+					slog.String("ns", ns),
+					slog.String("error", err.Error()),
+				)
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -92,6 +107,12 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 				mu.Unlock()
 				return
 			}
+			b.log.Debug("ns index fetched",
+				slog.String("phase", "fetch_ns_index"),
+				slog.String("ns", ns),
+				slog.Int("workload_count", len(nsIndex.Workloads)),
+				slog.Int64("duration_ms", time.Since(nsStart).Milliseconds()),
+			)
 			mu.Lock()
 			cache.NsIndex[ns] = nsIndex
 			mu.Unlock()
@@ -101,6 +122,7 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 	if firstErr != nil {
 		return firstErr
 	}
+	cache.RebuildWorkloadIndex()
 
 	indexByNS := map[string]models.NSIndex{}
 	for _, ns := range namespaces {
@@ -108,13 +130,37 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 	}
 
 	for _, source := range b.sources {
+		engineStart := time.Now()
+		b.log.Debug("engine evaluate start",
+			slog.String("phase", "engine_evaluate"),
+			slog.String("engine", source.Name()),
+			slog.Int("ns_count", len(namespaces)),
+		)
 		result, err := source.Evaluate(context.Background(), namespaces, indexByNS)
 		if err != nil {
+			b.log.Error("engine evaluate failed",
+				slog.String("phase", "engine_evaluate"),
+				slog.String("engine", source.Name()),
+				slog.String("error", err.Error()),
+			)
 			return fmt.Errorf("engine %s: %w", source.Name(), err)
 		}
+		b.log.Debug("engine evaluate done",
+			slog.String("phase", "engine_evaluate"),
+			slog.String("engine", source.Name()),
+			slog.Int("allow_ns_count", len(result.AllowByNs)),
+			slog.Int("deny_ns_count", len(result.DenyByNs)),
+			slog.Int64("duration_ms", time.Since(engineStart).Milliseconds()),
+		)
 		cache.EvaluationResults[source.Name()] = result
 	}
 
+	b.log.Info("populate cache done",
+		slog.String("phase", "populate_cache_done"),
+		slog.Int("ns_count", len(namespaces)),
+		slog.Int("engine_count", len(b.sources)),
+		slog.Int64("total_duration_ms", time.Since(started).Milliseconds()),
+	)
 	return nil
 }
 
@@ -149,42 +195,13 @@ func GetByNodeInNs(data *models.Cache, nodeId string, nodeNs string) (models.Wor
 
 }
 
-// buildWorkloadIDIndex collects every cached workload into a flat ID → node
-// lookup so cross-namespace rule destinations can be resolved to labels.
-func buildWorkloadIDIndex(data *models.Cache) map[string]models.WorkloadNode {
-	index := map[string]models.WorkloadNode{}
-	for _, nsIndex := range data.NsIndex {
-		for _, workload := range nsIndex.Workloads {
-			index[workload.ID] = workload
-		}
-	}
-	return index
-}
-
-func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models.NodeRule {
-	view := models.NodeRule{
-		Direction:    rule.Direction,
-		Ports:        rule.Ports,
-		L7Match:      rule.L7Match,
-		Action:       rule.Action,
-		Contributor:  rule.Contributor,
-		DstID:        rule.DstID,
-		DstSelector:  rule.DstSelector,
-		SrcSelector:  rule.SrcSelector,
-	}
-	if dst, ok := idIndex[rule.DstID]; ok {
-		view.DstLabel = dst.Label
-		view.DstNamespace = dst.Namespace
-	}
-	return view
-}
-
 // GetWorkloadMesh resolves per-source mesh state for a single node on demand.
 // For workload nodes: membership (cheap label check) + mTLS (one k8s
 // round-trip). For namespace nodes: membership only — PA resolution is
 // per-pod and doesn't roll up to a single ns-level verdict. Sources whose
 // ResolveMtls errors surface membership only. Returns nil for unknown nodes.
 func GetWorkloadMesh(ctx context.Context, data *models.Cache, sources []mesh.MeshSource, nodeId, ns string) map[string]*models.MeshMembership {
+	logger := logging.FromCtx(ctx)
 	nsIndex, ok := data.NsIndex[ns]
 	if !ok {
 		return nil
@@ -215,40 +232,19 @@ func GetWorkloadMesh(ctx context.Context, data *models.Cache, sources []mesh.Mes
 		if membership.InMesh && !isNamespace {
 			if mtls, err := src.ResolveMtls(ctx, *workload, nsLabels); err == nil {
 				membership.Mtls = mtls
+			} else {
+				logger.Warn("mesh mtls resolve failed",
+					slog.String("phase", "get_workload_mesh"),
+					slog.String("source", src.Name()),
+					slog.String("node_id", nodeId),
+					slog.String("ns", ns),
+					slog.String("error", err.Error()),
+				)
 			}
 		}
 		out[src.Name()] = membership
 	}
 	return out
 }
-
-
-// nsLabels returns the ns object's k8s labels from cached NSIndex, or nil
-// when the ns isn't in cache (e.g. external).
-func nsLabels(data *models.Cache, ns string) map[string]string {
-	idx, ok := data.NsIndex[ns]
-	if !ok || idx.NSNode == nil {
-		return nil
-	}
-	return idx.NSNode.Labels
-}
-
-// directionReason produces the per-direction human-readable explanation
-// surfaced to operators.
-func directionReason(d DirectionVerdict, ok bool) string {
-	switch {
-	case len(d.DenyMatches) > 0:
-		return "explicit deny rule matched"
-	case d.Locked && len(d.AllowMatches) == 0:
-		return "default-deny: locked, no allow rule matches"
-	case !d.Locked && len(d.AllowMatches) == 0:
-		return "no policy opinion"
-	case ok:
-		return "permitted by allow rule"
-	default:
-		return ""
-	}
-}
-
 
 

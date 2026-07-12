@@ -65,7 +65,7 @@ func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.N
 		}
 		policiesByNS[namespace] = append(policiesByNS[namespace], networkPolicy)
 	}
-	rulesByNs := buildAllowRulesByNs(index, policiesByNS)
+	rulesByNs, _ := buildAllowRulesByNs(index, policiesByNS)
 	var flat []models.Rule
 	for _, rules := range rulesByNs {
 		flat = append(flat, rules...)

@@ -8,7 +8,8 @@ import { useGraphStore } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { useOutsideClick } from './useOutsideClick';
-import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL } from './constants';
+import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from './constants';
+import { countIssuesByType } from '../../../store/issueIndex';
 import styles from '../FilterPanel.module.css';
 
 export function NamespaceDropdown() {
@@ -46,10 +47,7 @@ export function NamespaceDropdown() {
       </button>
 
       {open && (
-        <div
-          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1060, minWidth: 200 }}
-        >
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-lg">
           <input
             type="text"
             autoFocus
@@ -61,15 +59,13 @@ export function NamespaceDropdown() {
 
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => visibleNamespaces.forEach((ns) => { if (!selectedNamespaces.has(ns)) toggleNamespace(ns); })}
             >
               all
             </button>
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => visibleNamespaces.forEach((ns) => { if (selectedNamespaces.has(ns)) toggleNamespace(ns); })}
             >
               none
@@ -89,7 +85,7 @@ export function NamespaceDropdown() {
                 checked={selectedNamespaces.has(ns)}
                 onChange={() => toggleNamespace(ns)}
               />
-              <label className="form-check-label text-light" htmlFor={`ns-dd-${ns}`} style={{ fontSize: 13 }}>
+              <label className="form-check-label text-light fs-13" htmlFor={`ns-dd-${ns}`}>
                 {ns}
               </label>
             </div>
@@ -126,21 +122,16 @@ export function StatusDropdown() {
       </button>
 
       {open && (
-        <div
-          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1060, minWidth: 200 }}
-        >
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-lg">
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => availableStatusKeys.forEach((k) => { if (!selectedStatuses.has(k)) toggleStatus(k); })}
             >
               all
             </button>
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => availableStatusKeys.forEach((k) => { if (selectedStatuses.has(k)) toggleStatus(k); })}
             >
               none
@@ -205,21 +196,16 @@ export function PolicySourceDropdown() {
       </button>
 
       {open && (
-        <div
-          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1060, minWidth: 160 }}
-        >
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-md">
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => availablePolicySources.forEach((src) => { if (!selectedPolicySources.has(src)) togglePolicySource(src); })}
             >
               all
             </button>
             <button
-              className="btn btn-link btn-sm p-0 text-secondary"
-              style={{ fontSize: 11 }}
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
               onClick={() => availablePolicySources.forEach((src) => { if (selectedPolicySources.has(src)) togglePolicySource(src); })}
             >
               none
@@ -235,7 +221,7 @@ export function PolicySourceDropdown() {
                 checked={selectedPolicySources.has(src)}
                 onChange={() => togglePolicySource(src)}
               />
-              <label className="form-check-label text-light" htmlFor={`src-dd-${src}`} style={{ fontSize: 13 }}>
+              <label className="form-check-label text-light fs-13" htmlFor={`src-dd-${src}`}>
                 {src}
               </label>
             </div>
@@ -272,10 +258,7 @@ export function ActionDropdown() {
       </button>
 
       {open && (
-        <div
-          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1060, minWidth: 140 }}
-        >
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-sm">
           {[0, 1].map((action) => (
             <div key={action} className="form-check mb-1">
               <input
@@ -285,11 +268,117 @@ export function ActionDropdown() {
                 checked={selectedActions.has(action)}
                 onChange={() => toggleAction(action)}
               />
-              <label className="form-check-label text-light" htmlFor={`action-dd-${action}`} style={{ fontSize: 13 }}>
+              <label className="form-check-label text-light fs-13" htmlFor={`action-dd-${action}`}>
                 {ACTION_LABEL[action]}
               </label>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sole conflict entry point on the toolbar. Anchor surfaces "any conflicts?"
+// at a glance; the dropdown is dual-purpose — a "Browse full list" link opens
+// the drawer for detailed reading, and the type checkboxes narrow the tables
+// view. Merged from a separate toolbar Issues button so operators aren't
+// hunting for two affordances that answer the same question.
+export function IssueTypeDropdown() {
+  const {
+    issues, issuesLoading,
+    selectedIssueTypes, toggleIssueType,
+    setIssuesDrawerOpen,
+  } = useGraphStore();
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  const counts = countIssuesByType(issues);
+  const total = issues.length;
+  const selected = selectedIssueTypes.size;
+
+  const anchorLabel = total === 0
+    ? 'No conflicts'
+    : selected === 0
+      ? `${total} conflict${total === 1 ? '' : 's'}`
+      : `${selected} conflict type${selected === 1 ? '' : 's'}`;
+
+  const anchorClass = total === 0
+    ? 'btn-outline-secondary'
+    : selected > 0
+      ? 'btn-outline-warning'
+      : 'btn-outline-danger';
+
+  return (
+    <div className="position-relative" ref={ref}>
+      <button
+        className={`btn btn-sm ${anchorClass} dropdown-toggle`}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⚠ {anchorLabel}
+        {issuesLoading && (
+          <span className="spinner-border spinner-border-sm ms-1 spinner-xs" role="status" />
+        )}
+      </button>
+
+      {open && (
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-xl">
+          {/* Browse action is a separate line up top so the dropdown reads:
+              "open reader" vs "narrow tables view" — two different tasks. */}
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary w-100 mb-2 d-flex justify-content-between align-items-center fs-12"
+            disabled={total === 0}
+            onClick={() => { setIssuesDrawerOpen(true); setOpen(false); }}
+          >
+            <span>Browse full list</span>
+            <span>↗</span>
+          </button>
+
+          <div className="text-secondary text-uppercase mb-1 fs-10 tracking-wide">
+            Filter tables by type
+          </div>
+
+          <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
+            <button
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
+              onClick={() => ALL_ISSUE_TYPES.forEach((t) => { if (!selectedIssueTypes.has(t)) toggleIssueType(t); })}
+            >
+              all
+            </button>
+            <button
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
+              onClick={() => ALL_ISSUE_TYPES.forEach((t) => { if (selectedIssueTypes.has(t)) toggleIssueType(t); })}
+            >
+              none
+            </button>
+          </div>
+
+          {ALL_ISSUE_TYPES.map((type) => {
+            const count = counts[type] ?? 0;
+            return (
+              <div key={type} className="form-check mb-1 d-flex align-items-center gap-2">
+                <input
+                  className="form-check-input m-0"
+                  type="checkbox"
+                  id={`issue-dd-${type}`}
+                  checked={selectedIssueTypes.has(type)}
+                  disabled={count === 0}
+                  onChange={() => toggleIssueType(type)}
+                />
+                <label
+                  className={`form-check-label d-flex align-items-center justify-content-between gap-2 flex-grow-1 fs-13 ${count === 0 ? 'text-secondary' : 'text-light'}`}
+                  htmlFor={`issue-dd-${type}`}
+                >
+                  <span>{ISSUE_TYPE_LABEL[type]}</span>
+                  <span className={`badge ${count === 0 ? 'bg-secondary' : 'bg-danger'}`}>{count}</span>
+                </label>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -322,10 +411,7 @@ export function DirectionDropdown() {
       </button>
 
       {open && (
-        <div
-          className="position-absolute bg-dark border border-secondary rounded shadow p-2"
-          style={{ top: '100%', left: 0, marginTop: 4, zIndex: 1060, minWidth: 140 }}
-        >
+        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-sm">
           {['ingress', 'egress'].map((direction) => (
             <div key={direction} className="form-check mb-1">
               <input
@@ -335,7 +421,7 @@ export function DirectionDropdown() {
                 checked={selectedDirections.has(direction)}
                 onChange={() => toggleDirection(direction)}
               />
-              <label className="form-check-label text-light" htmlFor={`direction-dd-${direction}`} style={{ fontSize: 13 }}>
+              <label className="form-check-label text-light fs-13" htmlFor={`direction-dd-${direction}`}>
                 {DIRECTION_LABEL[direction]}
               </label>
             </div>
