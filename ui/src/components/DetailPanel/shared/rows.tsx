@@ -8,7 +8,7 @@ import type { PolicyEdge, NodeRule, NeighborRef, PolicyRef, PolicySelector } fro
 import { formatPort, realPorts } from '../../../data/policies';
 import { CoverageBadge, DirectionBadge, EngineBadge, L7Block } from './badges';
 import { ManifestButton } from './ManifestModal';
-import { groupNeighborsByPolicy, splitByPeer, distinctPeers, type NeighborGroup as NeighborGroupData, type PeerSummary } from './groupNeighborsByPolicy';
+import { groupNeighborsByPolicy, groupNodeRulesByPolicy, splitByPeer, distinctPeers, type NeighborGroup as NeighborGroupData, type NodeRuleGroup, type PeerSummary } from './groupNeighborsByPolicy';
 import s from '../DetailPanel.module.css';
 
 export function PolicyRow({ p }: { p: PolicyEdge }) {
@@ -122,22 +122,71 @@ function selectorLines(...selectors: (PolicySelector | undefined)[]): string[] {
   return lines;
 }
 
+// Peer end of a reachability NodeRule, picked by direction: ingress = traffic
+// in from peer (peer is the source, identified by srcId), egress = traffic out
+// to peer (dstId). Node-info payloads predate src resolution and always carry
+// the peer in the dst fields — hence the dst fallbacks. Label falls back to the
+// raw id for CIDR / unresolved endpoints.
+function rulePeer(rule: NodeRule) {
+  const isIngress = rule.direction === 'ingress';
+  const peerId = (isIngress ? rule.srcId : rule.dstId) || rule.dstId;
+  return {
+    // Blank peer id = the rule doesn't name a peer (catch-all side) — say so
+    // instead of rendering a bare arrow; the selector block scopes it below.
+    label:    (isIngress ? rule.srcLabel : rule.dstLabel) || rule.dstLabel || peerId || 'any workload',
+    ns:       (isIngress ? rule.srcNamespace : rule.dstNamespace) || rule.dstNamespace,
+    kind:     (isIngress ? rule.srcKind : rule.dstKind) || rule.dstKind,
+    selector: isIngress ? rule.srcSelector : rule.dstSelector,
+    verb:     isIngress ? 'From' : 'To',
+    arrow:    isIngress ? '←' : '→',
+  };
+}
+
+// Peer headline fragment: label, ns suffix, kind badge. A namespace peer's own
+// ns is its label — the suffix would just repeat it, so it's suppressed there.
+function PeerHeadline({ peer }: { peer: ReturnType<typeof rulePeer> }) {
+  const isNamespace = peer.kind === 'namespace';
+  return (
+    <>
+      {peer.label}
+      {peer.ns && !isNamespace && <span className="text-secondary"> / {peer.ns}</span>}
+      {peer.kind && (
+        <span className={`badge ms-2 ${isNamespace ? 'bg-warning text-dark' : 'bg-secondary'} ${s.badgeSm}`}>
+          {peer.kind}
+        </span>
+      )}
+    </>
+  );
+}
+
+function PortBadges({ ports }: { ports?: NodeRule['ports'] }) {
+  const real = realPorts(ports);
+  if (!real?.length) {
+    return (
+      <span className="badge bg-secondary" title="Rule does not restrict ports — all TCP/UDP allowed">
+        any port
+      </span>
+    );
+  }
+  return (
+    <>
+      {real.map((port, index) => (
+        <span key={index} className="badge bg-info text-dark">{formatPort(port)}/{port.protocol}</span>
+      ))}
+    </>
+  );
+}
+
 export function RuleRow({ rule }: { rule: NodeRule }) {
   const isDeny = rule.action === 1;
   const ports = realPorts(rule.ports);
-  const dstLabel = rule.dstLabel || rule.dstId; // fall back to raw id for CIDR / unresolved
-  // Header phrasing tracks direction: ingress = traffic in from peer (peer is
-  // the source), egress = traffic out to peer (peer is the destination).
-  // The clicked node is always the *other* end — the field `dstId` carries
-  // the peer regardless of direction, so the arrow has to flip with rule.direction.
-  const peerVerb = rule.direction === 'ingress' ? 'From' : 'To';
-  const peerArrow = rule.direction === 'ingress' ? '←' : '→';
+  const peer = rulePeer(rule);
+  const { verb: peerVerb, arrow: peerArrow } = peer;
   return (
     <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
       <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
         <div className="fw-semibold text-light text-break">
-          {peerVerb}: {peerArrow} {dstLabel}
-          {rule.dstNamespace && <span className="text-secondary"> / {rule.dstNamespace}</span>}
+          {peerVerb}: {peerArrow} <PeerHeadline peer={peer} />
         </div>
         {isDeny && <span className="badge bg-danger flex-shrink-0">deny</span>}
       </div>
@@ -190,6 +239,69 @@ export function RuleRow({ rule }: { rule: NodeRule }) {
         </div>
       )}
     </div>
+  );
+}
+
+// One policy's rules in the reachability breakdown: policy headline once, then
+// each peer as a lean sub-row carrying its own ports/L7/selector (they vary per
+// peer within one policy). Mirrors the node panel's NeighborGroup so both
+// panels teach the same card shape.
+function RuleGroupCard({ group }: { group: NodeRuleGroup }) {
+  const contributor = group.contributor!;
+  const isDeny = group.rules[0].action === 1;
+  const peers = group.rules.map(rulePeer);
+  // Manifest highlight spans every rule: node-side selectors in the primary
+  // color, peer-side in the secondary — same split the node panel uses.
+  const nodeSelectors = group.rules.map((rule) => (rule.direction === 'ingress' ? rule.dstSelector : rule.srcSelector));
+  return (
+    <div className={`border ${isDeny ? 'border-danger' : 'border-secondary'} rounded p-2 mb-2 ${s.smallText}`}>
+      <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
+        <div className="fw-bold text-light text-break">{contributor.name}</div>
+        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
+          {isDeny && <span className="badge bg-danger">deny</span>}
+          <ManifestButton
+            kind={contributor.source}
+            namespace={contributor.namespace}
+            name={contributor.name}
+            highlight={selectorLines(...nodeSelectors)}
+            highlightPeer={selectorLines(...peers.map((peer) => peer.selector))}
+          />
+        </div>
+      </div>
+      <div className={s.fieldRow}>
+        <div className={s.fieldLabel}>Direction:</div>
+        <DirectionBadge direction={group.rules[0].direction} />
+      </div>
+      {group.rules.map((rule, index) => {
+        const peer = peers[index];
+        return (
+          <div key={index} className="border-top border-secondary pt-2 mt-2">
+            <div className="fw-semibold text-light text-break">
+              {peer.arrow} <PeerHeadline peer={peer} />
+            </div>
+            <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
+              <PortBadges ports={rule.ports} />
+            </div>
+            {rule.l7Match && <L7Block blocks={[rule.l7Match]} />}
+            <SelectorBlock label="Selector" sel={peer.selector} policyNs={contributor.namespace} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Entry point for the reachability panel's rule lists: one card per policy with
+// its peers underneath; rules with no attributed policy stay standalone RuleRows.
+export function RuleGroupList({ rules }: { rules: NodeRule[] }) {
+  return (
+    <>
+      {groupNodeRulesByPolicy(rules).map((group) =>
+        group.contributor
+          ? <RuleGroupCard key={group.key} group={group} />
+          : group.rules.map((rule, index) => <RuleRow key={`${group.key}-${index}`} rule={rule} />),
+      )}
+    </>
   );
 }
 

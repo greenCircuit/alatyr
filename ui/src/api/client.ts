@@ -1,4 +1,4 @@
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue } from '../data/policies';
 
 export interface Graph {
   nodes: WorkloadNode[];
@@ -70,5 +70,14 @@ export function fetchReachability(
   return fetch(`/api/reachable?${params.toString()}`).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<ReachabilityResult>;
+  });
+}
+
+// fetchIssues runs the whole-cluster conflict scan. Recomputed server-side per
+// request; the UI calls it on initial load and on refresh.
+export function fetchIssues(): Promise<Issue[]> {
+  return fetch('/api/issues').then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<Issue[]>;
   });
 }

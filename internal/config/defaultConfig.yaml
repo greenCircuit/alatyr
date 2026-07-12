@@ -3,33 +3,6 @@ svcCIDR: 10.43.0.0/24
 # CIDRs that resolve to the Kubernetes API server. Egress to these is tagged
 # api-server-egress instead of lan-egress. Override per-cluster.
 apiServerCIDRs: []
-customRules:
-  ingress:
-    - name: istio-ingress
-      status: present
-      policies:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: istio-ingress
-          podSelector:
-            matchLabels:
-              app: istio-ingress
-  egress:
-    - name: dns-missing
-      status: missing
-      policies:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          port: 53
-        - port: 53
-    - name: api-server
-      status: present
-      policies:
-        - namespaceSelector:
-            matchLabels:
-              component: apiserver
-              provider: kubernetes
-          podSelector:
-            matchLabels:
-              component: apiserver
+dnsNs: kube-system
+dnsLabels:
+  k8s-app: kube-dns

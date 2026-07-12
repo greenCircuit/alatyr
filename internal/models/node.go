@@ -8,15 +8,7 @@ type WorkloadNode struct {
 	Namespace string            `json:"namespace"`
 	Type      NodeType          `json:"type"`
 	Labels    map[string]string `json:"labels"`
-
-	// Statuses = effective (intersection) status keys across all policy engines.
-	// Rendered as badges on the graph. Reflects what the workload actually
-	// experiences when every engine's constraints are AND'd together.
 	Statuses []StatusKey `json:"statuses,omitempty"`
-
-	// StatusesBySource = per-engine status keys, keyed by PolicySource.Name().
-	// Rendered in the workload detail panel so the user can see what each
-	// individual policy engine emitted before intersection.
 	StatusesBySource map[string][]StatusKey `json:"statusesBySource,omitempty"`
 }
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability } from '../api/client';
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult } from '../data/policies';
+import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues } from '../api/client';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
 
 interface GraphState {
@@ -35,11 +35,29 @@ interface GraphState {
   reachabilityLoading:     boolean;
   reachabilityTarget:      WorkloadNode | null;
 
+  // Reverse-direction verdict (dst → src), auto-fetched alongside the forward
+  // fetch so the headline can flag bidirectional vs one-way at a glance.
+  // Error is tracked separately so a failed reverse doesn't silently render as
+  // "no bidirectional info" — the headline can flag "reverse unavailable".
+  reachabilityReverse:        ReachabilityResult | null;
+  reachabilityReverseLoading: boolean;
+  reachabilityReverseError:   boolean;
+
   edgeReachability:        ReachabilityResult | null;
   edgeReachabilityLoading: boolean;
 
+  issues:            Issue[];
+  issuesLoading:     boolean;
+  issuesDrawerOpen:  boolean;
+  // Empty set = "no filter, all rows visible". Non-empty = only rows carrying
+  // an issue of a selected type stay in the tables view.
+  selectedIssueTypes: Set<IssueType>;
+
   loadClusterState:            () => Promise<void>;
   loadGraph:                   () => Promise<void>;
+  loadIssues:                  () => Promise<void>;
+  setIssuesDrawerOpen:         (open: boolean) => void;
+  toggleIssueType:             (type: IssueType) => void;
   loadNodeInfo:                (nodeId: string, namespace: string) => Promise<void>;
   toggleNamespace:             (ns: string) => void;
   toggleNodeType:              (type: string) => void;
@@ -58,7 +76,12 @@ interface GraphState {
   setView:                     (view: 'graph' | 'tables') => void;
 
   pinReachabilitySource:       (node: WorkloadNode) => void;
+  showReachability:            (src: WorkloadNode, dst: WorkloadNode) => void;
   clearReachability:           () => void;
+  // Select every edge produced by a specific policy so the DetailPanel opens
+  // the bundle/edge view for it. Called from IssuesPopover → "View policy".
+  // Returns false when the policy has no edges (callers fall back to manifest).
+  selectPolicyByRef:           (source: string, namespace: string, name: string) => boolean;
 
   filteredNodes: () => WorkloadNode[];
   filteredEdges: () => PolicyEdge[];
@@ -100,8 +123,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   reachabilityLoading:     false,
   reachabilityTarget:      null,
 
+  reachabilityReverse:        null,
+  reachabilityReverseLoading: false,
+  reachabilityReverseError:   false,
+
   edgeReachability:        null,
   edgeReachabilityLoading: false,
+
+  issues:             [],
+  issuesLoading:      false,
+  issuesDrawerOpen:   false,
+  selectedIssueTypes: new Set<IssueType>(),
 
   loadClusterState: async () => {
     try {
@@ -137,10 +169,32 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       if (selected?.namespace) {
         get().loadNodeInfo(selected.id, selected.namespace);
       }
+      // Whole-cluster conflict scan runs against the now-fresh server cache.
+      // Chained here so both initial load and the refresh button trigger it,
+      // after the graph fetch resolves — never against stale data.
+      get().loadIssues();
     } catch (e) {
       set({ loading: false, error: String(e) });
     }
   },
+
+  loadIssues: async () => {
+    set({ issuesLoading: true });
+    try {
+      const data = await fetchIssues();
+      set({ issues: data ?? [], issuesLoading: false });
+    } catch (e) {
+      set({ issuesLoading: false, error: String(e) });
+    }
+  },
+  setIssuesDrawerOpen: (open) => set({ issuesDrawerOpen: open }),
+
+  toggleIssueType: (type) =>
+    set((state) => {
+      const next = new Set(state.selectedIssueTypes);
+      next.has(type) ? next.delete(type) : next.add(type);
+      return { selectedIssueTypes: next };
+    }),
 
   toggleNamespace: (ns) =>
     set((state) => {
@@ -202,7 +256,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     // node, treat the click as "check reach from src → this node" and fire
     // /api/reachable instead of overwriting the selection.
     if (src && node && node.id !== src.id) {
-      set({ reachabilityTarget: node, reachabilityLoading: true, reachability: null });
+      set({
+        reachabilityTarget: node,
+        reachabilityLoading: true, reachability: null,
+        reachabilityReverseLoading: true, reachabilityReverse: null, reachabilityReverseError: false,
+      });
       fetchReachability(src.id, src.namespace || src.id, node.id, node.namespace || node.id)
         .then((result) => {
           // bail if source was unpinned or target changed mid-fetch
@@ -210,6 +268,15 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           set({ reachability: result, reachabilityLoading: false });
         })
         .catch(() => set({ reachabilityLoading: false }));
+      fetchReachability(node.id, node.namespace || node.id, src.id, src.namespace || src.id)
+        .then((result) => {
+          if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== node.id) return;
+          set({ reachabilityReverse: result, reachabilityReverseLoading: false });
+        })
+        .catch(() => {
+          if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== node.id) return;
+          set({ reachabilityReverseLoading: false, reachabilityReverseError: true });
+        });
       return;
     }
     set({ selectedNode: node, selectedEdges: [], nodeInfo: null });
@@ -242,8 +309,52 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   pinReachabilitySource: (node) =>
     set({ reachabilitySource: node, reachability: null, reachabilityTarget: null }),
+
+  // Open the reachability panel directly for a known src→dst pair (e.g. an
+  // issue row). Pins source + target and fetches, reusing ReachabilityView.
+  showReachability: (src, dst) => {
+    set({
+      selectedNode: null, selectedEdges: [], nodeInfo: null,
+      reachabilitySource: src, reachabilityTarget: dst,
+      reachability: null, reachabilityLoading: true,
+      reachabilityReverse: null, reachabilityReverseLoading: true, reachabilityReverseError: false,
+    });
+    fetchReachability(src.id, src.namespace || src.id, dst.id, dst.namespace || dst.id)
+      .then((result) => {
+        // bail if the user moved on mid-fetch
+        if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== dst.id) return;
+        set({ reachability: result, reachabilityLoading: false });
+      })
+      .catch(() => set({ reachabilityLoading: false }));
+    fetchReachability(dst.id, dst.namespace || dst.id, src.id, src.namespace || src.id)
+      .then((result) => {
+        if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== dst.id) return;
+        set({ reachabilityReverse: result, reachabilityReverseLoading: false });
+      })
+      .catch(() => {
+        if (get().reachabilitySource?.id !== src.id || get().reachabilityTarget?.id !== dst.id) return;
+        set({ reachabilityReverseLoading: false, reachabilityReverseError: true });
+      });
+  },
+
   clearReachability: () =>
-    set({ reachabilitySource: null, reachability: null, reachabilityTarget: null, reachabilityLoading: false }),
+    set({
+      reachabilitySource: null, reachability: null, reachabilityTarget: null, reachabilityLoading: false,
+      reachabilityReverse: null, reachabilityReverseLoading: false, reachabilityReverseError: false,
+    }),
+
+  selectPolicyByRef: (source, namespace, name) => {
+    const matching = get().allEdges.filter((e) =>
+      e.policySource === source && e.namespace === namespace && e.policyName === name);
+    // No edge to select (default-deny / lockout policies emit none). Report it
+    // so callers can fall back instead of silently no-oping the click.
+    if (matching.length === 0) return false;
+    // Reuse the same selection path a table-row click uses so DetailPanel
+    // resolves the right view (EdgeView for single-pair, PolicyBundleView for
+    // multi-pair) without any duplicated dispatch logic.
+    get().setSelectedEdges(matching);
+    return true;
+  },
 
   loadNodeInfo: async (nodeId, namespace) => {
     set({ nodeInfoLoading: true });

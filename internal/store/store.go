@@ -30,10 +30,12 @@ type EngineVerdict struct {
 }
 
 type DirectionVerdict struct {
-	Locked       bool       `json:"locked"`
-	AllowMatches []models.NodeRule `json:"allowMatches,omitempty"`
-	DenyMatches  []models.NodeRule `json:"denyMatches,omitempty"`
-	Reason       string     `json:"reason"`
+	DenyAllMatches 		[]models.NodeRule `json:"denyAllMatches,omitempty"`
+	OtherAllowMatches   []models.NodeRule `json:"allowOtherMatches,omitempty"`
+	AllowMatches   		[]models.NodeRule `json:"allowMatches,omitempty"`
+	DenyMatches    		[]models.NodeRule `json:"denyMatches,omitempty"`
+	Reason         		DirectionReason   `json:"reason"`
+	Culprits            []models.PolicyRef `json:"culprits,omitempty"` // what polices broke connection
 }                                                                                                     
 
 type NeighborRef struct {
@@ -45,3 +47,16 @@ type NodeNeighbors struct {
 	In 		[]NeighborRef
 	Out		[]NeighborRef
 }
+
+// Canonical definitions live in models (models/reachability.go) so the Issue
+// endpoint can type its reason fields without a cyclic import. Aliased here so
+// existing store + test references keep compiling unchanged.
+type DirectionReason = models.DirectionReason
+
+const (
+	ReasonPermitted     = models.ReasonPermitted
+	ReasonExplicitDeny  = models.ReasonExplicitDeny
+	ReasonDefaultDeny   = models.ReasonDefaultDeny
+	ReasonLockedNoMatch = models.ReasonLockedNoMatch
+	ReasonNoOpinion     = models.ReasonNoOpinion
+)

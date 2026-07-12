@@ -4,7 +4,9 @@
 // Inline SVG keeps them in the JS bundle (no served image assets) for the
 // single-binary embed. Simplified but recognizable: k8s helm, Istio sail.
 
+import type { ReactNode } from 'react';
 import { engineMeta } from './engines';
+import styles from './engineIcons.module.css';
 
 interface LogoProps { color: string; size: number }
 
@@ -53,4 +55,22 @@ export function EngineLogo({ engine, size = 14 }: { engine: string; size?: numbe
   if (engine === 'k8s') return <K8sLogo color={color} size={size} />;
   if (engine === 'istio') return <IstioLogo color={color} size={size} />;
   return <FallbackLogo color={color} size={size} letter={engine.charAt(0).toUpperCase()} />;
+}
+
+// Engine provenance chip — brand logo + name. The single badge every table,
+// rollup, and panel renders for engine provenance, so the mark reads the same
+// everywhere. Fixed dark surface lives in the CSS module; the brand-colored
+// border is per-engine, so it stays inline. `suffix` appends after the name
+// (e.g. ": 3" for the workloads count rollup).
+export function EngineBadge({ engine, size = 12, suffix }: { engine: string; size?: number; suffix?: ReactNode }) {
+  const { label, color } = engineMeta(engine);
+  return (
+    <span
+      className={`badge d-inline-flex align-items-center gap-1 ${styles.engineChip}`}
+      title={label}
+      style={{ border: `1px solid ${color}` }}
+    >
+      <EngineLogo engine={engine} size={size} /> {engine}{suffix}
+    </span>
+  );
 }

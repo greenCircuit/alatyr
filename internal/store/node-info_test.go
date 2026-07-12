@@ -32,6 +32,7 @@ func TestGetNodeData_ReturnsOutboundRulesAndPolicies(t *testing.T) {
 			},
 		},
 	}
+	cache.RebuildWorkloadIndex()
 
 	got := GetNodeData(cache, srcID, srcNs)
 

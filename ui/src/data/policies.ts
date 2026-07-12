@@ -123,9 +123,11 @@ export interface PolicySelector {
   namespaces?:    string[];
 }
 
-// NodeRule mirrors backend store.NodeRule. Backend resolves the rule's DstID
-// into a human label + namespace so the UI doesn't need to look it up against
-// the graph node list. SrcID is omitted — clicked node is always the source.
+// NodeRule mirrors backend models.NodeRule. Backend resolves both endpoint IDs
+// into human labels + namespaces + kinds so the UI doesn't need to look them up
+// against the graph node list. Node-info payloads only populate the dst side
+// (clicked node is the source); reachability payloads carry both — ingress
+// rules identify the peer by srcId.
 export interface NodeRule {
   direction:    string;
   ports:        Port[];
@@ -134,9 +136,14 @@ export interface NodeRule {
   l7Match?:     L7Match;
   action:       number;      // 0 = Allow, 1 = Deny
   contributor?: PolicyRef;   // singular — one policy attribution per NodeRule
+  srcId?:       string;
+  srcLabel?:    string;      // empty for CIDR / unresolved IDs
+  srcNamespace?: string;
+  srcKind?:     string;      // WorkloadNode.type of the resolved src endpoint
   dstId:        string;
   dstLabel?:    string;      // empty for CIDR / unresolved IDs
   dstNamespace?: string;
+  dstKind?:     string;      // WorkloadNode.type of the resolved dst endpoint
   srcSelector?: PolicySelector;
   dstSelector?: PolicySelector;
 }
@@ -231,13 +238,141 @@ export interface NodeDetail {
   issues?:   string[];
 }
 
+// IssueType mirrors models.IssueType — the cross-cutting conflict classes
+// surfaced by /api/issues.
+export type IssueType =
+  | 'no dns'
+  | 'mesh policy'
+  | 'policy conflict'
+  | 'partial access'
+  | 'mesh conflict'
+  | 'node lockout';
+
+// Issue mirrors models.Issue — one whole-cluster conflict finding. Edge-scoped
+// issues (policy conflict) carry src+dst so the UI can open the reachability
+// panel; node-scoped issues (lockout) carry node.
+export interface Issue {
+  type:    IssueType;
+  message: string;
+  // Culprit policies that broke the path, split by direction so the UI knows
+  // which side to send the operator to: egress → edit src's egress policy,
+  // ingress → edit dst's ingress policy. Both are plain PolicyRef[] (already
+  // deduped by policy on the backend).
+  ingressCulprits?: PolicyRef[];
+  egressCulprits?:  PolicyRef[];
+  // Policies that ALREADY permit this direction — the satisfied side of a
+  // conflict. Lets the table confirm "ingress ✓ allowed by prometheus-ingress"
+  // instead of hiding the covered side and making the operator hunt for it.
+  ingressAllowed?: PolicyRef[];
+  egressAllowed?:  PolicyRef[];
+  // Per-direction block reason — drives the remediation verb (add rule / widen
+  // selector / remove deny). Empty when that direction didn't block.
+  ingressReason?: DirectionReason;
+  egressReason?:  DirectionReason;
+  engine?: string;
+  // UI-derived (not from the API): engines that contributed to this finding.
+  // Set by mergeIssuesByPair when folding a same-pair path blocked by more than
+  // one engine (k8s egress + istio ingress) into one row.
+  engines?: string[];
+  src?:    WorkloadNode;
+  dst?:    WorkloadNode;
+  node?:   WorkloadNode;
+}
+
+// Flatten an issue's per-direction culprits into one deduped list, tagging each
+// with the direction it came from so callers can label the fix side. Backend
+// already dedups within a direction; this dedups across both (a policy that
+// governs both ingress and egress appears once, direction 'both').
+export function issueCulprits(issue: Issue): (PolicyRef & { direction: string })[] {
+  const byKey = new Map<string, PolicyRef & { direction: string }>();
+  const add = (ref: PolicyRef, direction: string) => {
+    const key = `${ref.source}|${ref.namespace}|${ref.name}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      if (existing.direction !== direction) existing.direction = 'both';
+      return;
+    }
+    byKey.set(key, { ...ref, direction });
+  };
+  for (const ref of issue.egressCulprits ?? [])  add(ref, 'egress');
+  for (const ref of issue.ingressCulprits ?? []) add(ref, 'ingress');
+  return [...byKey.values()];
+}
+
+const refKey = (ref: PolicyRef) => `${ref.source}|${ref.namespace}|${ref.name}`;
+const nodeKey = (node?: WorkloadNode) => (node ? `${node.namespace ?? ''}/${node.label ?? node.id}` : '');
+const isBlockReason = (reason?: DirectionReason): boolean =>
+  reason === 'default-deny' || reason === 'locked-no-match' || reason === 'explicit-deny';
+
+function dedupRefs(refs: PolicyRef[]): PolicyRef[] {
+  const seen = new Set<string>();
+  const out: PolicyRef[] = [];
+  for (const ref of refs) {
+    const key = refKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+// Prefer a blocking reason when folding two directions — the permitted/no-opinion
+// side of one evaluation shouldn't overwrite the block found by the other.
+function mergeReason(left?: DirectionReason, right?: DirectionReason): DirectionReason | undefined {
+  if (isBlockReason(left)) return left;
+  if (isBlockReason(right)) return right;
+  return left ?? right;
+}
+
+// Fold issues describing the same broken path on the same workload pair into one
+// row. The backend emits a policy conflict per (engine, blocked direction) — a
+// pair whose egress is locked by k8s while its ingress is locked by istio lands
+// as two Issues, each single-direction, single-engine. To the operator that's
+// ONE unreachable path, so we key by pair identity only (type + endpoint
+// label/ns) — engine is intentionally NOT in the key — and union culprits,
+// reasons, and contributing engines into one row carrying both fix groups.
+// Node-scoped issues (no src/dst) never merge — passed through untouched.
+export function mergeIssuesByPair(issues: Issue[]): Issue[] {
+  const merged = new Map<string, Issue>();
+  const passthrough: Issue[] = [];
+  for (const issue of issues) {
+    if (!(issue.src && issue.dst)) {
+      passthrough.push(issue);
+      continue;
+    }
+    const key = `${issue.type}|${nodeKey(issue.src)}|${nodeKey(issue.dst)}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...issue, engines: issue.engine ? [issue.engine] : [] });
+      continue;
+    }
+    existing.egressCulprits  = dedupRefs([...(existing.egressCulprits ?? []),  ...(issue.egressCulprits ?? [])]);
+    existing.ingressCulprits = dedupRefs([...(existing.ingressCulprits ?? []), ...(issue.ingressCulprits ?? [])]);
+    existing.egressAllowed   = dedupRefs([...(existing.egressAllowed ?? []),   ...(issue.egressAllowed ?? [])]);
+    existing.ingressAllowed  = dedupRefs([...(existing.ingressAllowed ?? []),  ...(issue.ingressAllowed ?? [])]);
+    existing.egressReason  = mergeReason(existing.egressReason,  issue.egressReason);
+    existing.ingressReason = mergeReason(existing.ingressReason, issue.ingressReason);
+    if (issue.engine && !existing.engines!.includes(issue.engine)) existing.engines!.push(issue.engine);
+  }
+  return [...merged.values(), ...passthrough];
+}
+
 // Reachability verdict between two nodes, returned by /api/reachable.
 // Mirrors store.ReachabilityResult on the backend.
+export type DirectionReason =
+  | 'permitted'
+  | 'explicit-deny'
+  | 'default-deny'
+  | 'locked-no-match'
+  | 'no-opinion';
+
 export interface DirectionVerdict {
-  locked:        boolean;
-  allowMatches?: NodeRule[];
-  denyMatches?:  NodeRule[];
-  reason:        string;
+  denyAllMatches?:    NodeRule[];  // deny-all lock markers (default-deny)
+  allowOtherMatches?: NodeRule[];  // near-miss: allowed elsewhere, not this peer
+  allowMatches?:      NodeRule[];  // permits this peer
+  denyMatches?:       NodeRule[];  // blocks this peer
+  reason:             DirectionReason;
+  culprits?:          PolicyRef[]; // deduped policies to edit
 }
 
 export interface EngineVerdict {
@@ -257,7 +392,7 @@ export interface MeshVerdict {
 }
 
 export interface ReachabilityResult {
-  verdict: 'allow' | 'deny' | 'partial';
+  verdict: 'allow' | 'deny';
   engines: Record<string, EngineVerdict>;
   mesh?:    Record<string, MeshVerdict>;
   srcMesh?: Record<string, MeshMembership>;
@@ -278,6 +413,9 @@ export interface PolicyEdge {
   policySource: string; // engine that produced this edge: "k8s", "istio", ...
   l7Matches?: L7Match[];
   action?: number;      // 0 = Allow, 1 = Deny
+  // Blanket-posture flag from the backend rule. "allow all" = the rule places
+  // no peer restriction; target is empty by design, not a resolution failure.
+  coverage?: Coverage;
 }
 
 // Short edge-label summary of L7 matchers. Returns null when no L7 data so

@@ -172,6 +172,19 @@ def get_reachability(api) -> Callable[..., dict]:
 
 
 @pytest.fixture
+def get_issues(api) -> Callable[[], list[dict]]:
+    """Hit /api/issues. Whole-cluster scan for policy/mesh conflicts +
+    missing DNS. Reads from the cache populated by /api/graph, so callers
+    must request the graph for the relevant namespaces first.
+    """
+    def _get() -> list[dict]:
+        response = api.get(f"{BACKEND_URL}/api/issues")
+        response.raise_for_status()
+        return response.json() or []
+    return _get
+
+
+@pytest.fixture
 def get_manifest(api) -> Callable[..., requests.Response]:
     """Hit /api/manifest for one policy object. Returns the raw Response so
     callers can assert on status (200 vs 400) — manifest fetches straight from

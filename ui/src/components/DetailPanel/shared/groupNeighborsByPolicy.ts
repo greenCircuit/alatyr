@@ -9,7 +9,7 @@
 // resolved Workload, handled by the raw-id fallback in the peer row. Only a rule
 // with no attributed policy at all falls back to a standalone per-ref key.
 
-import type { NeighborRef, Port, L7Match } from '../../../data/policies';
+import type { NeighborRef, NodeRule, PolicyRef, Port, L7Match } from '../../../data/policies';
 import { realPorts } from '../../../data/policies';
 
 export interface NeighborGroup {
@@ -106,6 +106,35 @@ export function groupNeighborsByPolicy(neighbors: NeighborRef[]): NeighborGroup[
       groups.set(key, group);
     }
     group.peers.push(neighbor);
+  });
+  return [...groups.values()];
+}
+
+// Reachability-panel variant: collapse a verdict's NodeRules into per-policy
+// groups. Unlike the neighbor grouping above, ports/L7 are NOT part of the key —
+// one policy often opens different ports to different peers (DNS to the ns,
+// 9093 to alertmanager, 443 to the internet), and the panel wants ONE card per
+// policy with each peer carrying its own ports, matching the node panel's
+// mental model. Rules with no attributed policy stay standalone.
+export interface NodeRuleGroup {
+  key:         string;
+  contributor?: PolicyRef; // undefined — unattributed rule, renders standalone
+  rules:       NodeRule[];
+}
+
+export function groupNodeRulesByPolicy(rules: NodeRule[]): NodeRuleGroup[] {
+  const groups = new Map<string, NodeRuleGroup>();
+  rules.forEach((rule, index) => {
+    const contributor = rule.contributor?.name ? rule.contributor : undefined;
+    const key = contributor
+      ? `${contributor.source}|${contributor.namespace}|${contributor.name}|${rule.direction}|${rule.action}`
+      : `_no_policy_${index}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, contributor, rules: [] };
+      groups.set(key, group);
+    }
+    group.rules.push(rule);
   });
   return [...groups.values()];
 }

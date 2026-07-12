@@ -50,6 +50,7 @@ func RenderEdges(rules []models.Rule, nodes []models.WorkloadNode) []PolicyEdge 
 				Level:        edgeLevelFor(rule.SrcID, rule.DstID, nsNodeIDs),
 				PolicySource: rule.Contributor.Source,
 				Action:       rule.Action,
+				Coverage:     rule.Coverage,
 			}
 			grouped[key] = edge
 		}

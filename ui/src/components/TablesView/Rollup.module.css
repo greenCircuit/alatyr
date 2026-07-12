@@ -1,0 +1,24 @@
+/* Shared styles for the three rollup strips (Status, Issue, Engine).
+ * All three follow the same shape: a horizontal filter row of chips whose
+ * border color is dynamic (severity/engine hue) and whose active/dimmed
+ * state is toggled from selected*.
+ */
+
+.chip {
+    background: #11151a;
+    color: #e9ecef;
+    outline-offset: 1px;
+    font-size: 12px;
+    line-height: 1;
+}
+.chip.active   { outline: 1.5px solid #fff; }
+.chip.dimmed   { opacity: 0.45; }
+
+/* Small solid symbol inside a Status rollup chip (STATUS_CFG symbol). */
+.symbol {
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 4px;
+    border-radius: 3px;
+}

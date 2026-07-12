@@ -18,8 +18,9 @@ export default function DetailPanel() {
     allNodes,
     selectedNode, selectedEdges, nodeInfo, nodeInfoLoading,
     reachabilitySource, reachability, reachabilityLoading, reachabilityTarget,
+    reachabilityReverse, reachabilityReverseError,
     edgeReachability, edgeReachabilityLoading,
-    setSelectedNode, setSelectedEdges, pinReachabilitySource, clearReachability,
+    setSelectedNode, setSelectedEdges, pinReachabilitySource, clearReachability, showReachability,
   } = useGraphStore();
 
   // Dock + manifest drawer always render so YAML can open even with no panel
@@ -59,7 +60,10 @@ export default function DetailPanel() {
                 target={reachabilityTarget}
                 loading={reachabilityLoading}
                 result={reachability}
+                reverse={reachabilityReverse}
+                reverseError={reachabilityReverseError}
                 onClear={clearReachability}
+                onSwap={() => reachabilityTarget && showReachability(reachabilityTarget, reachabilitySource)}
               />
             )}
 

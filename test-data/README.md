@@ -47,7 +47,7 @@ Every status key the UI can render is exercised by at least one workload:
 | `ns-ingress-access` | `storefront/sessions`, `analytics/enrich` |
 | `ns-egress-access` | `storefront/checkout`, `payments/webhook-receiver` |
 | `ns-full-access` | `storefront/redis-cache` |
-| `l7-applied` | `storefront/orders-api`, `payments/payments-api` |
+| `l7-applied` | `storefront/orders-api`, `payments/payments-api`, `payments/webhook-receiver` |
 
 Not covered by fixtures alone:
 
@@ -60,7 +60,7 @@ Not covered by fixtures alone:
 
 ## Istio scenarios
 
-- ALLOW L7 (methods/paths): `payments/payments-api`; host-based on `storefront/orders-api`
+- ALLOW L7 (methods/paths): `payments/payments-api`, `payments/webhook-receiver`; host-based on `storefront/orders-api`. All three use `from.source.namespaces` for the peer selector — the Istio engine only expands `src.Namespaces`, so `principals`-based sources render no edge.
 - DENY (separate edge): `analytics` → `payments/payments-api` (cross-ns); `plaintext-client` → `dual-verdict-api` (in-ns, opposite the k8s allow)
 - STRICT mTLS: namespace-local on `payments`; `mesh-conflicts/strict-server`
 - ambient HBONE 15008: ingress rule on `payments/payments-api`

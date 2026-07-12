@@ -1,6 +1,7 @@
 package istio
 
 import (
+	"log/slog"
 	"strconv"
 
 	"graph/internal/models"
@@ -12,6 +13,9 @@ import (
 //
 // NotPorts is handled at the rule-expansion layer (subtraction); this helper
 // is for the positive Ports list only.
+//
+// Unparseable entries are logged via slog.Default() (set by main.go). Policy
+// ref isn't in scope here — keep the helper pure so tests don't churn.
 func convertPorts(ports []string) []models.Port {
 	if len(ports) == 0 {
 		return nil
@@ -20,6 +24,12 @@ func convertPorts(ports []string) []models.Port {
 	for _, raw := range ports {
 		portNum, err := strconv.Atoi(raw)
 		if err != nil {
+			slog.Default().Warn("istio port parse failed",
+				slog.String("phase", "istio_convert_ports"),
+				slog.String("engine", sourceName),
+				slog.String("raw", raw),
+				slog.String("error", err.Error()),
+			)
 			continue
 		}
 		out = append(out, models.Port{Port: portNum, Protocol: "TCP"})

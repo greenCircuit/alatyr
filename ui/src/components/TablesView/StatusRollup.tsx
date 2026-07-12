@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import type { WorkloadNode, StatusKey } from '../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
+import r from './Rollup.module.css';
 
 export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
   const selectedStatuses = useGraphStore((s) => s.selectedStatuses);
@@ -31,18 +32,15 @@ export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
 
   if (entries.length === 0) {
     return (
-      <div className="px-3 py-2 border-bottom border-secondary text-secondary" style={{ fontSize: 12 }}>
+      <div className="px-3 py-2 border-bottom border-secondary text-secondary fs-12">
         No status signals across the current filter set.
       </div>
     );
   }
 
   return (
-    <div
-      className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary"
-      style={{ fontSize: 12 }}
-    >
-      <span className="text-secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12">
+      <span className="text-secondary fs-11 text-uppercase tracking-wide">
         Status
       </span>
       {entries.map(({ key, count }) => {
@@ -54,26 +52,12 @@ export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
           <button
             key={key}
             type="button"
-            className="btn btn-sm d-inline-flex align-items-center gap-1 p-1"
+            className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
             onClick={() => toggleStatus(key)}
             title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
-            style={{
-              background: '#11151a',
-              border: `1px solid ${bg}`,
-              color: '#e9ecef',
-              opacity: dimmed ? 0.45 : 1,
-              outline: active ? `1.5px solid #fff` : 'none',
-              outlineOffset: 1,
-              fontSize: 12,
-              lineHeight: 1,
-            }}
+            style={{ border: `1px solid ${bg}` }}
           >
-            <span
-              style={{
-                background: bg, color: '#fff',
-                fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3,
-              }}
-            >
+            <span className={r.symbol} style={{ background: bg }}>
               {cfg.symbol}
             </span>
             <span>{key}</span>

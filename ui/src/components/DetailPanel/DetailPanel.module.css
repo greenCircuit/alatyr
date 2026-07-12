@@ -78,6 +78,12 @@
   font-size: 11px;
 }
 
+/* Tier-2 disclosure toggle — pointer + the reveal triangle sits inline. */
+.detailsSummary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
 .badgeSm {
   font-size: 0.7rem;
   /* Long label values like "app.kubernetes.io/instance=..." have no spaces,

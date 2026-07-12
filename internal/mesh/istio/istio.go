@@ -8,6 +8,7 @@
 package istio
 
 import (
+	"log/slog"
 	//"context"
 
 	//istioapi "istio.io/api/security/v1beta1"
@@ -48,14 +49,18 @@ const (
 
 type source struct {
 	client k8s.KubernetesClient
+	log    *slog.Logger
 }
 
 // ZtunnelHBONEPort is the inbound HBONE port ztunnel listens on for mesh
 // traffic in ambient mode. NetworkPolicies restricting ingress must allow
 // this port; otherwise mesh-routed traffic is silently dropped at the CNI.
 
-func New(client k8s.KubernetesClient) *source {
-	return &source{client: client}
+func New(client k8s.KubernetesClient, logger *slog.Logger) *source {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &source{client: client, log: logger}
 }
 
 func (s *source) Name() string {

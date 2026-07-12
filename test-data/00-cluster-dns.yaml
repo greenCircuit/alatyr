@@ -1,0 +1,30 @@
+# kube-system — the cluster's DNS resolver. Present so MissingDns can resolve
+# the coredns workload from the configured selector (dnsNs=kube-system,
+# dnsLabels.k8s-app=kube-dns). Without this fixture the detector short-circuits
+# in demo mode and no NoDNSEgress issue ever surfaces.
+#
+# What this exposes in demo mode:
+#   analytics/warehouse — has policyTypes: Egress with no rules → default-deny
+#   egress → cannot reach coredns → flagged as NoDNSEgress.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-system
+  labels:
+    kubernetes.io/metadata.name: kube-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-dns

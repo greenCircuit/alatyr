@@ -9,10 +9,16 @@ import { useGraphStore } from '../../store/graphStore';
 import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges } from '../../store/filters';
 import WorkloadsTable from './WorkloadsTable';
 import PoliciesTable from './PoliciesTable';
+import IssuesTable from './IssuesTable';
 import StatusRollup from './StatusRollup';
 import EngineRollup from './EngineRollup';
+import IssueRollup from './IssueRollup';
+import { indexIssuesByNode, indexIssuesByPolicy } from '../../store/issueIndex';
+import type { IssueType } from '../../data/policies';
 
-type Tab = 'workloads' | 'policies';
+const EMPTY_ISSUE_TYPES = new Set<IssueType>();
+
+type Tab = 'workloads' | 'policies' | 'issues';
 
 export default function TablesView() {
   const [tab, setTab] = useState<Tab>('workloads');
@@ -66,10 +72,41 @@ export default function TablesView() {
   // NOT to the rollup itself — chips need to stay visible so the user can
   // pivot between status keys. The graph view dims instead of hides.
   const selectedStatuses = useGraphStore((s) => s.selectedStatuses);
-  const tableNodes = useMemo(() => {
+  const statusFilteredNodes = useMemo(() => {
     if (selectedStatuses.size === 0) return nodesWithNs;
     return nodesWithNs.filter((n) => n.statuses?.some((k) => selectedStatuses.has(k)));
   }, [nodesWithNs, selectedStatuses]);
+
+  // Issue index built from ALL issues so table rows can render a per-row count
+  // regardless of whether the filter is engaged. When the filter narrows to a
+  // subset of types, a second index (nodeIssuesFiltered) drives the row-hide
+  // behavior so the counts on visible rows still reflect the current filter.
+  const issues              = useGraphStore((s) => s.issues);
+  const selectedIssueTypes  = useGraphStore((s) => s.selectedIssueTypes);
+  const nodeIssuesAll       = useMemo(() => indexIssuesByNode(issues, EMPTY_ISSUE_TYPES), [issues]);
+  const policyIssuesAll     = useMemo(() => indexIssuesByPolicy(issues, EMPTY_ISSUE_TYPES), [issues]);
+  const nodeIssuesFiltered  = useMemo(() => indexIssuesByNode(issues, selectedIssueTypes), [issues, selectedIssueTypes]);
+  const policyIssuesFiltered = useMemo(() => indexIssuesByPolicy(issues, selectedIssueTypes), [issues, selectedIssueTypes]);
+
+  const tableNodes = useMemo(() => {
+    if (selectedIssueTypes.size === 0) return statusFilteredNodes;
+    return statusFilteredNodes.filter((n) => nodeIssuesFiltered.has(n.id));
+  }, [statusFilteredNodes, selectedIssueTypes, nodeIssuesFiltered]);
+
+  // When the issue-type filter is active, narrow the policies tab to policies
+  // that show up as a contributor on a matching issue. Base `edges` still drives
+  // workload policy counts, so column-level chip counts stay accurate.
+  const tableEdges = useMemo(() => {
+    if (selectedIssueTypes.size === 0) return edges;
+    return edges.filter((e) => policyIssuesFiltered.has(`${e.policySource}|${e.namespace}|${e.policyName}`));
+  }, [edges, selectedIssueTypes, policyIssuesFiltered]);
+
+  // Issues tab rows: respect the type filter so the chip row above stays
+  // consistent with what's rendered. No filter → all issues.
+  const tableIssues = useMemo(() => {
+    if (selectedIssueTypes.size === 0) return issues;
+    return issues.filter((issue) => selectedIssueTypes.has(issue.type));
+  }, [issues, selectedIssueTypes]);
 
   // Edges pre-engine-filter — used by EngineRollup so chips stay visible
   // when the user pivots. Same pattern as StatusRollup vs Workloads table.
@@ -80,10 +117,7 @@ export default function TablesView() {
   }), [filterState, availablePolicySources]);
 
   return (
-    <div
-      className="d-flex flex-column bg-dark text-light"
-      style={{ flexGrow: 1, overflow: 'hidden' }}
-    >
+    <div className="d-flex flex-column bg-dark text-light flex-grow-1 overflow-hidden">
       <ul className="nav nav-tabs px-3 pt-2 border-secondary" role="tablist">
         <li className="nav-item">
           <button
@@ -100,16 +134,26 @@ export default function TablesView() {
             onClick={() => setTab('policies')}
             type="button"
           >
-            Policies <span className="badge bg-secondary ms-1">{edges.length}</span>
+            Policies <span className="badge bg-secondary ms-1">{tableEdges.length}</span>
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            className={`nav-link ${tab === 'issues' ? 'active' : ''}`}
+            onClick={() => setTab('issues')}
+            type="button"
+          >
+            Issues <span className="badge bg-secondary ms-1">{tableIssues.length}</span>
           </button>
         </li>
       </ul>
       {tab === 'workloads' && <StatusRollup nodes={nodes} />}
       {tab === 'policies' && <EngineRollup edges={edgesPreEngine} />}
-      <div className="flex-grow-1" style={{ overflow: 'auto' }}>
-        {tab === 'workloads'
-          ? <WorkloadsTable nodes={tableNodes} edges={edges} />
-          : <PoliciesTable edges={edges} />}
+      {tab === 'issues' && <IssueRollup issues={issues} />}
+      <div className="flex-grow-1 overflow-auto">
+        {tab === 'workloads' && <WorkloadsTable nodes={tableNodes} edges={edges} nodeIssues={nodeIssuesAll} />}
+        {tab === 'policies'  && <PoliciesTable edges={tableEdges} policyIssues={policyIssuesAll} />}
+        {tab === 'issues'    && <IssuesTable issues={tableIssues} />}
       </div>
     </div>
   );

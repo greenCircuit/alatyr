@@ -3,6 +3,7 @@ package istio
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"graph/internal/k8s"
 	"graph/internal/models"
@@ -14,10 +15,14 @@ const sourceName = "istio"
 
 type source struct {
 	client k8s.KubernetesClient
+	log    *slog.Logger
 }
 
-func New(client k8s.KubernetesClient) *source {
-	return &source{client: client}
+func New(client k8s.KubernetesClient, logger *slog.Logger) *source {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &source{client: client, log: logger}
 }
 
 func (s *source) Name() string {
@@ -53,7 +58,9 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 		}
 	}
 
-	denyByNsRules := buildRulesByNs(index, denyByNS)
+	nodeRulesPtr := map[string]*models.NodeRules{}
+	allowByNsRules := buildRulesByNs(index, allowByNS, nodeRulesPtr)
+	denyByNsRules := buildRulesByNs(index, denyByNS, nodeRulesPtr)
 	for ns, rules := range denyByNsRules {
 		for ruleIndex := range rules {
 			rules[ruleIndex].Action = models.ActionDeny
@@ -61,21 +68,35 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 		denyByNsRules[ns] = rules
 	}
 
+	// dereference to hand back a frozen (non-pointer) index
+	nodeRules := make(map[string]models.NodeRules, len(nodeRulesPtr))
+	for nodeID, bucket := range nodeRulesPtr {
+		nodeRules[nodeID] = *bucket
+	}
+
 	return models.EvaluationResult{
-		AllowByNs:      buildRulesByNs(index, allowByNS),
+		AllowByNs:      allowByNsRules,
 		DenyByNs:       denyByNsRules,
 		PolicyStatuses: policyStatuses,
 		NodePolicies:   nodePolicies,
+		NodeRules:      nodeRules,
 	}, nil
 }
 
 // getPolicies fetches AuthorizationPolicies from every requested namespace
-// via the shared k8s client.
+// via the shared k8s client. Logs the failing ns before returning so an
+// operator can pinpoint which namespace stopped the whole engine.
 func (s *source) getPolicies(namespaces []string) (map[string][]*istiosec.AuthorizationPolicy, error) {
 	policiesByNS := map[string][]*istiosec.AuthorizationPolicy{}
 	for _, ns := range namespaces {
 		nsPolicies, err := s.client.GetAuthorizationPolicies(ns)
 		if err != nil {
+			s.log.Warn("istio policy fetch failed",
+				slog.String("phase", "istio_get_policies"),
+				slog.String("engine", sourceName),
+				slog.String("ns", ns),
+				slog.String("error", err.Error()),
+			)
 			return nil, err
 		}
 		policiesByNS[ns] = nsPolicies

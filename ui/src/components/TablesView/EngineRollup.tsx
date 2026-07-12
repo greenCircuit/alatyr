@@ -7,6 +7,8 @@ import { useMemo } from 'react';
 import type { PolicyEdge } from '../../data/policies';
 import { engineMeta } from '../../data/engines';
 import { EngineLogo } from '../../data/engineIcons';
+import chip from '../../data/engineIcons.module.css';
+import r from './Rollup.module.css';
 import { useGraphStore } from '../../store/graphStore';
 
 export default function EngineRollup({ edges }: { edges: PolicyEdge[] }) {
@@ -34,18 +36,15 @@ export default function EngineRollup({ edges }: { edges: PolicyEdge[] }) {
 
   if (engines.length === 0) {
     return (
-      <div className="px-3 py-2 border-bottom border-secondary text-secondary" style={{ fontSize: 12 }}>
+      <div className="px-3 py-2 border-bottom border-secondary text-secondary fs-12">
         No policies across the current filter set.
       </div>
     );
   }
 
   return (
-    <div
-      className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary"
-      style={{ fontSize: 12 }}
-    >
-      <span className="text-secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12">
+      <span className="text-secondary fs-11 text-uppercase tracking-wide">
         Engine
       </span>
       {engines.map((engine) => {
@@ -57,19 +56,10 @@ export default function EngineRollup({ edges }: { edges: PolicyEdge[] }) {
           <button
             key={engine}
             type="button"
-            className="btn btn-sm d-inline-flex align-items-center gap-1 p-1"
+            className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${chip.engineChip} ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
             onClick={() => togglePolicySource(engine)}
             title={`${label} — click to ${active ? 'hide' : 'show only'} ${engine}`}
-            style={{
-              background: '#11151a',
-              border: `1px solid ${color}`,
-              color: '#e9ecef',
-              opacity: dimmed ? 0.45 : 1,
-              outline: active ? `1.5px solid #fff` : 'none',
-              outlineOffset: 1,
-              fontSize: 12,
-              lineHeight: 1,
-            }}
+            style={{ border: `1px solid ${color}` }}
           >
             <EngineLogo engine={engine} size={12} />
             <span>{engine}</span>

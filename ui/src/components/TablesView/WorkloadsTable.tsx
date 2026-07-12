@@ -2,25 +2,30 @@
 // "which workloads have internet ingress", "what's in the broken ns", "who has
 // no policy at all". Row click drops back to the graph with the workload selected.
 
-import { useMemo, useState } from 'react';
-import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
+import { useMemo, useRef, useState } from 'react';
+import type { WorkloadNode, PolicyEdge, StatusKey, Issue } from '../../data/policies';
+import { SEVERITY_COLOR } from '../../data/policies';
+import { issueTier } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
-import { engineMeta } from '../../data/engines';
-import { EngineLogo } from '../../data/engineIcons';
+import { EngineBadge } from '../../data/engineIcons';
 import { StatusBadge } from '../PolicyGraph/parts/legend';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
+import type { IssueIndex } from '../../store/issueIndex';
+import { IssuesPopover } from './IssuesPopover';
 
-type Col = 'name' | 'namespace' | 'type' | 'statuses' | 'policies';
+type Col = 'name' | 'namespace' | 'type' | 'statuses' | 'policies' | 'issues';
 
 export default function WorkloadsTable({
   nodes,
   edges,
+  nodeIssues,
 }: {
   nodes: WorkloadNode[];
   edges: PolicyEdge[];
+  nodeIssues: IssueIndex;
 }) {
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
-  const setView = useGraphStore((s) => s.setView);
+  const setView         = useGraphStore((s) => s.setView);
   const [sort, setSort] = useState<SortState<Col>>({ col: null, dir: 'asc' });
 
   // Edge count per workload, split by engine so a row can answer "how many
@@ -42,6 +47,7 @@ export default function WorkloadsTable({
       node: n,
       policyCounts: policyCountByNode.get(n.id) ?? {},
       policyTotal: Object.values(policyCountByNode.get(n.id) ?? {}).reduce((a, b) => a + b, 0),
+      issues: nodeIssues.get(n.id) ?? [],
     }));
     if (!sort.col) return list;
     const sign = sort.dir === 'asc' ? 1 : -1;
@@ -52,11 +58,12 @@ export default function WorkloadsTable({
         case 'type':      return sign * a.node.type.localeCompare(b.node.type);
         case 'statuses':  return sign * ((a.node.statuses?.length ?? 0) - (b.node.statuses?.length ?? 0));
         case 'policies':  return sign * (a.policyTotal - b.policyTotal);
+        case 'issues':    return sign * (a.issues.length - b.issues.length);
         default:          return 0;
       }
     });
     return list;
-  }, [nodes, policyCountByNode, sort]);
+  }, [nodes, policyCountByNode, nodeIssues, sort]);
 
   const onSort = (col: Col) => setSort((s) => nextSort(s, col));
 
@@ -74,7 +81,7 @@ export default function WorkloadsTable({
   }
 
   return (
-    <table className="table table-dark table-sm table-hover mb-0" style={{ fontSize: 13 }}>
+    <table className="table table-dark table-sm table-hover mb-0 fs-13">
       <thead className="sticky-top bg-dark">
         <tr>
           <SortHeader col="name"      label="Workload"   sort={sort} onSort={onSort} />
@@ -82,17 +89,18 @@ export default function WorkloadsTable({
           <SortHeader col="type"      label="Type"       sort={sort} onSort={onSort} />
           <SortHeader col="statuses"  label="Status"     sort={sort} onSort={onSort} />
           <SortHeader col="policies"  label="Policies"   sort={sort} onSort={onSort} />
-          <th style={{ whiteSpace: 'nowrap' }}>Labels</th>
+          <SortHeader col="issues"    label="Issues"     sort={sort} onSort={onSort} />
+          <th className="text-nowrap">Labels</th>
           <th />
         </tr>
       </thead>
       <tbody>
-        {rows.map(({ node, policyCounts, policyTotal }) => (
+        {rows.map(({ node, policyCounts, policyTotal, issues }) => (
           <tr
             key={node.id}
             role="button"
             onClick={() => selectRow(node)}
-            style={{ cursor: 'pointer' }}
+            className="cursor-pointer"
           >
             <td className="text-break fw-semibold">{node.label}</td>
             <td>{node.namespace || '—'}</td>
@@ -105,14 +113,16 @@ export default function WorkloadsTable({
             </td>
             <td><StatusCompact keys={node.statuses ?? []} /></td>
             <td><PolicyCountChips total={policyTotal} byEngine={policyCounts} /></td>
+            <td onClick={(e) => e.stopPropagation()}>
+              <IssueChip issues={issues} />
+            </td>
             <td><LabelChips labels={node.labels} /></td>
             <td className="text-end">
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-outline-secondary text-nowrap"
                 onClick={(e) => openInGraph(node, e)}
                 title="Show this workload in the graph"
-                style={{ whiteSpace: 'nowrap' }}
               >
                 ◉ Graph
               </button>
@@ -148,20 +158,63 @@ function PolicyCountChips({
   }
   return (
     <div className="d-flex flex-wrap gap-1">
-      {Object.entries(byEngine).map(([engine, count]) => {
-        const { label, color } = engineMeta(engine);
-        return (
-          <span
-            key={engine}
-            className="badge d-inline-flex align-items-center gap-1"
-            title={label}
-            style={{ background: '#11151a', border: `1px solid ${color}`, color: '#e9ecef' }}
-          >
-            <EngineLogo engine={engine} size={12} /> {engine}: {count}
-          </span>
-        );
-      })}
+      {Object.entries(byEngine).map(([engine, count]) => (
+        <EngineBadge key={engine} engine={engine} suffix={`: ${count}`} />
+      ))}
     </div>
+  );
+}
+
+const TIER_META = [
+  { tier: 'blocking' as const, color: SEVERITY_COLOR.high,    label: 'blocking' },
+  { tier: 'warning'  as const, color: SEVERITY_COLOR.warning, label: 'warning' },
+  { tier: 'info'     as const, color: SEVERITY_COLOR.info,    label: 'info (expected behavior)' },
+];
+
+// Per-row conflict summary. Zero = grey dash so the eye passes over clean rows;
+// nonzero = a button with per-severity-tier counts (colored dots) so ten
+// info-class layering rows don't read as ten fires. Danger border only when
+// something actually blocks. One click still opens the single popover with
+// every issue. The chevron rotates when the popover is open — that plus
+// aria-expanded gives the state cue for both sighted and assistive users.
+export function IssueChip({ issues }: { issues: Issue[] }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  if (issues.length === 0) return <span className="text-secondary">—</span>;
+  const counts = { blocking: 0, warning: 0, info: 0 };
+  for (const issue of issues) counts[issueTier(issue.type)] += 1;
+  const tiers = TIER_META.filter(({ tier }) => counts[tier] > 0);
+  const hasBlocking = counts.blocking > 0;
+  const summary = tiers.map(({ tier, label }) => `${counts[tier]} ${label}`).join(' · ');
+  const open = !!anchor;
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className={`btn btn-sm btn-dark border ${hasBlocking ? 'border-danger' : 'border-secondary'} py-0 px-2 d-inline-flex align-items-center gap-2 fs-11 fw-semibold leading-tight ${open ? 'active' : ''}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title={summary}
+        onClick={() => setAnchor(open ? null : ref.current?.getBoundingClientRect() ?? null)}
+      >
+        {tiers.map(({ tier, color }) => (
+          <span key={tier} className="d-inline-flex align-items-center gap-1" style={{ color }}>
+            <span aria-hidden="true">●</span>{counts[tier]}
+          </span>
+        ))}
+        <span
+          aria-hidden="true"
+          className="rotate-flip fs-9"
+          style={{ transform: open ? 'rotate(180deg)' : 'none' }}
+        >
+          ▾
+        </span>
+      </button>
+      {anchor && (
+        <IssuesPopover anchor={anchor} issues={issues} onClose={() => setAnchor(null)} />
+      )}
+    </>
   );
 }
 
@@ -173,7 +226,7 @@ function LabelChips({ labels }: { labels: Record<string, string> | null | undefi
   return (
     <div className="d-flex flex-wrap gap-1">
       {shown.map(([k, v]) => (
-        <span key={k} className="badge bg-secondary" style={{ fontWeight: 'normal' }}>
+        <span key={k} className="badge bg-secondary fw-normal">
           {k}={v}
         </span>
       ))}

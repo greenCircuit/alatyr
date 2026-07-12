@@ -19,10 +19,8 @@ export function ViewControls() {
 
   return (
     <>
-      <span
-        className="fw-bold text-secondary me-1"
-        style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}
-      >
+
+      <span className="fw-bold text-secondary me-1 fs-11 text-uppercase tracking-wider text-nowrap">
         NetPol Visualizer
       </span>
 
@@ -44,60 +42,55 @@ export function ViewControls() {
           ▤ Tables
         </button>
       </div>
-
-      <input
-        type="text"
-        className="form-control form-control-sm bg-dark text-light border-secondary"
-        placeholder="Search by node name…"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        style={{ width: 160 }}
-      />
-
-      <select
-        className="form-select form-select-sm bg-dark text-light border-secondary"
-        style={{ width: 170 }}
-        value={layoutAlgorithm}
-        onChange={(e) => setLayoutAlgorithm(e.target.value)}
-      >
-        {LAYOUTS.map(({ value, label }) => (
-          <option key={value} value={value}>{label}</option>
-        ))}
-      </select>
-
+      <div>
+        <input
+          type="text"
+          className="form-control form-control-sm bg-dark text-light border-secondary w-120"
+          placeholder="Search by node name…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+      <div>
+        <select
+          className="form-select form-select-sm bg-dark text-light border-secondary w-130"
+          value={layoutAlgorithm}
+          onChange={(e) => setLayoutAlgorithm(e.target.value)}
+        >
+          {LAYOUTS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </div>
       <button
-        className="btn btn-sm btn-outline-secondary"
+        className="btn btn-sm btn-outline-secondary text-nowrap"
         onClick={() => loadGraph()}
         disabled={loading}
         title="Refresh data"
-        style={{ whiteSpace: 'nowrap' }}
       >
         ↻&nbsp;{loading ? 'Loading…' : 'Refresh'}
       </button>
 
       <button
-        className={`btn btn-sm ${aggregateByNamespace ? 'btn-warning' : 'btn-outline-secondary'}`}
+        className={`btn btn-sm text-nowrap ${aggregateByNamespace ? 'btn-warning' : 'btn-outline-secondary'}`}
         onClick={toggleAggregateByNamespace}
         title="Collapse all workloads into namespace nodes to see NS-to-NS policy flow"
-        style={{ whiteSpace: 'nowrap' }}
       >
         ▣ NS view
       </button>
 
       <button
-        className={`btn btn-sm ${showConnectedNamespaces ? 'btn-warning' : 'btn-outline-secondary'}`}
+        className={`btn btn-sm text-nowrap ${showConnectedNamespaces ? 'btn-warning' : 'btn-outline-secondary'}`}
         onClick={toggleConnectedNamespaces}
         title="Also show namespaces connected to the selected ones"
-        style={{ whiteSpace: 'nowrap' }}
       >
         ⇄ Connections
       </button>
 
       <button
-        className={`btn btn-sm ${showEngineIcons ? 'btn-warning' : 'btn-outline-secondary'}`}
+        className={`btn btn-sm text-nowrap ${showEngineIcons ? 'btn-warning' : 'btn-outline-secondary'}`}
         onClick={toggleEngineIcons}
         title="Show which policy engine produced each arrow"
-        style={{ whiteSpace: 'nowrap' }}
       >
         ☸ Engine icons
       </button>

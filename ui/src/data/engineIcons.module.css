@@ -1,0 +1,6 @@
+/* Shared engine provenance chip surface: fixed dark fill + light text. The
+   brand-colored border is per-engine and stays inline. */
+.engineChip {
+  background: #11151a;
+  color: #e9ecef;
+}

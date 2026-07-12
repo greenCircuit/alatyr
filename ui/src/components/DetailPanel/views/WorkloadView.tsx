@@ -11,6 +11,7 @@ import { NeighborList } from '../shared/rows';
 import { distinctPeerCount } from '../shared/groupNeighborsByPolicy';
 import { StatusBadges } from '../shared/status';
 import { MeshCard } from '../shared/mesh';
+import { NodeIssues } from '../shared/issues';
 
 export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }: {
   node:            WorkloadNode;
@@ -45,10 +46,10 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
       <div>
         <div className="text-uppercase text-secondary small fw-semibold mb-1">Labels</div>
         <div className="d-flex flex-wrap gap-1">
-          {Object.entries(node.labels).map(([k, v]) => (
+          {Object.entries(node.labels ?? {}).map(([k, v]) => (
             <span key={k} className={`badge bg-secondary ${s.badgeSm}`}>{k}={v}</span>
           ))}
-          {Object.keys(node.labels).length === 0 && '—'}
+          {Object.keys(node.labels ?? {}).length === 0 && '—'}
         </div>
       </div>
 
@@ -71,6 +72,11 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
           </ul>
         </div>
       )}
+
+      {/* Cluster findings touching this node (conflicts, lockouts) — the same
+          issues the drawer/table list, scoped here so the operator sees them
+          without leaving the panel. */}
+      <NodeIssues nodeId={node.id} />
 
       {(() => {
         const engines = new Set<string>([

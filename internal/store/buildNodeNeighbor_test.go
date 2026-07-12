@@ -43,6 +43,7 @@ func TestBuildNodeNeighbor_CrossNsBucketsInboundOutbound(t *testing.T) {
 			"k8s": {AllowByNs: allow, DenyByNs: deny},
 		},
 	}
+	cache.RebuildWorkloadIndex()
 
 	got := BuildNodeNeighbor(cache, srcID)
 
@@ -106,6 +107,7 @@ func TestBuildNodeNeighbor_PerEngineSeparation(t *testing.T) {
 			"istio": {DenyByNs: map[string][]models.Rule{dstNs: {{SrcID: srcID, DstID: dstID, Action: models.ActionDeny}}}},
 		},
 	}
+	cache.RebuildWorkloadIndex()
 
 	got := BuildNodeNeighbor(cache, srcID)
 

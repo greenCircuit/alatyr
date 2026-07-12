@@ -41,8 +41,6 @@ type PolicyRef struct {
 	Name      string    `json:"name"`
 	Namespace string    `json:"namespace"`
 	RuleIndex int       `json:"ruleIndex"`
-	// Action + Direction populated for NodePolicies entries (selecting-policy
-	// view). Left empty in Contributors refs — parent Rule already carries them.
 	Action    string    `json:"action,omitempty"`    // "allow" | "deny" | "" (unknown / k8s allow-style)
 	Direction Direction `json:"direction,omitempty"`
 }

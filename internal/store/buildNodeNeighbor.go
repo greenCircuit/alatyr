@@ -15,7 +15,7 @@ import (
 // Unresolved ids (external CIDR) keep the neighbor with a blank Workload rather
 // than dropping it.
 func BuildNodeNeighbor(cache *models.Cache, nodeId string) map[string]NodeNeighbors {
-	idIndex := buildWorkloadIDIndex(cache) // resolve any id, any ns; built once
+	idIndex := cache.WorkloadByID // resolve any id, any ns
 	neighborPolicyMap := make(map[string]NodeNeighbors)
 
 	for policyEngine, result := range cache.EvaluationResults {

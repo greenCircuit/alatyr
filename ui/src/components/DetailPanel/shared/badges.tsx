@@ -3,27 +3,12 @@
 // domain logic here — just badges keyed off a string or a small struct.
 
 import type { L7Match } from '../../../data/policies';
-import { engineMeta } from '../../../data/engines';
-import { EngineLogo } from '../../../data/engineIcons';
 import { DIR_COLOR } from './presentation';
 import s from '../DetailPanel.module.css';
 
-// Engine provenance chip — brand logo + name. Shared by the edge panel and the
-// workload panel's per-engine cards so the same brand-colored mark that rides
-// the arrows also labels the panels. Border (not fill) carries the brand color
-// so the logo keeps its own color on the dark chip.
-export function EngineBadge({ engine }: { engine: string }) {
-  const { label, color } = engineMeta(engine);
-  return (
-    <span
-      className="badge d-inline-flex align-items-center gap-1"
-      title={label}
-      style={{ background: '#11151a', border: `1px solid ${color}`, color: '#e9ecef' }}
-    >
-      <EngineLogo engine={engine} size={12} /> {engine}
-    </span>
-  );
-}
+// Engine provenance chip lives with the logo it wraps. Re-exported here so the
+// DetailPanel views that already import it from ./badges keep one import path.
+export { EngineBadge } from '../../../data/engineIcons';
 
 // Coverage posture chip — the rule's blanket state. 'restricted' (specific
 // peers, the default) renders nothing; only the notable postures get a badge so
@@ -52,7 +37,7 @@ export function CoverageBadge({ coverage }: { coverage?: string }) {
 export function DirectionBadge({ direction }: { direction: string }) {
   const { tint, arrow } = DIR_COLOR[direction] ?? { tint: '#adb5bd', arrow: '' };
   return (
-    <span className="badge" style={{ background: tint, color: '#1a1d20' }}>
+    <span className="badge text-ink-dark" style={{ background: tint }}>
       {arrow} {direction}
     </span>
   );

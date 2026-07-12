@@ -1,17 +1,23 @@
 package models
 
-// NodeRule mirrors Rule but resolves DstID to a human-readable label
-// and namespace via the cache's NSIndex. SrcID is dropped — the clicked node
-// is always the source for outbound rules.
+// NodeRule mirrors Rule but resolves both endpoint IDs to human-readable
+// labels, namespaces, and kinds via the workload ID index. Node-info payloads
+// only care about the dst side (clicked node is the source); reachability
+// payloads need both — ingress rules identify the peer by SrcID.
 type NodeRule struct {
 	Direction    Direction   `json:"direction"`
 	Ports        []Port      `json:"ports"`
 	L7Match      *L7Match    `json:"l7Match,omitempty"`
 	Action       RuleAction  `json:"action"`
 	Contributor  PolicyRef   `json:"contributor,omitempty"`
+	SrcID        string      `json:"srcId,omitempty"`
+	SrcLabel     string      `json:"srcLabel,omitempty"`
+	SrcNamespace string      `json:"srcNamespace,omitempty"`
+	SrcKind      NodeType    `json:"srcKind,omitempty"`
 	DstID        string      `json:"dstId"`
 	DstLabel     string      `json:"dstLabel,omitempty"`
 	DstNamespace string      `json:"dstNamespace,omitempty"`
+	DstKind      NodeType    `json:"dstKind,omitempty"`
 	SrcSelector  PolicySelector  `json:"srcSelector,omitempty"`
 	DstSelector  PolicySelector  `json:"dstSelector,omitempty"`
 }

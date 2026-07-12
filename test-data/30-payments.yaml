@@ -8,7 +8,8 @@
 #                                                 Istio DENY from observability;
 #                                                 namespace STRICT mTLS)
 #   ledger-db         lan-full                  (private-CIDR ingress + egress)
-#   webhook-receiver  ns-egress-access          (egress to kube-system only)
+#   webhook-receiver  ns-egress-access + l7-applied  (egress to kube-system only;
+#                                                 Istio ALLOW L7 POST /webhooks)
 #   payout-worker     internet-egress
 #   fraud-check       internet-egress
 ---
@@ -167,7 +168,9 @@ spec:
         - protocol: TCP
           port: 5432
 ---
-# payments-api: Istio L7 ALLOW gated on methods + paths. -> l7-applied
+# payments-api: Istio L7 ALLOW gated on methods + paths, sourced from in-ns
+# callers. Renders as an L7-labelled edge from the payments ns node into
+# payments-api. -> l7-applied
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -181,8 +184,7 @@ spec:
   rules:
     - from:
         - source:
-            principals:
-              - cluster.local/ns/payments/sa/webhook-receiver
+            namespaces: [payments]
       to:
         - operation:
             methods: ["POST"]
@@ -268,6 +270,30 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+---
+# webhook-receiver: Istio L7 ALLOW gated on POST + provider-specific paths.
+# HTTP webhooks are a natural L7 fit — only providers hitting the right path get
+# through. Paired with the fully-scoped k8s policy above (README rule).
+# -> l7-applied
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: webhook-receiver-allow-l7
+  namespace: payments
+spec:
+  selector:
+    matchLabels:
+      app: webhook-receiver
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [payments]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/webhooks/stripe", "/webhooks/adyen"]
+            ports: ["8080"]
 ---
 # payout-worker: dials the external banking/ACH gateway over TLS. -> internet-egress
 apiVersion: networking.k8s.io/v1

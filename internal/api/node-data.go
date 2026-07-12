@@ -70,3 +70,12 @@ func (s *Server) getReachability(c echo.Context) error {
 	result := store.IsNodesReachable(c.Request().Context(), s.cache, s.store.MeshSources(), srcId, srcNs, dstId, dstNs)
 	return c.JSON(http.StatusOK, result)
 }
+
+// getIssues returns every cross-cutting policy/mesh conflict found across the
+// whole cached graph. Whole-cluster scan, not node-scoped.
+func (s *Server) getIssues(c echo.Context) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	issues := store.GetIssues(c.Request().Context(), s.cache)
+	return c.JSON(http.StatusOK, issues)
+}

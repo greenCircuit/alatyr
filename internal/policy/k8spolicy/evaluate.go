@@ -3,6 +3,7 @@ package k8spolicy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"graph/internal/k8s"
@@ -15,10 +16,14 @@ const sourceName = "k8s"
 
 type source struct {
 	client k8s.KubernetesClient
+	log    *slog.Logger
 }
 
-func New(client k8s.KubernetesClient) *source {
-	return &source{client: client}
+func New(client k8s.KubernetesClient, logger *slog.Logger) *source {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &source{client: client, log: logger}
 }
 
 func (s *source) Name() string {
@@ -36,6 +41,12 @@ func (s *source) getPolicies(namespaces []string) (map[string][]*networkingv1.Ne
 			defer wg.Done()
 			nsPolicies, err := s.client.GetPolicies(ns)
 			if err != nil {
+				s.log.Warn("k8s policy fetch failed",
+					slog.String("phase", "k8s_get_policies"),
+					slog.String("engine", sourceName),
+					slog.String("ns", ns),
+					slog.String("error", err.Error()),
+				)
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -75,10 +86,12 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 		}
 	}
 
+	allowByNs, nodeRules := buildAllowRulesByNs(index, policiesByNS)
 	return models.EvaluationResult{
-		AllowByNs:      buildAllowRulesByNs(index, policiesByNS),
+		AllowByNs:      allowByNs, 
 		PolicyStatuses: policyStatuses,
 		NodePolicies:   nodePolicies,
+		NodeRules:      nodeRules,
 	}, nil
 }
 
