@@ -17,7 +17,13 @@ const TYPE_ORDER: IssueType[] = [
   'policy conflict', 'mesh conflict', 'node lockout', 'mesh policy', 'no dns', 'partial access',
 ];
 
-export default function IssueRollup({ issues }: { issues: Issue[] }) {
+interface IssueRollupProps {
+  issues: Issue[];
+  // Called after a chip toggles the filter — see StatusRollup for rationale.
+  onToggled?: (type: IssueType) => void;
+}
+
+export default function IssueRollup({ issues, onToggled }: IssueRollupProps) {
   const selectedIssueTypes = useGraphStore((s) => s.selectedIssueTypes);
   const toggleIssueType = useGraphStore((s) => s.toggleIssueType);
 
@@ -50,7 +56,7 @@ export default function IssueRollup({ issues }: { issues: Issue[] }) {
             key={type}
             type="button"
             className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
-            onClick={() => toggleIssueType(type)}
+            onClick={() => { toggleIssueType(type); onToggled?.(type); }}
             title={`click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${color}` }}
           >

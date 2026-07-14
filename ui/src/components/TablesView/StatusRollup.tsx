@@ -10,7 +10,15 @@ import { STATUS_CFG, SEVERITY_COLOR } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import r from './Rollup.module.css';
 
-export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
+interface StatusRollupProps {
+  nodes: WorkloadNode[];
+  // Called after a chip toggles the filter. The status page uses this to jump
+  // to a view where the filter has a visible effect — a toggled chip with no
+  // on-page consequence reads as a dead click.
+  onToggled?: (key: StatusKey) => void;
+}
+
+export default function StatusRollup({ nodes, onToggled }: StatusRollupProps) {
   const selectedStatuses = useGraphStore((s) => s.selectedStatuses);
   const toggleStatus = useGraphStore((s) => s.toggleStatus);
 
@@ -53,7 +61,7 @@ export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
             key={key}
             type="button"
             className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
-            onClick={() => toggleStatus(key)}
+            onClick={() => { toggleStatus(key); onToggled?.(key); }}
             title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${bg}` }}
           >

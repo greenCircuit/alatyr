@@ -1,0 +1,6 @@
+/* Proportion bar for rule-coverage classes. Segment colors and widths are
+ * data-driven (inline), only the fixed geometry lives here. */
+
+.bar {
+    height: 10px;
+}

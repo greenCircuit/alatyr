@@ -41,6 +41,14 @@ export function ViewControls() {
         >
           ▤ Tables
         </button>
+        <button
+          type="button"
+          className={`btn ${view === 'status' ? 'btn-warning' : 'btn-outline-secondary'}`}
+          onClick={() => setView('status')}
+          title="Cluster status — posture and counts at a glance"
+        >
+          ▦ Status
+        </button>
       </div>
       <div>
         <input

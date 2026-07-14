@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"graph/internal/models"
@@ -77,11 +78,13 @@ func buildNodeRules(rules []models.Rule) map[string]models.NodeRules {
 // Rule constructors — restricted (real) allows/denies and the two structural
 // markers, shaped the way each engine emits them.
 
+// Engines stamp AllPorts=true on portless rules, so the constructors mirror
+// that; withPorts flips it off when ports are given.
 func egressTo(peerID string) models.Rule {
 	return models.Rule{
 		SrcID: srcID, DstID: peerID,
 		Direction: models.DirectionEgress, Action: models.ActionAllow,
-		Coverage: models.CoverageRestricted,
+		Coverage: models.CoverageRestricted, AllPorts: true,
 	}
 }
 
@@ -89,7 +92,7 @@ func ingressFrom(peerID string) models.Rule {
 	return models.Rule{
 		SrcID: peerID, DstID: dstID,
 		Direction: models.DirectionIngress, Action: models.ActionAllow,
-		Coverage: models.CoverageRestricted,
+		Coverage: models.CoverageRestricted, AllPorts: true,
 	}
 }
 
@@ -116,6 +119,41 @@ func ingressDenyAll() models.Rule {
 		Contributor: models.PolicyRef{Source: "k8s", Name: "dst-default-deny", Namespace: dstNs},
 	}
 }
+
+// egressAllowAll / ingressAllowAll are the empty-peer-list stanzas: allow any
+// destination/source, CoverageAllowAll, empty peer ID. AllPorts mirrors the
+// engines: no ports on the stanza = every port.
+func egressAllowAll(ports ...models.Port) models.Rule {
+	return models.Rule{
+		SrcID: srcID, Direction: models.DirectionEgress, Action: models.ActionAllow,
+		Coverage: models.CoverageAllowAll, Ports: ports, AllPorts: len(ports) == 0,
+	}
+}
+
+func ingressAllowAll(ports ...models.Port) models.Rule {
+	return models.Rule{
+		DstID: dstID, Direction: models.DirectionIngress, Action: models.ActionAllow,
+		Coverage: models.CoverageAllowAll, Ports: ports, AllPorts: len(ports) == 0,
+	}
+}
+
+// egressUnenforced is the marker for a policy that names egress but doesn't
+// constrain it — like allow-all and deny-all markers it has an empty DstID.
+func egressUnenforced() models.Rule {
+	return models.Rule{
+		SrcID: srcID, Direction: models.DirectionEgress,
+		Coverage: models.CoverageUnenforced,
+	}
+}
+
+func withPorts(rule models.Rule, ports ...models.Port) models.Rule {
+	rule.Ports = ports
+	rule.AllPorts = len(ports) == 0
+	return rule
+}
+
+func tcpPort(number int) models.Port { return models.Port{Port: number, Protocol: "TCP"} }
+func udpPort(number int) models.Port { return models.Port{Port: number, Protocol: "UDP"} }
 
 // ingressCatchAllDeny is how Istio emits action:DENY rules:[{}] — a blanket
 // deny of every source. Unlike ingressDenyAll (k8s lock, Action defaults to
@@ -190,6 +228,101 @@ func TestCollectFromSide_BlanketDenyMatchesAnySource(t *testing.T) {
 	if len(verdict.DenyMatches) != 1 {
 		t.Fatalf("DenyMatches: want 1 (blanket deny credited), got %d", len(verdict.DenyMatches))
 	}
+}
+
+// Verdict-level Ports/AllPorts exist so the UI can diff egress vs ingress port
+// sets without re-walking AllowMatches. One broad test per side: dedup across
+// the ns-node + pod buckets, allow-all stanzas matching any peer and feeding
+// ports, AllPorts propagation, near-miss ports excluded, and the unenforced
+// marker (empty peer ID, like allow-all) not swallowed as an allow match.
+func TestCollectSides_PortsAndAllowAll(t *testing.T) {
+	assertPorts := func(t *testing.T, got []models.Port, want ...models.Port) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("ports: want %d unique, got %d: %+v", len(want), len(got), got)
+		}
+		gotSet := map[string]bool{}
+		for _, port := range got {
+			gotSet[fmt.Sprintf("%d/%d/%s", port.Port, port.EndPort, port.Protocol)] = true
+		}
+		for _, port := range want {
+			if !gotSet[fmt.Sprintf("%d/%d/%s", port.Port, port.EndPort, port.Protocol)] {
+				t.Errorf("ports: missing %s/%d in %+v", port.Protocol, port.Port, got)
+			}
+		}
+	}
+
+	t.Run("egress aggregates deduped ports from matching rules only", func(t *testing.T) {
+		nsRule := withPorts(egressTo(dstID), tcpPort(443), tcpPort(8080))
+		nsRule.SrcID = srcNsID
+		nsBucket := buildNodeRules([]models.Rule{nsRule})[srcNsID]
+		podBucket := buildNodeRules([]models.Rule{
+			withPorts(egressTo(dstID), tcpPort(80), tcpPort(443)), // 443 dupes the ns bucket
+			withPorts(egressTo(otherDstID), tcpPort(9999)),        // near miss — ports must not leak in
+			egressAllowAll(udpPort(53), tcpPort(53)),              // matches any peer; UDP/TCP 53 stay distinct
+		})[srcID]
+
+		verdict := collectToSide(nsBucket, podBucket, dstNsID, dstID, nil)
+
+		if verdict.Reason != ReasonPermitted {
+			t.Fatalf("reason: want %q, got %q", ReasonPermitted, verdict.Reason)
+		}
+		if len(verdict.AllowMatches) != 3 {
+			t.Errorf("AllowMatches: want 3 (ns + pod + allow-all), got %d", len(verdict.AllowMatches))
+		}
+		if verdict.AllPorts {
+			t.Errorf("AllPorts: want false, every matching rule names ports")
+		}
+		assertPorts(t, verdict.Ports, tcpPort(80), tcpPort(443), tcpPort(8080), udpPort(53), tcpPort(53))
+	})
+
+	t.Run("egress allow-all without ports sets AllPorts", func(t *testing.T) {
+		podBucket := buildNodeRules([]models.Rule{egressAllowAll()})[srcID]
+
+		verdict := collectToSide(models.NodeRules{}, podBucket, dstNsID, dstID, nil)
+
+		if verdict.Reason != ReasonPermitted {
+			t.Fatalf("reason: want %q, got %q", ReasonPermitted, verdict.Reason)
+		}
+		if !verdict.AllPorts {
+			t.Errorf("AllPorts: want true for portless allow-all")
+		}
+		assertPorts(t, verdict.Ports)
+	})
+
+	t.Run("egress unenforced marker is not an allow-all match", func(t *testing.T) {
+		podBucket := buildNodeRules([]models.Rule{egressUnenforced()})[srcID]
+
+		verdict := collectToSide(models.NodeRules{}, podBucket, dstNsID, dstID, nil)
+
+		if verdict.Reason != ReasonNoOpinion {
+			t.Errorf("reason: want %q, got %q", ReasonNoOpinion, verdict.Reason)
+		}
+		if len(verdict.AllowMatches) != 0 {
+			t.Errorf("AllowMatches: want 0, unenforced marker leaked in: %+v", verdict.AllowMatches)
+		}
+	})
+
+	t.Run("ingress mirrors ports, allow-all and AllPorts", func(t *testing.T) {
+		nsRule := withPorts(ingressFrom(srcID), tcpPort(80), tcpPort(8443))
+		nsRule.DstID = dstNsID
+		nsBucket := buildNodeRules([]models.Rule{nsRule})[dstNsID]
+		podBucket := buildNodeRules([]models.Rule{
+			withPorts(ingressFrom(srcID), tcpPort(80)), // dupes the ns bucket
+			ingressAllowAll(tcpPort(443)),
+			ingressAllowAll(), // portless allow-all flips AllPorts
+		})[dstID]
+
+		verdict := collectFromSide(nsBucket, podBucket, srcNsID, srcID, nil)
+
+		if verdict.Reason != ReasonPermitted {
+			t.Fatalf("reason: want %q, got %q", ReasonPermitted, verdict.Reason)
+		}
+		if !verdict.AllPorts {
+			t.Errorf("AllPorts: want true, portless allow-all present")
+		}
+		assertPorts(t, verdict.Ports, tcpPort(80), tcpPort(8443), tcpPort(443))
+	})
 }
 
 func TestIsNodesReachable_DirectionReasons(t *testing.T) {

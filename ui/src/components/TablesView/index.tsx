@@ -4,7 +4,7 @@
 // "which workloads does NetworkPolicy foo cover". Reuses store filters so
 // switching tabs doesn't lose context.
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useGraphStore } from '../../store/graphStore';
 import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges } from '../../store/filters';
 import WorkloadsTable from './WorkloadsTable';
@@ -18,10 +18,11 @@ import type { IssueType } from '../../data/policies';
 
 const EMPTY_ISSUE_TYPES = new Set<IssueType>();
 
-type Tab = 'workloads' | 'policies' | 'issues';
-
 export default function TablesView() {
-  const [tab, setTab] = useState<Tab>('workloads');
+  // Tab lives in the store so the cluster status page can land on a specific
+  // tab (issue chip → issues tab) before switching the view.
+  const tab    = useGraphStore((s) => s.tablesTab);
+  const setTab = useGraphStore((s) => s.setTablesTab);
 
   // Subscribe to primitive slices and derive in useMemo. Calling
   // store.filteredNodes() in the selector returns a fresh array per render
