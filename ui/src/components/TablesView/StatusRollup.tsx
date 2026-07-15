@@ -10,7 +10,19 @@ import { STATUS_CFG, SEVERITY_COLOR } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import r from './Rollup.module.css';
 
-export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
+interface StatusRollupProps {
+  nodes: WorkloadNode[];
+  // Called after a chip toggles the filter. The status page uses this to jump
+  // to a view where the filter has a visible effect — a toggled chip with no
+  // on-page consequence reads as a dead click.
+  onToggled?: (key: StatusKey) => void;
+  // Status page hosts this inside its own Section wrapper (with its own title
+  // and its own spacing). `bare` drops the strip padding/border/label so the
+  // rollup renders flush inside that host without double-header or fake divider.
+  bare?: boolean;
+}
+
+export default function StatusRollup({ nodes, onToggled, bare = false }: StatusRollupProps) {
   const selectedStatuses = useGraphStore((s) => s.selectedStatuses);
   const toggleStatus = useGraphStore((s) => s.toggleStatus);
 
@@ -30,19 +42,25 @@ export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
     .map((key) => ({ key, count: counts.get(key) ?? 0 }))
     .filter((e) => e.count > 0);
 
+  const wrapperClass = bare
+    ? 'd-flex align-items-center flex-wrap gap-2 fs-12'
+    : 'd-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12';
+
   if (entries.length === 0) {
     return (
-      <div className="px-3 py-2 border-bottom border-secondary text-secondary fs-12">
+      <div className={bare ? 'text-secondary fs-12' : 'px-3 py-2 border-bottom border-secondary text-secondary fs-12'}>
         No status signals across the current filter set.
       </div>
     );
   }
 
   return (
-    <div className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12">
-      <span className="text-secondary fs-11 text-uppercase tracking-wide">
-        Status
-      </span>
+    <div className={wrapperClass}>
+      {!bare && (
+        <span className="text-secondary fs-11 text-uppercase tracking-wide">
+          Status
+        </span>
+      )}
       {entries.map(({ key, count }) => {
         const cfg = STATUS_CFG[key];
         const bg = SEVERITY_COLOR[cfg.severity];
@@ -53,7 +71,7 @@ export default function StatusRollup({ nodes }: { nodes: WorkloadNode[] }) {
             key={key}
             type="button"
             className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
-            onClick={() => toggleStatus(key)}
+            onClick={() => { toggleStatus(key); onToggled?.(key); }}
             title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${bg}` }}
           >

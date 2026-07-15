@@ -36,6 +36,8 @@ type DirectionVerdict struct {
 	DenyMatches    		[]models.NodeRule `json:"denyMatches,omitempty"`
 	Reason         		DirectionReason   `json:"reason"`
 	Culprits            []models.PolicyRef `json:"culprits,omitempty"` // what polices broke connection
+	Ports 				[]models.Port	  `json:"ports,omitempty"`
+	AllPorts			bool			  `json:"allPorts,omitempty"`
 }                                                                                                     
 
 type NeighborRef struct {
