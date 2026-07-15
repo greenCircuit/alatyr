@@ -19,12 +19,12 @@ import type {
   MeshMembership,
   MeshVerdict,
 } from '../../../data/policies';
-import { SEVERITY_COLOR } from '../../../data/policies';
+import { SEVERITY_COLOR, formatPort } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
 import { PolicyRefList, RuleGroupList } from '../shared/rows';
 import { ManifestButton } from '../shared/ManifestModal';
 import { DIR_COLOR, MTLS_VERDICT_COLOR, verdictColor, REASON_META, CHIP_STATE } from '../shared/presentation';
-import { deriveBlockers, classifyPolicy, type Blocker, type ChipState } from '../shared/reachability';
+import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
 // ── Tier 0 ──────────────────────────────────────────────────────────────────
 
@@ -132,6 +132,56 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
       >
         {result.reason}
       </div>
+    </div>
+  );
+}
+
+// ── Ports summary ────────────────────────────────────────────────────────────
+
+// One side's aggregated ports: grey "all ports" badge, per-port badges, or a
+// blocked/none marker. Same badge conventions as the Tier-2 rule rows.
+function SidePortBadges({ side }: { side: SidePorts }) {
+  if (side.blocked) return <span className={`text-secondary ${s.smallText}`}>blocked</span>;
+  if (side.allPorts) {
+    return (
+      <span className="badge bg-secondary" title="No port restriction — all TCP/UDP allowed">
+        all ports
+      </span>
+    );
+  }
+  if (side.ports.length === 0) return <span className={`text-secondary ${s.smallText}`}>none</span>;
+  return (
+    <>
+      {side.ports.map((port, index) => (
+        <span key={index} className="badge bg-info text-dark">{formatPort(port)}/{port.protocol}</span>
+      ))}
+    </>
+  );
+}
+
+// Per-engine port comparison: what src's egress opens vs what dst's ingress
+// accepts. Answers "full port access or a subset?" without expanding Tier 2 —
+// the operator reads both sides; the effective set is their intersection.
+function PortsSummary({ result }: { result: ReachabilityResult }) {
+  const engines = Object.entries(result.engines).filter(([, ev]) => ev.status !== 'not enforced');
+  if (engines.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <div className="text-uppercase text-secondary small fw-semibold mb-1">Ports</div>
+      {engines.map(([name, ev]) => {
+        const egress  = aggregateAllowPorts(ev.egress);
+        const ingress = aggregateAllowPorts(ev.ingress);
+        return (
+          <div key={name} className="border border-secondary rounded p-2 mb-1 d-flex align-items-center gap-2 flex-wrap">
+            <span className="fw-semibold me-1">{name}</span>
+            <span className={`badge bg-info text-dark ${s.badgeSm}`}>SRC egress</span>
+            <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={egress} /></span>
+            <span className="text-secondary">→</span>
+            <span className={`badge bg-warning text-dark ${s.badgeSm}`}>DST ingress</span>
+            <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={ingress} /></span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -521,6 +571,7 @@ export function ReachabilityView({ source, target, loading, result, reverse, rev
         <>
           <VerdictHeadline result={result} reverse={reverse} reverseError={reverseError} src={source} dst={target} />
           {result.verdict === 'deny' && <BlockerList result={result} src={source} dst={target} />}
+          <PortsSummary result={result} />
           <details>
             <summary className={`text-secondary small fw-semibold mb-2 ${s.detailsSummary}`}>
               Per-engine breakdown

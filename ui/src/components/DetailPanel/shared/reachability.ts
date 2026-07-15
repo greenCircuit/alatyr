@@ -14,7 +14,9 @@ import type {
   PolicyRef,
   PARef,
   NodeRule,
+  Port,
 } from '../../../data/policies';
+import { realPorts, formatPort } from '../../../data/policies';
 
 // A direction permits unless it explicitly denies or fails to match. permitted
 // and no-opinion are the two non-blocking reasons — everything else stops
@@ -85,6 +87,43 @@ export function deriveBlockers(result: ReachabilityResult): Blocker[] {
     });
   }
   return blockers.sort((left, right) => left.rank - right.rank);
+}
+
+// Aggregated allow-port view of one direction (src egress or dst ingress).
+//   allPorts  — some allow rule (or a non-enforcing engine) opens every port;
+//               union with any subset is still "all", so the list is dropped.
+//   ports     — deduped restricted ports when no rule opens everything.
+//   blocked   — direction denies; port talk is moot on this side.
+export interface SidePorts {
+  allPorts: boolean;
+  ports:    Port[];
+  blocked:  boolean;
+}
+
+// aggregateAllowPorts unions the ports across every allow rule matching this
+// peer. An engine with no opinion doesn't restrict ports, so it reads as all.
+export function aggregateAllowPorts(dir: DirectionVerdict): SidePorts {
+  if (dir.reason !== 'permitted' && dir.reason !== 'no-opinion') {
+    return { allPorts: false, ports: [], blocked: true };
+  }
+  // no-opinion, or a permit with no attributed rule — nothing restricts ports.
+  if (dir.reason === 'no-opinion' || !(dir.allowMatches ?? []).length) {
+    return { allPorts: true, ports: [], blocked: false };
+  }
+  const seen = new Set<string>();
+  const ports: Port[] = [];
+  for (const rule of dir.allowMatches ?? []) {
+    const restricted = realPorts(rule.ports);
+    // allPorts flag or nothing but the port-0 sentinel → rule opens every port.
+    if (rule.allPorts || !restricted) return { allPorts: true, ports: [], blocked: false };
+    for (const port of restricted) {
+      const key = `${formatPort(port)}/${port.protocol}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      ports.push(port);
+    }
+  }
+  return { allPorts: false, ports, blocked: false };
 }
 
 // Chip state for a selecting policy, told from the peer's actual verdict:

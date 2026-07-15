@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"graph/internal/mesh"
 	"graph/internal/models"
 )
@@ -13,14 +14,31 @@ import (
 // endpoint labels/kinds instead of raw node IDs.
 func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, dstNsNodeId string, dstNodeId string, idIndex map[string]models.WorkloadNode) DirectionVerdict {
 	var verdict DirectionVerdict
-
+	var allowAllPorts bool
+	ports := []models.Port{}
+	// dedup key: port+endPort+protocol — TCP/53 and UDP/53 stay distinct,
+	// Name is display-only so named vs unnamed same port don't duplicate
+	seenPorts := map[string]bool{}
 	collect := func(nodeRules models.NodeRules) {
 		for _, rule := range nodeRules.Egress.Allow {
 			switch {
-			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId:
-				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
 			case rule.Coverage == models.CoverageDenyAll:
 				verdict.DenyAllMatches = append(verdict.DenyAllMatches, toNodeRule(rule, idIndex))
+			// Coverage check, not DstID == "" — unenforced/deny-all markers also
+			// carry empty DstID, and only allow-all means "matches any peer".
+			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageAllowAll:
+				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
+				if rule.AllPorts {
+					allowAllPorts = true
+				}
+				for _, port := range rule.Ports {
+					key := fmt.Sprintf("%d/%d/%s", port.Port, port.EndPort, port.Protocol)
+					if seenPorts[key] {
+						continue
+					}
+					seenPorts[key] = true
+					ports = append(ports, port)
+				}
 			case rule.Coverage == models.CoverageUnenforced:
 				// policy names egress but doesn't constrain it — no opinion, drop
 			default:
@@ -37,6 +55,8 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 	collect(nsNodeRules)
 	collect(srcNodeRules)
 	verdict.Reason, verdict.Culprits = decideDirectionVerdict(verdict)
+	verdict.AllPorts = allowAllPorts
+	verdict.Ports = ports
 	return verdict
 }
 
@@ -45,19 +65,35 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 // Ingress rules identify the peer by SrcID.
 func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules, srcNsNodeId string, srcNodeId string, idIndex map[string]models.WorkloadNode) DirectionVerdict {
 	var verdict DirectionVerdict
-
+	var allowAllPorts bool
+	ports := []models.Port{}
+	// dedup key: port+endPort+protocol — TCP/53 and UDP/53 stay distinct,
+	// Name is display-only so named vs unnamed same port don't duplicate
+	seenPorts := map[string]bool{}
 	collect := func(nodeRules models.NodeRules) {
 		for _, rule := range nodeRules.Ingress.Allow {
-
 			switch {
-				case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId:
-					verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
-				case rule.Coverage == models.CoverageDenyAll:
-					verdict.DenyAllMatches = append(verdict.DenyAllMatches, toNodeRule(rule, idIndex))
-				case rule.Coverage == models.CoverageUnenforced:
-					// policy names ingress but doesn't constrain it — no opinion, drop
-				default:
-					verdict.OtherAllowMatches = append(verdict.OtherAllowMatches, toNodeRule(rule, idIndex))
+			case rule.Coverage == models.CoverageDenyAll:
+				verdict.DenyAllMatches = append(verdict.DenyAllMatches, toNodeRule(rule, idIndex))
+			// Coverage check, not SrcID == "" — unenforced/deny-all markers also
+			// carry empty SrcID, and only allow-all means "matches any peer".
+			case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageAllowAll:
+				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
+				if rule.AllPorts {
+					allowAllPorts = true
+				}
+				for _, port := range rule.Ports {
+					key := fmt.Sprintf("%d/%d/%s", port.Port, port.EndPort, port.Protocol)
+					if seenPorts[key] {
+						continue
+					}
+					seenPorts[key] = true
+					ports = append(ports, port)
+				}
+			case rule.Coverage == models.CoverageUnenforced:
+				// policy names ingress but doesn't constrain it — no opinion, drop
+			default:
+				verdict.OtherAllowMatches = append(verdict.OtherAllowMatches, toNodeRule(rule, idIndex))
 			}
 		}
 		for _, rule := range nodeRules.Ingress.Deny {
@@ -65,11 +101,12 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 				verdict.DenyMatches = append(verdict.DenyMatches, toNodeRule(rule, idIndex))
 			}
 		}
-
 	}
 
 	collect(nsNodeRules)
 	collect(dstNodeRules)
+	verdict.AllPorts = allowAllPorts
+	verdict.Ports = ports
 	verdict.Reason, verdict.Culprits = decideDirectionVerdict(verdict)
 	return verdict
 }

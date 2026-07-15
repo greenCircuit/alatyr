@@ -119,6 +119,53 @@ func TestMissingDns_ExplicitDenyToDNS(t *testing.T) {
 	}
 }
 
+// Port-restricted allows: egress reaches DNS but the rule's port set decides.
+// 53 present, a range covering 53, a portless (all-ports) rule, or a separate
+// allow-all-ports rule all pass; a port set without 53 flags — with the
+// allowing policy as culprit, not the deny-all lock.
+func TestMissingDns_PortRestrictedAllow(t *testing.T) {
+	setDnsConfig(t)
+	allowPolicy := models.PolicyRef{Source: "k8s", Name: "allow-dns", Namespace: srcNs}
+	toDnsWithPorts := func(ports ...models.Port) models.Rule {
+		rule := withPorts(egressTo(dnsID), ports...)
+		rule.Contributor = allowPolicy
+		return rule
+	}
+	cases := []struct {
+		name       string
+		rules      []models.Rule
+		wantIssues int
+	}{
+		{"port 53 allowed", []models.Rule{toDnsWithPorts(udpPort(53))}, 0},
+		{"range covering 53", []models.Rule{toDnsWithPorts(models.Port{Port: 50, EndPort: 60, Protocol: "UDP"})}, 0},
+		{"portless allow means all ports", []models.Rule{toDnsWithPorts()}, 0},
+		{"second rule allows all ports", []models.Rule{toDnsWithPorts(tcpPort(443)), egressAllowAll()}, 0},
+		{"only non-dns ports", []models.Rule{toDnsWithPorts(tcpPort(443), tcpPort(8080))}, 1},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rules := append([]models.Rule{egressDenyAll()}, testCase.rules...)
+			cache := dnsCache("k8s", rules...)
+
+			issues := MissingDns(context.Background(), cache)
+
+			if len(issues) != testCase.wantIssues {
+				t.Fatalf("issues: want %d, got %d: %+v", testCase.wantIssues, len(issues), issues)
+			}
+			if testCase.wantIssues == 0 {
+				return
+			}
+			issue := issues[0]
+			if issue.EgressReason != ReasonPermitted {
+				t.Errorf("reason: want %q (permitted but wrong ports), got %q", ReasonPermitted, issue.EgressReason)
+			}
+			if len(issue.EgressCulprits) != 1 || issue.EgressCulprits[0].Name != allowPolicy.Name {
+				t.Errorf("culprits: want [%s] (the allowing policy), got %+v", allowPolicy.Name, issue.EgressCulprits)
+			}
+		})
+	}
+}
+
 // DNS pod itself must not be flagged — coredns has no reason to egress to
 // itself, and would otherwise trigger on every scan.
 func TestMissingDns_SkipsDNSAsSrc(t *testing.T) {

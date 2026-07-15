@@ -11,7 +11,14 @@ import chip from '../../data/engineIcons.module.css';
 import r from './Rollup.module.css';
 import { useGraphStore } from '../../store/graphStore';
 
-export default function EngineRollup({ edges }: { edges: PolicyEdge[] }) {
+interface EngineRollupProps {
+  edges: PolicyEdge[];
+  // See StatusRollup — drop strip chrome + inline label when hosted inside a
+  // section that already provides them.
+  bare?: boolean;
+}
+
+export default function EngineRollup({ edges, bare = false }: EngineRollupProps) {
   const availablePolicySources = useGraphStore((s) => s.availablePolicySources);
   const selectedPolicySources  = useGraphStore((s) => s.selectedPolicySources);
   const togglePolicySource     = useGraphStore((s) => s.togglePolicySource);
@@ -36,17 +43,23 @@ export default function EngineRollup({ edges }: { edges: PolicyEdge[] }) {
 
   if (engines.length === 0) {
     return (
-      <div className="px-3 py-2 border-bottom border-secondary text-secondary fs-12">
+      <div className={bare ? 'text-secondary fs-12' : 'px-3 py-2 border-bottom border-secondary text-secondary fs-12'}>
         No policies across the current filter set.
       </div>
     );
   }
 
+  const wrapperClass = bare
+    ? 'd-flex align-items-center flex-wrap gap-2 fs-12'
+    : 'd-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12';
+
   return (
-    <div className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12">
-      <span className="text-secondary fs-11 text-uppercase tracking-wide">
-        Engine
-      </span>
+    <div className={wrapperClass}>
+      {!bare && (
+        <span className="text-secondary fs-11 text-uppercase tracking-wide">
+          Engine
+        </span>
+      )}
       {engines.map((engine) => {
         const { label, color } = engineMeta(engine);
         const count = counts.get(engine) ?? 0;

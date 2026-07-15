@@ -161,7 +161,8 @@ export type Coverage =
   | 'allow all'
   | 'allow all ns'
   | 'restricted'
-  | 'unenforced';
+  | 'unenforced'
+  | 'audit';
 
 export interface Rule {
   srcId:        string;

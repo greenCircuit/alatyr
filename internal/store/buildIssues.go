@@ -62,15 +62,46 @@ func MissingDns(ctx context.Context, data *models.Cache) []models.Issue {
 			}
 			for engineName, eval := range data.EvaluationResults {
 				verdict := collectToSide(eval.NodeRules[srcNsID], eval.NodeRules[src.ID], dnsNsID, dnsNodeID, data.WorkloadByID)
-				if verdict.Reason == ReasonPermitted || verdict.Reason == ReasonNoOpinion {
+				// no policy governs egress — DNS trivially reachable, port check
+				// would false-positive on the empty port set
+				if verdict.Reason == ReasonNoOpinion {
+					continue
+				}
+				if verdict.Reason == ReasonPermitted {
+					if verdict.AllPorts {
+						continue
+					}
+					// any protocol counts — flagging TCP-only 53 would
+					// false-positive on TCP-DNS setups
+					dnsPortAllowed := false
+					for _, port := range verdict.Ports {
+						if port.Port == 53 || (port.EndPort != 0 && port.Port <= 53 && 53 <= port.EndPort) {
+							dnsPortAllowed = true
+							break
+						}
+					}
+					if dnsPortAllowed {
+						continue
+					}
+					// permitted verdicts carry no culprits — the policies to edit
+					// are the ones that allowed the path without port 53
+					issues = append(issues, models.Issue{
+						Type:           models.NoDNSEgress,
+						Message:        "cluster DNS blocked: egress to DNS allowed but not on port 53",
+						Engine:         engineName,
+						Src:            src,
+						Dst:            dnsNode,
+						EgressCulprits: dedupContributors(verdict.AllowMatches),
+						EgressReason:   verdict.Reason,
+					})
 					continue
 				}
 				issues = append(issues, models.Issue{
-					Type:    models.NoDNSEgress,
-					Message: "cluster DNS blocked: " + string(verdict.Reason),
-					Engine:  engineName,
-					Src:     src,
-					Dst:     dnsNode,
+					Type:           models.NoDNSEgress,
+					Message:        "cluster DNS blocked: " + string(verdict.Reason),
+					Engine:         engineName,
+					Src:            src,
+					Dst:            dnsNode,
 					EgressCulprits: verdict.Culprits,
 					EgressReason:   verdict.Reason,
 				})

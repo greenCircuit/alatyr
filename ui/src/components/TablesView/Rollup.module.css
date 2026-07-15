@@ -7,11 +7,13 @@
 .chip {
     background: #11151a;
     color: #e9ecef;
-    outline-offset: 1px;
     font-size: 12px;
     line-height: 1;
 }
-.chip.active   { outline: 1.5px solid #fff; }
+/* Selection state: subtle brightened fill instead of a white outline.
+ * Colored border already carries hue; opacity contrast against `dimmed`
+ * siblings signals selection without introducing a foreign white cue. */
+.chip.active   { background: rgba(255, 255, 255, 0.08); }
 .chip.dimmed   { opacity: 0.45; }
 
 /* Small solid symbol inside a Status rollup chip (STATUS_CFG symbol). */

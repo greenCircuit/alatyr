@@ -3,6 +3,8 @@ import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchI
 import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
 
+export type TablesTab = 'workloads' | 'policies' | 'issues';
+
 interface GraphState {
   allNodes:               WorkloadNode[];
   allEdges:               PolicyEdge[];
@@ -28,7 +30,10 @@ interface GraphState {
   nodeInfoLoading:         boolean;
   searchQuery:             string;
   layoutAlgorithm:         string;
-  view:                    'graph' | 'tables';
+  view:                    'graph' | 'tables' | 'status';
+  // Lifted out of TablesView so other views (cluster status page) can deep-link
+  // into a specific tab before switching the view.
+  tablesTab:               TablesTab;
 
   reachabilitySource:      WorkloadNode | null;
   reachability:            ReachabilityResult | null;
@@ -60,6 +65,9 @@ interface GraphState {
   toggleIssueType:             (type: IssueType) => void;
   loadNodeInfo:                (nodeId: string, namespace: string) => Promise<void>;
   toggleNamespace:             (ns: string) => void;
+  // Drill-down: replace the namespace filter with a single namespace (cluster
+  // status page row click), as opposed to toggleNamespace's add/remove.
+  selectNamespaceOnly:         (ns: string) => void;
   toggleNodeType:              (type: string) => void;
   toggleStatus:                (key: StatusKey) => void;
   togglePolicySource:          (src: string) => void;
@@ -73,7 +81,8 @@ interface GraphState {
   setSelectedEdges:            (edges: PolicyEdge[]) => void;
   setSearchQuery:              (q: string) => void;
   setLayoutAlgorithm:          (algo: string) => void;
-  setView:                     (view: 'graph' | 'tables') => void;
+  setView:                     (view: 'graph' | 'tables' | 'status') => void;
+  setTablesTab:                (tab: TablesTab) => void;
 
   pinReachabilitySource:       (node: WorkloadNode) => void;
   showReachability:            (src: WorkloadNode, dst: WorkloadNode) => void;
@@ -117,6 +126,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   searchQuery:             '',
   layoutAlgorithm:         'dagre',
   view:                    'graph',
+  tablesTab:               'workloads',
 
   reachabilitySource:      null,
   reachability:            null,
@@ -202,6 +212,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       next.has(ns) ? next.delete(ns) : next.add(ns);
       return { selectedNamespaces: next, selectedNode: null, selectedEdges: [] };
     }),
+
+  selectNamespaceOnly: (ns) =>
+    set({ selectedNamespaces: new Set([ns]), selectedNode: null, selectedEdges: [] }),
 
   toggleNodeType: (type) =>
     set((state) => {
@@ -370,6 +383,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   setSearchQuery:       (q)     => set({ searchQuery: q }),
   setLayoutAlgorithm:   (algo)  => set({ layoutAlgorithm: algo }),
   setView:              (view)  => set({ view }),
+  setTablesTab:         (tab)   => set({ tablesTab: tab }),
 
   filteredNodes: () => _filteredNodes(get()),
   filteredEdges: () => _filteredEdges(get()),
