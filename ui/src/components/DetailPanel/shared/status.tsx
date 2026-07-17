@@ -7,9 +7,9 @@ import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
 
 export function StatusBadges({ keys }: { keys: StatusKey[] }) {
-  if (keys.length === 0) return <span className="text-secondary">—</span>;
+  if (keys.length === 0) return <span className={s.dim}>—</span>;
   return (
-    <div className="d-flex flex-wrap gap-1 mt-1">
+    <div className="d-flex flex-wrap gap-1">
       {keys.map((key) => {
         const cfg = STATUS_CFG[key];
         const bg = SEVERITY_COLOR[cfg.severity];

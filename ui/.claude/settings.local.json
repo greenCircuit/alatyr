@@ -10,7 +10,8 @@
       "Bash(curl -s http://localhost:5173/api/graph)",
       "Bash(python3)",
       "Bash(git *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

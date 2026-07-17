@@ -62,7 +62,6 @@ export default function DetailPanel() {
                 result={reachability}
                 reverse={reachabilityReverse}
                 reverseError={reachabilityReverseError}
-                onClear={clearReachability}
                 onSwap={() => reachabilityTarget && showReachability(reachabilityTarget, reachabilitySource)}
               />
             )}

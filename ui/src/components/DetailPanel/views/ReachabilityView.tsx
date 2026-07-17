@@ -8,7 +8,6 @@
 // Column policy chips are joined back to the verdict (classifyPolicy) so the
 // SRC/DST lists show which policy decided, not just the universe selecting it.
 
-import type { CSSProperties } from 'react';
 import type {
   ReachabilityResult,
   EngineVerdict,
@@ -22,38 +21,32 @@ import type {
 import { SEVERITY_COLOR, formatPort } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
 import { PolicyRefList, RuleGroupList } from '../shared/rows';
+import { RolePill, LabelStrip, EngineBadge, ActionIcon } from '../shared/badges';
+import { EndpointCard } from '../shared/edge-composites';
 import { ManifestButton } from '../shared/ManifestModal';
-import { DIR_COLOR, MTLS_VERDICT_COLOR, verdictColor, REASON_META, CHIP_STATE } from '../shared/presentation';
+import { MTLS_VERDICT_COLOR, REASON_META, CHIP_STATE } from '../shared/presentation';
 import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
 // ── Tier 0 ──────────────────────────────────────────────────────────────────
 
-// Per-subsystem chip. Green allow, red deny, grey unknown/not-enforced.
-// Rendered in the headline so the operator sees every engine's + mesh's answer
-// at a glance — not just the aggregate. If istio says allow but k8s says deny,
-// both should be visible before the operator drills into the breakdown.
-function subsystemColor(status: string): string {
-  if (status === 'allow') return SEVERITY_COLOR.secure;
-  if (status === 'deny')  return SEVERITY_COLOR.high;
-  return '#6c757d';
-}
-
+// Per-subsystem chip — engine chip + colored ✓/✗ action icon. Reuses the
+// token vocab used everywhere else so subsystem verdicts read identically
+// across the verdict headline, per-engine grid, and policy cards.
 function SubsystemChip({ label, status }: { label: string; status: string }) {
+  const action = status === 'allow' ? 'allow' : status === 'deny' ? 'deny' : undefined;
   return (
-    <span
-      className={`badge text-ink-dark ${s.smallText}`}
-      style={{ background: subsystemColor(status) }}
-    >
-      {label}: {status}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <EngineBadge engine={label} />
+      {action ? <ActionIcon action={action} /> : <span className={`${s.smallText} ${s.dim}`}>{status}</span>}
     </span>
   );
 }
 
-// Bidirectional summary — pairs forward + reverse verdicts into one chip so the
-// operator instantly knows whether the pair talks both ways, is one-way, or is
-// blocked in both directions. Reverse fetch fires alongside the forward one; if
-// it errored, an explicit "reverse unavailable" chip surfaces the failure rather
-// than silently showing nothing (which would read as "no bidirectional info").
+// Bidirectional summary — pairs forward + reverse verdicts into one reason
+// chip so the operator instantly knows whether the pair talks both ways, is
+// one-way, or is blocked in both directions. Reverse fetch fires alongside
+// the forward one; if it errored, an explicit "reverse unavailable" chip
+// surfaces the failure rather than silently showing nothing.
 function BidirectionalChip({ forward, reverse, error }: {
   forward: string;
   reverse: string | undefined;
@@ -61,33 +54,26 @@ function BidirectionalChip({ forward, reverse, error }: {
 }) {
   if (error) {
     return (
-      <span
-        className={`badge bg-slate text-light ${s.smallText}`}
-        title="Reverse-direction fetch failed"
-      >
+      <span className={`${s.reasonChip} ${s.reasonWarn}`} title="Reverse-direction fetch failed">
         ⚠ reverse unavailable
       </span>
     );
   }
   if (!reverse) return null;
   let label = '';
-  let color = '#6c757d';
+  let tone: 'allow' | 'warn' | 'deny' | null = null;
   if (forward === 'allow' && reverse === 'allow') {
-    label = '↔ bidirectional'; color = SEVERITY_COLOR.secure;
+    label = '↔ bidirectional'; tone = 'allow';
   } else if (forward === 'allow' && reverse === 'deny') {
-    label = '→ one-way (reverse blocked)'; color = SEVERITY_COLOR.caution;
+    label = '→ one-way (reverse blocked)'; tone = 'warn';
   } else if (forward === 'deny' && reverse === 'allow') {
-    label = '← reverse only reachable'; color = SEVERITY_COLOR.caution;
+    label = '← reverse only reachable'; tone = 'warn';
   } else if (forward === 'deny' && reverse === 'deny') {
-    label = '✗ blocked both ways'; color = SEVERITY_COLOR.high;
-  } else {
-    return null;
+    label = '✗ blocked both ways'; tone = 'deny';
   }
-  return (
-    <span className={`badge text-ink-dark ${s.smallText}`} style={{ background: color }}>
-      {label}
-    </span>
-  );
+  if (!tone) return null;
+  const toneClass = tone === 'allow' ? s.reasonAllow : tone === 'deny' ? s.reasonDeny : s.reasonWarn;
+  return <span className={`${s.reasonChip} ${toneClass}`}>{label}</span>;
 }
 
 // Full-width yes/no. Loud on deny (this is what pages someone), quiet on allow.
@@ -102,22 +88,28 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
   dst:          WorkloadNode;
 }) {
   const deny  = result.verdict === 'deny';
-  const color = verdictColor(result.verdict);
+  const allow = result.verdict === 'allow';
+  const calloutTone = deny ? s.verdictDeny : allow ? s.verdictAllow : s.verdictWarn;
+  const textTone    = deny ? s.verdictTextDeny : allow ? s.verdictTextAllow : s.verdictTextWarn;
   const engines = Object.entries(result.engines);
   const meshes  = result.mesh ? Object.entries(result.mesh) : [];
   return (
-    <div className={`rounded p-2 mb-3 ${s.calloutAccent}`} style={{ '--accent': color } as CSSProperties}>
-      <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-        <span className="badge text-uppercase text-ink-dark" style={{ background: color }}>{result.verdict}</span>
-        <span className="fw-bold d-flex align-items-center gap-1 flex-wrap">
-          <span className="badge bg-info text-dark">{src.label}</span>
-          <span style={{ color }}>{deny ? '✗ cannot reach' : '→ can reach'}</span>
-          <span className="badge bg-warning text-dark">{dst.label}</span>
+    <div className={`${s.verdictCallout} ${calloutTone}`}>
+      <div className="d-flex align-items-baseline gap-2 flex-wrap">
+        <span className={`${s.verdictText} ${textTone}`}>
+          {deny ? '✗ cannot reach' : '✓ can reach'}
+        </span>
+        <span className={`${s.section} d-flex align-items-center gap-1 flex-wrap`}>
+          <RolePill role="SRC" />
+          <span className="text-break">{src.label}</span>
+          <span className={s.dim}>→</span>
+          <RolePill role="DST" />
+          <span className="text-break">{dst.label}</span>
         </span>
         <BidirectionalChip forward={result.verdict} reverse={reverse?.verdict} error={reverseError} />
       </div>
       {(engines.length > 0 || meshes.length > 0) && (
-        <div className="d-flex flex-wrap gap-1 mb-2">
+        <div className="d-flex flex-wrap gap-2 align-items-center">
           {engines.map(([name, ev]) => (
             <SubsystemChip key={`e-${name}`} label={name} status={ev.status} />
           ))}
@@ -126,10 +118,7 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
           ))}
         </div>
       )}
-      <div
-        className={deny ? 'fw-semibold' : `text-secondary ${s.smallText}`}
-        style={deny ? { color } : undefined}
-      >
+      <div className={deny ? `${s.body} ${textTone}` : `${s.dim} ${s.smallText}`} style={deny ? { fontWeight: 600 } : undefined}>
         {result.reason}
       </div>
     </div>
@@ -141,19 +130,19 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
 // One side's aggregated ports: grey "all ports" badge, per-port badges, or a
 // blocked/none marker. Same badge conventions as the Tier-2 rule rows.
 function SidePortBadges({ side }: { side: SidePorts }) {
-  if (side.blocked) return <span className={`text-secondary ${s.smallText}`}>blocked</span>;
+  if (side.blocked) return <span className={`${s.dim} ${s.smallText}`}>blocked</span>;
   if (side.allPorts) {
     return (
-      <span className="badge bg-secondary" title="No port restriction — all TCP/UDP allowed">
+      <span className={s.portChipAny} title="No port restriction — all TCP/UDP allowed">
         all ports
       </span>
     );
   }
-  if (side.ports.length === 0) return <span className={`text-secondary ${s.smallText}`}>none</span>;
+  if (side.ports.length === 0) return <span className={`${s.dim} ${s.smallText}`}>none</span>;
   return (
     <>
       {side.ports.map((port, index) => (
-        <span key={index} className="badge bg-info text-dark">{formatPort(port)}/{port.protocol}</span>
+        <span key={index} className={s.portChip}>{formatPort(port)}/{port.protocol}</span>
       ))}
     </>
   );
@@ -166,18 +155,20 @@ function PortsSummary({ result }: { result: ReachabilityResult }) {
   const engines = Object.entries(result.engines).filter(([, ev]) => ev.status !== 'not enforced');
   if (engines.length === 0) return null;
   return (
-    <div className="mb-3">
-      <div className="text-uppercase text-secondary small fw-semibold mb-1">Ports</div>
+    <div className="d-flex flex-column gap-1 mb-3">
+      <div className={s.eyebrow}>Ports</div>
       {engines.map(([name, ev]) => {
         const egress  = aggregateAllowPorts(ev.egress);
         const ingress = aggregateAllowPorts(ev.ingress);
         return (
-          <div key={name} className="border border-secondary rounded p-2 mb-1 d-flex align-items-center gap-2 flex-wrap">
-            <span className="fw-semibold me-1">{name}</span>
-            <span className={`badge bg-info text-dark ${s.badgeSm}`}>SRC egress</span>
+          <div key={name} className="d-flex align-items-center gap-2 flex-wrap">
+            <span className={s.section}>{name}</span>
+            <RolePill role="SRC" />
+            <span className={s.dim}>egress</span>
             <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={egress} /></span>
-            <span className="text-secondary">→</span>
-            <span className={`badge bg-warning text-dark ${s.badgeSm}`}>DST ingress</span>
+            <span className={s.dim}>→</span>
+            <RolePill role="DST" />
+            <span className={s.dim}>ingress</span>
             <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={ingress} /></span>
           </div>
         );
@@ -195,32 +186,31 @@ function BlockerRow({ blocker, src, dst }: { blocker: Blocker; src: WorkloadNode
   const meta     = REASON_META[blocker.reason as DirectionReason];
   const isMesh   = blocker.direction === 'mesh';
   const sideNode = blocker.side === 'src' ? src : dst;
-  // Reuse the panel's direction tints (↑ egress / ↓ ingress); mesh gets a lock.
-  const dir      = isMesh ? { tint: '#845ef7', arrow: '🔒' } : DIR_COLOR[blocker.direction];
+  const dirOutlineClass = isMesh
+    ? s.dirOutlineMesh
+    : blocker.direction === 'egress' ? s.dirOutlineEgress : s.dirOutlineIngress;
+  const dirArrow = isMesh ? '🔒' : blocker.direction === 'egress' ? '↑' : '↓';
   const dirLabel = isMesh ? 'mTLS' : blocker.direction;
-  // Side pill echoes the SRC/DST column colors so the eye lands on the right column.
-  const sideColor = blocker.side === 'src' ? 'bg-info' : 'bg-warning';
   return (
-    <div className="border border-danger rounded p-2 mb-2">
+    <div className={`${s.card} ${s.cardDeny}`}>
       <div className="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
-        <div className="d-flex align-items-center gap-1 flex-wrap">
-          <span className="fw-semibold me-1">{blocker.engine}</span>
-          <span className="badge text-ink-dark" style={{ background: dir.tint }}>{dir.arrow} {dirLabel}</span>
-          <span className={`badge ${sideColor} text-dark`}>
-            {blocker.side.toUpperCase()} · {sideNode.label}
-          </span>
+        <div className={s.policyMetaRow}>
+          <EngineBadge engine={blocker.engine} />
+          <span className={`${s.dirOutline} ${dirOutlineClass}`}>{dirArrow} {dirLabel}</span>
+          <RolePill role={blocker.side.toUpperCase() as 'SRC' | 'DST'} />
+          <span className={`${s.section} text-break`}>{sideNode.label}</span>
         </div>
-        <span className={`badge ${meta?.badge ?? 'bg-danger'}`}>{meta?.label ?? blocker.reason}</span>
+        <span className={`${s.reasonChip} ${s.reasonDeny}`}>{meta?.label ?? blocker.reason}</span>
       </div>
       {blocker.paSource && (
-        <div className={`text-secondary d-flex align-items-center gap-2 ${s.smallText} mb-1`}>
+        <div className={`${s.dim} d-flex align-items-center gap-2 ${s.smallText} mb-1`}>
           <span>Forced by: {blocker.paSource.namespace}/{blocker.paSource.name}</span>
           <ManifestButton kind="pa" namespace={blocker.paSource.namespace} name={blocker.paSource.name} />
         </div>
       )}
       {blocker.culprits.length > 0 && (
         <div className="mt-1">
-          <div className={`text-secondary ${s.smallText} mb-1`}>Edit to allow</div>
+          <div className={`${s.dim} ${s.smallText} mb-1`}>Edit to allow</div>
           <PolicyRefList items={blocker.culprits} />
         </div>
       )}
@@ -228,7 +218,7 @@ function BlockerRow({ blocker, src, dst }: { blocker: Blocker; src: WorkloadNode
           delete target alongside the culprit. */}
       {blocker.denyRules.length > 0 && (
         <div className="mt-2">
-          <div className="text-danger small">Deny rules — delete to allow</div>
+          <div className={`${s.smallText}`} style={{ color: 'var(--color-deny)' }}>Deny rules — delete to allow</div>
           <RuleGroupList rules={blocker.denyRules} />
         </div>
       )}
@@ -245,7 +235,7 @@ function BlockerList({ result, src, dst }: {
   if (blockers.length === 0) return null;
   return (
     <div className="mb-3">
-      <div className="text-uppercase text-secondary small fw-semibold mb-2">
+      <div className={`${s.eyebrow} ${s.eyebrowDeny} mb-2`}>
         Blocked on {blockers.length} {blockers.length === 1 ? 'axis' : 'axes'} · all must clear
       </div>
       {blockers.map((blocker, index) => <BlockerRow key={index} blocker={blocker} src={src} dst={dst} />)}
@@ -260,7 +250,8 @@ function DirectionBlock({ label, dir, direction }: {
   dir:       DirectionVerdict;
   direction: 'egress' | 'ingress';
 }) {
-  const { tint, arrow } = DIR_COLOR[direction];
+  const tintVar = direction === 'egress' ? 'var(--color-role-src)' : 'var(--color-role-dst)';
+  const arrow   = direction === 'egress' ? '↑' : '↓';
   const meta     = REASON_META[dir.reason];
   const allow    = dir.allowMatches ?? [];
   const deny     = dir.denyMatches ?? [];
@@ -271,44 +262,47 @@ function DirectionBlock({ label, dir, direction }: {
   // allow exists, this peer misses the selector → widen it). On default/explicit
   // deny or a permit it's noise, so it's suppressed there.
   const showNearMiss = other.length > 0 && dir.reason === 'locked-no-match';
+  // Reason drives the semantic stripe: block reasons render deny stripe,
+  // allow-side (permitted) renders allow stripe, near-miss / unknown fall
+  // back to warn tint so all three directions share vocabulary.
+  const isDenyReason = dir.reason === 'default-deny' || dir.reason === 'explicit-deny';
+  const shellClass = isDenyReason ? s.semanticDeny
+                   : dir.reason === 'permitted' ? s.semanticAllow
+                   : s.semanticWarn;
   return (
-    <div
-      className={`rounded p-2 mb-2 border border-secondary ${s.calloutAccentThin}`}
-      style={{ '--accent': tint } as CSSProperties}
-    >
-      <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
-        <span className={`fw-semibold ${s.calloutAccentText}`}>{arrow} {label}</span>
-        <span className={`badge ${meta.badge}`}>{meta.label}</span>
+    <div className={`${shellClass} d-flex flex-column gap-1`}>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-1">
+        <span className={s.section} style={{ color: tintVar }}>{arrow} {label}</span>
+        <span className={`${s.reasonChip} ${isDenyReason ? s.reasonDeny : dir.reason === 'permitted' ? s.reasonAllow : s.reasonWarn}`}>
+          {meta.label}
+        </span>
       </div>
-      {/* Culprits: the policies to edit for this block. */}
       {culprits.length > 0 && (
-        <div className="mt-1 mb-2">
-          <div className={`text-secondary ${s.smallText} mb-1`}>Policies to edit</div>
+        <div className="d-flex flex-column gap-1">
+          <div className={`${s.dim} ${s.smallText}`}>Policies to edit</div>
           <PolicyRefList items={culprits} />
         </div>
       )}
-      {/* deny-all lock: one line, not a full rule dump — it explains the
-          default-deny reason, the per-rule detail adds nothing. */}
       {denyAll.length > 0 && (
-        <div className="mt-1 text-danger small">
+        <div className={`${s.smallText} ${s.eyebrowDeny}`}>
           deny-all lock: {denyAll.map((rule) => rule.contributor?.name).filter(Boolean).join(', ') || 'default-deny'}
         </div>
       )}
       {allow.length > 0 && (
-        <div className="mt-2">
-          <div className="text-success small">Allow rules</div>
+        <div>
+          <div className={`${s.smallText} ${s.eyebrowAllow}`}>Allow rules</div>
           <RuleGroupList rules={allow} />
         </div>
       )}
       {deny.length > 0 && (
-        <div className="mt-2">
-          <div className="text-danger small">Deny rules</div>
+        <div>
+          <div className={`${s.smallText} ${s.eyebrowDeny}`}>Deny rules</div>
           <RuleGroupList rules={deny} />
         </div>
       )}
       {showNearMiss && (
-        <div className="mt-2">
-          <div className="small" style={{ color: SEVERITY_COLOR.caution }}>
+        <div>
+          <div className={`${s.smallText} ${s.eyebrowWarn}`}>
             Allowed elsewhere (not this peer) — widen to reach
           </div>
           <RuleGroupList rules={other} />
@@ -319,17 +313,17 @@ function DirectionBlock({ label, dir, direction }: {
 }
 
 function EngineCard({ name, ev }: { name: string; ev: EngineVerdict }) {
-  const color = ev.status === 'allow' ? SEVERITY_COLOR.secure
-              : ev.status === 'deny'  ? SEVERITY_COLOR.high
-              : '#6c757d';
+  const shellClass = ev.status === 'allow' ? s.semanticAllow
+                   : ev.status === 'deny'  ? s.semanticDeny
+                   : s.semanticWarn;
+  const chipClass  = ev.status === 'allow' ? s.reasonAllow
+                   : ev.status === 'deny'  ? s.reasonDeny
+                   : s.reasonInert;
   return (
-    <div
-      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
-      style={{ '--accent': color } as CSSProperties}
-    >
-      <div className="d-flex justify-content-between align-items-center mb-2">
-        <span className="fw-semibold">{name}</span>
-        <span className="badge text-light" style={{ background: color }}>{ev.status}</span>
+    <div className={`${shellClass} d-flex flex-column gap-2`}>
+      <div className="d-flex justify-content-between align-items-center">
+        <span className={s.section}>{name}</span>
+        <span className={`${s.reasonChip} ${chipClass}`}>{ev.status}</span>
       </div>
       <DirectionBlock label="Egress (src side)"  dir={ev.egress}  direction="egress" />
       <DirectionBlock label="Ingress (dst side)" dir={ev.ingress} direction="ingress" />
@@ -341,16 +335,16 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
   const inMesh = membership.inMesh;
   const verdict = membership.mtls?.verdict;
   return (
-    <div className="border border-secondary rounded p-2 mb-2">
+    <div className={s.card}>
       <div className="d-flex justify-content-between align-items-center mb-1">
-        <span className="fw-semibold">mesh · {source}</span>
+        <span className={s.section}>mesh · {source}</span>
         <div className="d-flex gap-1">
-          <span className={`badge ${inMesh ? 'bg-success' : 'bg-secondary'}`}>
+          <span className={`${s.miniChip} ${inMesh ? s.miniChipAllow : s.miniChipDim}`}>
             {inMesh ? 'in mesh' : 'not in mesh'}
           </span>
           {verdict && (
             <span
-              className="badge text-ink-dark"
+              className={s.verdictChip}
               style={{ background: MTLS_VERDICT_COLOR[verdict] ?? '#6c757d' }}
             >
               mTLS: {verdict}
@@ -359,7 +353,7 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
         </div>
       </div>
       {membership.mtls?.effectiveSource?.name && (
-        <div className={`text-secondary d-flex align-items-center gap-2 ${s.smallText}`}>
+        <div className={`${s.dim} d-flex align-items-center gap-2 ${s.smallText}`}>
           <span>From PA: {membership.mtls.effectiveSource.namespace}/{membership.mtls.effectiveSource.name}</span>
           <ManifestButton
             kind="pa"
@@ -376,21 +370,24 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
 // Inert chips dim so the deciding policies (green/red/amber) carry the eye.
 function SelectingPolicyChip({ policyRef, state }: { policyRef: PolicyRef; state: ChipState }) {
   const meta = CHIP_STATE[state];
+  const shellClass = state === 'permitter' ? s.semanticAllow
+                   : state === 'blocker'   ? s.semanticDeny
+                   : state === 'near-miss' ? s.semanticWarn
+                   : s.card;
+  const chipClass  = state === 'permitter' ? s.reasonAllow
+                   : state === 'blocker'   ? s.reasonDeny
+                   : state === 'near-miss' ? s.reasonWarn
+                   : s.reasonInert;
   return (
-    <div
-      className={`border border-secondary rounded p-2 mb-1 ${s.calloutAccentThin} ${s.smallText} ${meta.muted ? 'opacity-75' : ''}`}
-      style={{ '--accent': meta.accent } as CSSProperties}
-    >
+    <div className={`${shellClass} ${s.smallText} ${meta.muted ? s.cardMuted : ''}`}>
       <div className="d-flex justify-content-between align-items-center gap-2">
-        <span className="fw-semibold text-light text-break">{policyRef.name}</span>
+        <span className={`${s.section} text-break`}>{policyRef.name}</span>
         <div className="d-flex gap-1 align-items-center flex-shrink-0">
-          {meta.label && (
-            <span className="badge text-ink-dark" style={{ background: meta.accent }}>{meta.label}</span>
-          )}
+          {meta.label && <span className={`${s.reasonChip} ${chipClass}`}>{meta.label}</span>}
           <ManifestButton kind={policyRef.source} namespace={policyRef.namespace} name={policyRef.name} />
         </div>
       </div>
-      <div className="text-secondary">{policyRef.namespace}</div>
+      <div className={s.dim}>{policyRef.namespace}</div>
     </div>
   );
 }
@@ -402,35 +399,31 @@ function WorkloadColumn({ node, role, engines, policiesKey, mesh }: {
   policiesKey: 'srcPolicies' | 'dstPolicies';
   mesh?:       Record<string, MeshMembership>;
 }) {
-  const roleColor = role === 'SRC' ? 'bg-info' : 'bg-warning';
   const meshEntries = mesh ? Object.entries(mesh) : [];
   return (
     <div className={s.reachCol}>
       <div className={s.reachColHeader}>
-        <span className={`badge ${roleColor} text-dark me-2`}>{role}</span>
-        <span className="text-break">{node.label}</span>
-        <div className={`text-secondary ${s.smallText}`}>
+        <div className={s.policyMetaRow}>
+          <RolePill role={role} />
+          <span className={`${s.section} text-break`}>{node.label}</span>
+        </div>
+        <div className={`${s.dim} ${s.smallText}`}>
           {node.namespace || '—'} · {node.type}
         </div>
       </div>
-      <div className="d-flex flex-wrap gap-1 mb-3">
-        {Object.entries(node.labels ?? {}).map(([key, value]) => (
-          <span key={key} className={`badge bg-secondary ${s.badgeSm}`}>{key}={value}</span>
-        ))}
-        {Object.keys(node.labels ?? {}).length === 0 && (
-          <span className={`text-secondary ${s.smallText}`}>no labels</span>
-        )}
+      <div className="mb-3">
+        <LabelStrip labels={node.labels} collapsible />
       </div>
       {engines.map(([name, ev]) => {
         // SRC column decides via egress, DST via ingress — join each chip to it.
         const dir = role === 'SRC' ? ev.egress : ev.ingress;
         const policies = ev[policiesKey] ?? [];
         return (
-          <div key={name} className="border border-secondary rounded p-2 mb-2">
-            <div className="fw-semibold mb-1">{name}</div>
-            <div className={`text-secondary ${s.smallText} mb-1`}>Selecting policies</div>
+          <div key={name} className={s.card}>
+            <div className={`${s.section} mb-1`}>{name}</div>
+            <div className={`${s.eyebrow} mb-1`}>Selecting policies</div>
             {policies.length === 0 ? (
-              <div className={`text-secondary ${s.smallText}`}>none</div>
+              <div className={`${s.dim} ${s.smallText}`}>none</div>
             ) : (
               policies.map((policyRef, index) => (
                 <SelectingPolicyChip key={index} policyRef={policyRef} state={classifyPolicy(policyRef, dir)} />
@@ -452,16 +445,16 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
               : '#6c757d';
   return (
     <div
-      className={`border border-secondary rounded p-2 mb-2 ${s.calloutAccent}`}
-      style={{ '--accent': color } as CSSProperties}
+      className={s.card}
+      style={{ borderLeftColor: color }}
     >
       <div className="d-flex justify-content-between align-items-center mb-1">
-        <span className="fw-semibold">mesh · {name}</span>
-        <span className="badge text-light" style={{ background: color }}>{v.verdict}</span>
+        <span className={s.section}>mesh · {name}</span>
+        <span className={s.verdictChip} style={{ background: color }}>{v.verdict}</span>
       </div>
-      <div className={`text-secondary ${s.smallText}`}>{v.reason}</div>
+      <div className={`${s.dim} ${s.smallText}`}>{v.reason}</div>
       {v.effectiveSource?.name && (
-        <div className={`text-secondary d-flex align-items-center gap-2 ${s.smallText} mt-1`}>
+        <div className={`${s.dim} d-flex align-items-center gap-2 ${s.smallText} mt-1`}>
           <span>Forced by: {v.effectiveSource.namespace}/{v.effectiveSource.name}</span>
           <ManifestButton kind="pa" namespace={v.effectiveSource.namespace} name={v.effectiveSource.name} />
         </div>
@@ -505,66 +498,46 @@ function ReachabilityGrid({ src, dst, result }: {
 
 // Full reachability region: the pinned-source banner, a loading hint, then the
 // tiered result — headline + blocker list + collapsed per-engine breakdown.
-export function ReachabilityView({ source, target, loading, result, reverse, reverseError, onClear, onSwap }: {
+export function ReachabilityView({ source, target, loading, result, reverse, reverseError, onSwap }: {
   source:       WorkloadNode;
   target:       WorkloadNode | null;
   loading:      boolean;
   result:       ReachabilityResult | null;
   reverse:      ReachabilityResult | null;
   reverseError: boolean;
-  onClear:      () => void;
   onSwap:       () => void;
 }) {
   return (
     <>
-      <div className="border border-info rounded p-2 mb-2">
-        <div className="d-flex align-items-center gap-2">
-          <div className="flex-grow-1 min-w-0">
-            <div>
-              <span className="badge bg-info text-dark me-2">SRC</span>
-              <span className="fw-semibold text-break">{source.label}</span>
-            </div>
-            <div className={`text-secondary ${s.smallText}`}>
-              {source.namespace || '—'} · {source.type}
-            </div>
-          </div>
-          <div className="d-flex align-items-center gap-1 flex-shrink-0">
-            <span className="text-secondary">→</span>
-            {target && (
-              <button
-                className="btn btn-sm btn-outline-light py-0 px-1"
-                title="Swap SRC and DST"
-                onClick={onSwap}
-              >
-                ⇄
-              </button>
-            )}
-          </div>
-          <div className="flex-grow-1 min-w-0">
-            {target ? (
-              <>
-                <div>
-                  <span className="badge bg-warning text-dark me-2">DST</span>
-                  <span className="fw-semibold text-break">{target.label}</span>
-                </div>
-                <div className={`text-secondary ${s.smallText}`}>
-                  {target.namespace || '—'} · {target.type}
-                </div>
-              </>
-            ) : (
-              <div className={`text-secondary ${s.smallText}`}>
-                Click another node to check reachability
-              </div>
-            )}
-          </div>
-          <button className="btn btn-sm btn-outline-light flex-shrink-0" onClick={onClear}>
-            Cancel
+      {/* SRC → DST endpoint pair — full EndpointCards side-by-side w/ swap
+          arrow between. Panel's own close X unpins the source. */}
+      <div className={`${s.endpointRow} mb-2`}>
+        <EndpointCard role="src" node={source} />
+        {target ? (
+          <button
+            type="button"
+            className={s.iconButton}
+            title="Swap SRC and DST"
+            onClick={onSwap}
+          >
+            ⇄
           </button>
-        </div>
+        ) : (
+          <span className={s.endpointArrow}>→</span>
+        )}
+        {target ? (
+          <EndpointCard role="dst" node={target} />
+        ) : (
+          <div className={`${s.card} ${s.cardFlush} ${s.cardDashed} d-flex align-items-center`}>
+            <span className={`${s.dim} ${s.body}`}>
+              Click a workload to check reachability
+            </span>
+          </div>
+        )}
       </div>
 
       {loading && (
-        <div className="text-secondary small mb-2">Computing reachability…</div>
+        <div className={`${s.dim} ${s.smallText} mb-2`}>Computing reachability…</div>
       )}
 
       {result && target && (
@@ -573,7 +546,7 @@ export function ReachabilityView({ source, target, loading, result, reverse, rev
           {result.verdict === 'deny' && <BlockerList result={result} src={source} dst={target} />}
           <PortsSummary result={result} />
           <details>
-            <summary className={`text-secondary small fw-semibold mb-2 ${s.detailsSummary}`}>
+            <summary className={s.disclosureSummary}>
               Per-engine breakdown
             </summary>
             <div className="mt-2">

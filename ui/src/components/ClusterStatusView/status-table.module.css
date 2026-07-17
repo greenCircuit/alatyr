@@ -1,0 +1,25 @@
+/* Shared dense-table treatment for status page tables. Cursor + padding
+ * only — hover bg comes from Bootstrap `table-hover` on the <table> so the
+ * effect matches the Tables page. */
+
+.hoverTable tbody tr {
+    cursor: pointer;
+}
+
+.hoverTable tbody td {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    vertical-align: middle;
+    border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+.hoverTable thead th {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 4px;
+}
+
+/* Leading severity stripe cell — fills its td with the color passed inline. */
+.stripe {
+    padding: 0;
+    width: 8px;
+}

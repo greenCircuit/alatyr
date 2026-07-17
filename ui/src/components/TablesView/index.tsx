@@ -15,6 +15,7 @@ import EngineRollup from './EngineRollup';
 import IssueRollup from './IssueRollup';
 import { indexIssuesByNode, indexIssuesByPolicy } from '../../store/issueIndex';
 import type { IssueType } from '../../data/policies';
+import s from '../DetailPanel/DetailPanel.module.css';
 
 const EMPTY_ISSUE_TYPES = new Set<IssueType>();
 
@@ -119,35 +120,29 @@ export default function TablesView() {
 
   return (
     <div className="d-flex flex-column bg-dark text-light flex-grow-1 overflow-hidden">
-      <ul className="nav nav-tabs px-3 pt-2 border-secondary" role="tablist">
-        <li className="nav-item">
-          <button
-            className={`nav-link ${tab === 'workloads' ? 'active' : ''}`}
-            onClick={() => setTab('workloads')}
-            type="button"
-          >
-            Workloads <span className="badge bg-secondary ms-1">{tableNodes.length}</span>
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${tab === 'policies' ? 'active' : ''}`}
-            onClick={() => setTab('policies')}
-            type="button"
-          >
-            Policies <span className="badge bg-secondary ms-1">{tableEdges.length}</span>
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${tab === 'issues' ? 'active' : ''}`}
-            onClick={() => setTab('issues')}
-            type="button"
-          >
-            Issues <span className="badge bg-secondary ms-1">{tableIssues.length}</span>
-          </button>
-        </li>
-      </ul>
+      <div className={s.tabStrip} role="tablist">
+        <button
+          type="button"
+          className={`${s.tabButton} ${tab === 'workloads' ? s.tabButtonActive : ''}`}
+          onClick={() => setTab('workloads')}
+        >
+          Workloads <span className={s.countChip}>{tableNodes.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`${s.tabButton} ${tab === 'policies' ? s.tabButtonActive : ''}`}
+          onClick={() => setTab('policies')}
+        >
+          Policies <span className={s.countChip}>{tableEdges.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`${s.tabButton} ${tab === 'issues' ? s.tabButtonActive : ''}`}
+          onClick={() => setTab('issues')}
+        >
+          Issues <span className={s.countChip}>{tableIssues.length}</span>
+        </button>
+      </div>
       {tab === 'workloads' && <StatusRollup nodes={nodes} />}
       {tab === 'policies' && <EngineRollup edges={edgesPreEngine} />}
       {tab === 'issues' && <IssueRollup issues={issues} />}

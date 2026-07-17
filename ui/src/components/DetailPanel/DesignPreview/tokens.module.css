@@ -1,0 +1,866 @@
+/* Two-tier surface system + role tokens + type scale for DetailPanel V2.
+   Priority 1 of REDESIGN.md — expert-operator audience: density, minimal
+   chrome, borders only when semantic.
+
+   Post-P2 sweep: spacing locked to 4/8/12/16, radii to 3/6/8, semantic
+   borders reserved for `.verdictCallout` + `.semanticX` (findings + blockers).
+   Left-bars removed from PolicyCard + PostureRow — tint carries state alone. */
+
+/* ── Role tokens ────────────────────────────────────────────────────────
+   Color vars live in ui/src/style/colors.css (:root). Local aliases below
+   keep the short names existing rules already reference (var(--allow)
+   etc). Edit palette in colors.css — never here. */
+.tokens {
+  --role-src: var(--color-role-src);
+  --role-dst: var(--color-role-dst);
+
+  --engine-k8s:   var(--color-engine-k8s);
+  --engine-istio: var(--color-engine-istio);
+  --engine-mesh:  var(--color-engine-mesh);
+
+  --count-in:  var(--role-src);
+  --count-out: var(--role-dst);
+
+  --allow: var(--color-allow);
+  --deny:  var(--color-deny);
+  --unknown: var(--color-unknown);
+  --warn:  var(--color-warn);
+  --caution: var(--color-caution);
+  --info: var(--color-info);
+
+  --tier1-bg: var(--color-tier1-bg);
+  --tier2-bg: var(--color-tier2-bg);
+
+  --deny-bg:  var(--color-deny-bg);
+  --allow-bg: var(--color-allow-bg);
+  --warn-bg:  var(--color-warn-bg);
+  --inert-bg: var(--color-inert-bg);
+
+  --fs-body:    13px;
+  --fs-section: 15px;
+  --fs-hero:    18px;
+
+  /* Spacing scale — 4/8/12/16 only. */
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 12px;
+  --gap-lg: 16px;
+  --pad-tier1: 12px;
+  --pad-tier2: 8px;
+
+  /* Radii — chip / card / panel. */
+  --r-chip:  3px;
+  --r-card:  6px;
+  --r-panel: 8px;
+
+  /* Motion — one duration, one easing across every state change. */
+  --motion: 120ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* ── Tier 1: group surface — subtle tint, no border, generous padding. */
+.tier1 {
+  background: var(--tier1-bg);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+/* Tier 2: leaf card — nested one level. Slightly darker tint. */
+.tier2 {
+  background: var(--tier2-bg);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+/* ── Semantic surfaces — neutral bg + colored left stripe.
+   Used in lists (findings, per-engine verdicts, per-policy rows) so wall-of-tint
+   would create signal fatigue. Stripe carries state peripherally, content stays calm.
+   Hero `.verdictCallout` still tints — single glance, no repetition. */
+.semanticDeny {
+  background: var(--tier2-bg);
+  border-left: 3px solid var(--deny);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier2);
+}
+.semanticAllow {
+  background: var(--tier2-bg);
+  border-left: 3px solid var(--allow);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier2);
+}
+.semanticWarn {
+  background: var(--tier2-bg);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier2);
+}
+
+/* ── Verdict callout — the unified shell across all 3 panels. */
+.verdictCallout {
+  background: var(--surface, transparent);
+  border-radius: var(--r-panel);
+  padding: var(--pad-tier1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  transition: background var(--motion);
+}
+.verdictCallout.allow { --surface: var(--allow-bg); border-left: 4px solid var(--allow); }
+.verdictCallout.deny  { --surface: var(--deny-bg);  border-left: 4px solid var(--deny); }
+.verdictCallout.warn  { --surface: var(--warn-bg);  border-left: 4px solid var(--warn); }
+
+.verdictText {
+  font-size: var(--fs-hero);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.verdictAllow { color: var(--allow); }
+.verdictDeny  { color: var(--deny); }
+.verdictWarn  { color: var(--warn); }
+
+/* ── Type helpers ──────────────────────────────────────────────────── */
+.hero    { font-size: var(--fs-hero);    font-weight: 700; }
+.section { font-size: var(--fs-section); font-weight: 600; }
+.body    { font-size: var(--fs-body); }
+.dim     { color: #9aa3ad; }
+.mono    { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a848e;
+}
+
+/* ── Role pill: SRC / DST endpoint indicator. */
+.rolePill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #0b0d0f;
+}
+.roleSrc { background: var(--role-src); }
+.roleDst { background: var(--role-dst); }
+
+.roleDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.roleDotSrc { background: var(--role-src); }
+.roleDotDst { background: var(--role-dst); }
+
+/* Engine badge — hue token drives a tinted bg + left dot. */
+.engineChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--r-chip);
+  background: #ffffff14;
+  color: #d5dbe1;
+  font-size: 11px;
+  font-weight: 600;
+}
+.engineChip::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--engine-color, #7a848e);
+  flex-shrink: 0;
+}
+.engineK8s   { --engine-color: var(--engine-k8s);   background: color-mix(in srgb, var(--engine-k8s)   18%, transparent); }
+.engineIstio { --engine-color: var(--engine-istio); background: color-mix(in srgb, var(--engine-istio) 18%, transparent); }
+.engineMesh  { --engine-color: var(--engine-mesh);  background: color-mix(in srgb, var(--engine-mesh)  18%, transparent); }
+
+/* Count capsule — inbound/outbound peer counts. Rounded to r-chip so it
+   doesn't over-round on square policyCard beneath. */
+.countCapsule {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--gap-xs);
+  padding: 1px 7px;
+  border-radius: var(--r-chip);
+  font-size: 11px;
+  font-weight: 700;
+  color: #0b0d0f;
+  line-height: 1.4;
+}
+.countIn  { background: var(--count-in); }
+.countOut { background: var(--count-out); }
+.countLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; opacity: 0.75; text-transform: uppercase; }
+
+/* Side-by-side endpoint layout — Edge panel. */
+.endpointRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--gap-md);
+  align-items: stretch;
+}
+.endpointArrow {
+  display: flex;
+  align-items: center;
+  color: #6c757d;
+  font-size: 22px;
+  font-weight: 300;
+}
+
+/* Engine-major grid for Compare. */
+.engineGrid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr 1.3fr;
+  gap: var(--gap-md);
+  align-items: start;
+}
+.engineGridRow {
+  display: contents;
+}
+/* engineGridDivider dropped — gap alone separates rows. */
+
+/* Panel frame. */
+.frame {
+  background: #1a1e22cc;
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  border: 1px solid #ffffff1f;
+  border-radius: var(--r-panel);
+  box-shadow: 0 8px 24px #00000066;
+  color: #e6ecf2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.frameHeader {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ffffff10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-sm);
+  font-size: 13px;
+  font-weight: 600;
+}
+.frameBody {
+  padding: var(--pad-tier1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  overflow-y: auto;
+}
+.frameHeaderMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  font-size: 10px;
+  color: #7a848e;
+}
+
+/* Staleness stamp — reserved slot in frame header. Icon dot changes color
+   based on freshness bucket; text = relative time. */
+.staleness {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #9aa3ad;
+}
+.stalenessDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--allow);
+}
+.stalenessDotStale { background: var(--caution); }
+.stalenessDotDead  { background: var(--deny); }
+
+/* Status badge. */
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-chip);
+  color: #0b0d0f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.statusPillSymbol {
+  font-size: 10px;
+  opacity: 0.9;
+}
+
+/* Ghost button. */
+.ghostButton {
+  background: transparent;
+  border: 1px solid #ffffff2a;
+  color: #d5dbe1;
+  padding: 3px 8px;
+  border-radius: var(--r-chip);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--motion), border-color var(--motion);
+}
+.ghostButton:hover { background: #ffffff10; }
+
+/* Icon button — for frame-header close. Larger hit area, no border chrome
+   until hover. `×` glyph rendered by SVG (see IconClose in panels.tsx) so
+   we avoid the emoji-vs-symbol Unicode inconsistency. */
+.iconButton {
+  background: transparent;
+  border: 0;
+  color: #9aa3ad;
+  padding: 4px;
+  border-radius: var(--r-chip);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--motion), color var(--motion);
+}
+.iconButton:hover { background: #ffffff12; color: #e6ecf2; }
+
+/* Primary action. */
+.primaryButton {
+  background: var(--role-src);
+  border: 0;
+  color: #0b0d0f;
+  padding: 4px 10px;
+  border-radius: var(--r-chip);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter var(--motion);
+}
+.primaryButton:hover { filter: brightness(1.08); }
+
+/* Disclosure — chevron rotates on open. */
+.disclosureSummary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.disclosureSummary::-webkit-details-marker { display: none; }
+.disclosureSummary::before {
+  content: '▸';
+  font-size: 10px;
+  color: #7a848e;
+  transition: transform var(--motion);
+  display: inline-block;
+}
+details[open] > .disclosureSummary::before { transform: rotate(90deg); }
+
+/* Meta strip. */
+.metaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.metaSep { color: #4a5058; }
+
+/* Label chip — click-to-copy `key=value`. */
+.labelStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  align-items: center;
+}
+.labelChip {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff10;
+  border: 0;
+  border-radius: var(--r-chip);
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #d5dbe1;
+  cursor: copy;
+  font-family: inherit;
+  transition: background var(--motion);
+}
+.labelChip:hover { background: #ffffff1c; }
+.labelChip:active { background: #ffffff26; }
+.labelKey   { color: #9aa3ad; }
+.labelEq    { color: #4a5058; margin: 0 2px; }
+.labelValue { color: #e6ecf2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Copy-selector button — solid ghost, not dashed. */
+.labelCopyAll {
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #9aa3ad;
+  border-radius: var(--r-chip);
+  padding: 1px 6px;
+  font-size: 10px;
+  cursor: copy;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+  transition: color var(--motion), border-color var(--motion), background var(--motion);
+}
+.labelCopyAll:hover { color: #d5dbe1; border-color: #ffffff40; background: #ffffff08; }
+
+/* Finding kind — structured classifier chip on findings. */
+.findingKind {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: #ffffff14;
+  color: #9aa3ad;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Action icon — ✓/✗ colored square. */
+.actionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-chip);
+  font-size: 10px;
+  font-weight: 700;
+  color: #0b0d0f;
+  flex-shrink: 0;
+}
+.actionAllow { background: var(--allow); }
+.actionDeny  { background: var(--deny); }
+
+.policyRef {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.policyRefUnresolved {
+  opacity: 0.6;
+  filter: grayscale(0.4);
+}
+.policyRefUnresolved .mono { text-decoration: line-through wavy #7a848e; }
+
+/* Port chip. */
+.portChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--info) 22%, transparent);
+  color: #cde4ff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.portAny {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: #ffffff10;
+  color: #9aa3ad;
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* PolicyCard — neutral surface, state signaled by left border stripe.
+   Card tint dropped: a list of policies read as wall of red/green =
+   signal fatigue. ActionIcon + state chip carry the local signal. */
+.policyCard {
+  background: var(--tier2-bg);
+  border-radius: var(--r-card);
+  padding: var(--pad-tier2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  border-left: 3px solid transparent;
+  transition: border-color var(--motion);
+}
+.policyCardBlocks    { border-left-color: var(--deny); }
+.policyCardAllows    { border-left-color: var(--allow); }
+.policyCardUnenforced{ border-left-color: var(--warn); }
+.policyCardInert     { border-left-color: #7a848e; opacity: 0.85; }
+
+/* PostureRow — one-line blanket-posture verdict. Neutral bg + stripe;
+   colored coverage word carries the signal. */
+.postureRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 6px 10px;
+  border-radius: var(--r-card);
+  font-size: 12px;
+  flex-wrap: wrap;
+  row-gap: var(--gap-xs);
+  background: var(--tier2-bg);
+  border-left: 3px solid transparent;
+}
+.postureArrow  { font-weight: 700; font-size: 14px; }
+.postureCoverage {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+/* Deny-all posture — hard block, must read at scroll speed. Full deny border
+   (not just left stripe) so it stands apart from the softer allow/unenforced
+   postures. Live rows.tsx:515-517. */
+.postureDenyAll {
+  border: 1px solid var(--deny);
+  border-left-color: var(--deny);
+}
+.postureDenyAll .postureCoverage    { color: var(--deny); }
+.postureAllowAll   { border-left-color: var(--allow); }
+.postureAllowAll .postureCoverage   { color: var(--allow); }
+.postureUnenforced { border-left-color: var(--warn); }
+.postureUnenforced .postureCoverage { color: var(--warn); }
+
+.policyCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+.policyMetaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+.policyCrossNs {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--warn) 26%, transparent);
+  color: #ffcaa7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Peer row — gap-based separation, no dashed border. */
+.peerRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: var(--gap-xs) 0;
+}
+.peerHeadline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.peerArrow   { color: var(--role-src); font-weight: 700; }
+.peerArrowIn { color: var(--role-dst); font-weight: 700; }
+.peerLabel   { font-weight: 600; color: #e6ecf2; }
+.peerNs      { color: #9aa3ad; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.peerKind {
+  display: inline-flex;
+  padding: 0 5px;
+  border-radius: var(--r-chip);
+  background: #ffffff14;
+  color: #9aa3ad;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Selector block. */
+.selectorBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.selectorLabel {
+  font-size: 10px;
+  color: #7a848e;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* L7 mini-block. */
+.l7Block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  border-radius: var(--r-card);
+  font-size: 11px;
+}
+.l7Row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.l7Key   { color: #7a848e; font-weight: 600; }
+.l7Value { color: #cde4ff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* Negated L7 field (notHosts/notMethods/notPaths). Deny color so a silent
+   Istio exclusion doesn't hide inside a permissive-looking rule. */
+.l7ValueNeg {
+  color: var(--deny);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--deny) 60%, transparent);
+}
+
+/* L4-only line — explicit "no L7 match" note on Istio cards without L7. */
+.l4Only {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #7a848e;
+  font-style: italic;
+}
+
+/* Manifest link. */
+.manifestLink {
+  background: transparent;
+  border: 0;
+  color: var(--info);
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  transition: color var(--motion);
+}
+.manifestLink:hover { color: #a4d1ff; }
+
+/* Principal chip — SPIFFE identity mono chip on MeshBlock + PolicyPeer. */
+.principalChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: #cde4ff;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.principalChipDeny {
+  background: color-mix(in srgb, var(--deny) 18%, transparent);
+  color: #ffcaca;
+}
+
+/* Port-mode override chip — per-port mTLS override on a workload. Color keyed
+   on mode so strict/permissive/disable are pre-attentive. */
+.portOverrideChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: #cde4ff;
+}
+.portOverrideChip[data-mode="STRICT"]     { background: color-mix(in srgb, var(--allow) 20%, transparent); color: #b7f2c9; }
+.portOverrideChip[data-mode="DISABLE"]    { background: color-mix(in srgb, var(--deny)  20%, transparent); color: #ffcaca; }
+.portOverrideChip[data-mode="PERMISSIVE"] { background: color-mix(in srgb, var(--warn)  20%, transparent); color: #ffe1a8; }
+
+/* PA chain row — one PeerAuthentication in the resolution chain. Effective one
+   gets green stripe; others dim so operator scans the winning row first. */
+.paChainRow, .paChainEffective {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--r-chip);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.paChainRow       { opacity: 0.7; }
+.paChainEffective { border-left: 3px solid var(--allow); background: color-mix(in srgb, var(--allow) 8%, transparent); }
+.paChainScope {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7a848e;
+  min-width: 66px;
+}
+.paChainMode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: #cde4ff;
+}
+.paChainMode[data-mode="STRICT"]     { background: color-mix(in srgb, var(--allow) 20%, transparent); color: #b7f2c9; }
+.paChainMode[data-mode="DISABLE"]    { background: color-mix(in srgb, var(--deny)  20%, transparent); color: #ffcaca; }
+.paChainMode[data-mode="PERMISSIVE"] { background: color-mix(in srgb, var(--warn)  20%, transparent); color: #ffe1a8; }
+.paChainBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: var(--r-chip);
+  background: var(--allow);
+  color: #0b1a12;
+}
+
+/* PortsSummary row — SRC egress vs DST ingress per engine on Compare. */
+.portsSummaryRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-radius: var(--r-card);
+  background: var(--tier2-bg);
+  font-size: 11px;
+}
+.portsSummaryLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #7a848e;
+}
+.portsSummaryChips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.portBadge {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--info) 18%, transparent);
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.portBadgeAll {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, #7a848e 30%, transparent);
+  color: #c8ced3;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Mesh issues — non-fatal caution list under MeshBlock. */
+.mtlsIssueList {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+  color: #ffe1a8;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Open-reachability button — small action affordance on each finding row.
+   Pairs a finding with a reachability query (SRC → DST) so the operator
+   jumps from "there is a problem" to "here is the blocker map" in one click. */
+.openReachButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #d5dbe1;
+  border-radius: var(--r-chip);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--motion), border-color var(--motion);
+}
+.openReachButton:hover {
+  background: color-mix(in srgb, var(--role-src) 12%, transparent);
+  border-color: color-mix(in srgb, var(--role-src) 60%, transparent);
+  color: #e6ecf2;
+}
+
+/* Swap SRC ↔ DST — flips the pair so operator inspects reverse direction
+   without re-selecting nodes. Ghost outline, role-neutral tint on hover. */
+.reverseButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #e6ecf2;
+  border-radius: var(--r-chip);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--motion), border-color var(--motion);
+}
+.reverseButton:hover {
+  background: #ffffff14;
+  border-color: #ffffff44;
+}
+.reverseButton:active { background: #ffffff20; }
+
+/* Endpoint arrow — clickable in Compare panel to swap SRC/DST. Non-clickable
+   in Edge panel (no button element, just a span). Both share the arrow
+   glyph size so vertical rhythm stays identical. */
+.endpointArrowButton {
+  background: transparent;
+  border: 0;
+  color: #6c757d;
+  font-size: 22px;
+  font-weight: 300;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--r-chip);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--motion), color var(--motion);
+}
+.endpointArrowButton:hover {
+  background: #ffffff14;
+  color: #e6ecf2;
+}
+
+/* Not-enrolled empty state — MeshBlock when workload not in mesh. */
+.notEnrolled {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--warn) 20%, transparent);
+  color: #ffcaa7;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Engine-unavailable empty state — Compare grid cell when engine failed. */
+.engineUnavailable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: var(--pad-tier2);
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--caution) 12%, transparent);
+  font-size: 11px;
+  color: #ffe08a;
+}

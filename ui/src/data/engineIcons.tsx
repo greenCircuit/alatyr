@@ -57,19 +57,18 @@ export function EngineLogo({ engine, size = 14 }: { engine: string; size?: numbe
   return <FallbackLogo color={color} size={size} letter={engine.charAt(0).toUpperCase()} />;
 }
 
-// Engine provenance chip — brand logo + name. The single badge every table,
-// rollup, and panel renders for engine provenance, so the mark reads the same
-// everywhere. Fixed dark surface lives in the CSS module; the brand-colored
-// border is per-engine, so it stays inline. `suffix` appends after the name
-// (e.g. ": 3" for the workloads count rollup).
+// Engine provenance chip — brand hue tinted bg + hue dot + logo + name mono.
+// Mockup shape: dot + tinted-bg carry engine identity; no border, no white pill.
+// `suffix` appends after the name (e.g. ": 3" for the workloads count rollup).
 export function EngineBadge({ engine, size = 12, suffix }: { engine: string; size?: number; suffix?: ReactNode }) {
   const { label, color } = engineMeta(engine);
   return (
     <span
-      className={`badge d-inline-flex align-items-center gap-1 ${styles.engineChip}`}
+      className={styles.engineChip}
       title={label}
-      style={{ border: `1px solid ${color}` }}
+      style={{ ['--engine-color' as never]: color }}
     >
+      <span className={styles.engineDot} />
       <EngineLogo engine={engine} size={size} /> {engine}{suffix}
     </span>
   );

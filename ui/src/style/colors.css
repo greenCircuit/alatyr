@@ -1,0 +1,180 @@
+/*
+ * Global color tokens for design-preview panels.
+ * :root vars are the single source of truth. Components reference via
+ * var(--name). Helper classes below give quick `bg-*` / `text-*` access
+ * for prototyping and one-offs.
+ *
+ * Scope: DetailPanel V2 (`#design-preview-panels`) surface system.
+ * SEVERITY_COLOR (data/policies.ts) is a separate palette for node
+ * badges and is intentionally not folded here.
+ */
+
+:root {
+    /* Role — SRC / DST endpoints. Distinct from severity so spatial role
+       does not compete with allow/deny hues. */
+    --color-role-src: #4ea1ff;
+    --color-role-dst: #ffb54e;
+
+    /* Engine hues — panel EngineChip + graph edge stroke share vocab. */
+    --color-engine-k8s:   #326ce5;
+    --color-engine-istio: #b16fdf;
+    --color-engine-mesh:  #14b8a6;
+
+    /* Semantic — verdict + finding severity in panels. */
+    --color-allow:   #2f9e44;
+    --color-deny:    #c92a2a;
+    --color-warn:    #e8590c;
+    --color-caution: #fab005;
+    --color-info:    #4dabf7;
+    --color-unknown: #6c757d;
+
+    /* Tinted backgrounds — matched to semantic hues at low alpha for
+       verdict callouts + policy card fills. */
+    --color-allow-bg: #2f9e441a;
+    --color-deny-bg:  #c92a2a1a;
+    --color-warn-bg:  #e8590c1a;
+    --color-inert-bg: #ffffff0a;
+
+    /* Surface tint — two-tier nesting (group / leaf). */
+    --color-tier1-bg: #ffffff08;
+    --color-tier2-bg: #ffffff12;
+
+    /* Ink — text on tinted color backgrounds. Dark on bright, light on
+       tinted-surface. Prevents WCAG-fail white-on-yellow. */
+    --color-ink-on-bright: #0b0d0f;
+    --color-ink-tinted-warn:   #ffcaa7;
+    --color-ink-tinted-info:   #cde4ff;
+    --color-ink-tinted-deny:   #ffcaca;
+    --color-ink-tinted-caution: #ffe08a;
+}
+
+/* ── Backgrounds ─────────────────────────────────────────────────────── */
+.bg-role-src   { background: var(--color-role-src); }
+.bg-role-dst   { background: var(--color-role-dst); }
+
+.bg-engine-k8s   { background: var(--color-engine-k8s); }
+.bg-engine-istio { background: var(--color-engine-istio); }
+.bg-engine-mesh  { background: var(--color-engine-mesh); }
+
+.bg-allow   { background: var(--color-allow); }
+.bg-deny    { background: var(--color-deny); }
+.bg-warn    { background: var(--color-warn); }
+.bg-caution { background: var(--color-caution); }
+.bg-info    { background: var(--color-info); }
+.bg-unknown { background: var(--color-unknown); }
+
+/* Tinted (low-alpha) surface fills. Pair with .text-* to keep contrast. */
+.bg-allow-tint { background: var(--color-allow-bg); }
+.bg-deny-tint  { background: var(--color-deny-bg); }
+.bg-warn-tint  { background: var(--color-warn-bg); }
+.bg-inert-tint { background: var(--color-inert-bg); }
+
+.bg-tier1 { background: var(--color-tier1-bg); }
+.bg-tier2 { background: var(--color-tier2-bg); }
+
+/* ── Text colors ─────────────────────────────────────────────────────── */
+.text-role-src { color: var(--color-role-src); }
+.text-role-dst { color: var(--color-role-dst); }
+
+.text-engine-k8s   { color: var(--color-engine-k8s); }
+.text-engine-istio { color: var(--color-engine-istio); }
+.text-engine-mesh  { color: var(--color-engine-mesh); }
+
+.text-allow   { color: var(--color-allow); }
+.text-deny    { color: var(--color-deny); }
+.text-warn    { color: var(--color-warn); }
+.text-caution { color: var(--color-caution); }
+.text-info    { color: var(--color-info); }
+.text-unknown { color: var(--color-unknown); }
+
+/* Ink helpers — dark text on bright bg (allow/deny/role pills). */
+.text-ink-on-bright { color: var(--color-ink-on-bright); }
+
+/* Tinted-surface ink — matches the tint hue so text reads on low-alpha bg. */
+.text-on-warn-tint    { color: var(--color-ink-tinted-warn); }
+.text-on-info-tint    { color: var(--color-ink-tinted-info); }
+.text-on-deny-tint    { color: var(--color-ink-tinted-deny); }
+.text-on-caution-tint { color: var(--color-ink-tinted-caution); }
+
+/* ── Border colors ───────────────────────────────────────────────────── */
+.border-allow { border-color: var(--color-allow); }
+.border-deny  { border-color: var(--color-deny); }
+.border-warn  { border-color: var(--color-warn); }
+
+/* ── Global chip primitives (used across DetailPanel + TablesView). */
+
+/* Count chip — numeric tally next to tab/section label. Mono, tighter. */
+.chip-count {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff10;
+  color: #d5dbe1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 20px;
+  justify-content: center;
+}
+.chip-count-src { background: color-mix(in srgb, var(--color-role-src) 22%, transparent); color: #cde4ff; }
+.chip-count-dst { background: color-mix(in srgb, var(--color-role-dst) 22%, transparent); color: #ffe1a8; }
+.chip-count-deny { background: color-mix(in srgb, var(--color-deny) 22%, transparent); color: #ffcaca; }
+
+/* Verdict chip — colored solid pill for verdict tags (bg set inline from data). */
+.chip-verdict {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0b0d0f;
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Mini chip — small tagged flag (L7 marker, "effective"). Neutral info-tinted mono. */
+.chip-mini {
+  display: inline-flex;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-info) 22%, transparent);
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* Label chip — click-to-copy k=v (mono value + dim key + subtle =). */
+.chip-label {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff10;
+  border: 0;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #d5dbe1;
+  font-family: inherit;
+  transition: background 120ms ease;
+}
+.chip-label:hover { background: #ffffff1c; }
+.chip-label-key   { color: #9aa3ad; }
+.chip-label-eq    { color: #4a5058; margin: 0 2px; }
+.chip-label-value { color: #e6ecf2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ── Dropdown panel shell — used by FilterPanel + DisplayDropdown. Replaces
+   `bg-dark border border-secondary rounded shadow` boilerplate. Backdrop blur
+   matches the DetailPanel frame for visual consistency. */
+.dropdown-shell {
+  position: absolute;
+  background: #1a1e22cc;
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #00000066;
+  padding: 8px;
+}

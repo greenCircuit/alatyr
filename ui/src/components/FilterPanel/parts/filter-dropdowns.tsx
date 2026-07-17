@@ -47,7 +47,7 @@ export function NamespaceDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-lg">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-lg">
           <input
             type="text"
             autoFocus
@@ -122,7 +122,7 @@ export function StatusDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-lg">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-lg">
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
               className="btn btn-link btn-sm p-0 text-secondary fs-11"
@@ -196,7 +196,7 @@ export function PolicySourceDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-md">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-md">
           <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
             <button
               className="btn btn-link btn-sm p-0 text-secondary fs-11"
@@ -258,7 +258,7 @@ export function ActionDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-sm">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-sm">
           {[0, 1].map((action) => (
             <div key={action} className="form-check mb-1">
               <input
@@ -325,7 +325,7 @@ export function IssueTypeDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-xl">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-xl">
           {/* Browse action is a separate line up top so the dropdown reads:
               "open reader" vs "narrow tables view" — two different tasks. */}
           <button
@@ -411,7 +411,7 @@ export function DirectionDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-sm">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-sm">
           {['ingress', 'egress'].map((direction) => (
             <div key={direction} className="form-check mb-1">
               <input

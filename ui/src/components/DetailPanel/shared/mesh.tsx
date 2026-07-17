@@ -7,26 +7,27 @@ import type { MeshMembership, MtlsState, MtlsSource } from '../../../data/polici
 import s from '../DetailPanel.module.css';
 import { MTLS_VERDICT_COLOR } from './presentation';
 import { ManifestButton } from './ManifestModal';
+import { EngineBadge } from './badges';
 
 function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boolean }) {
   const scope = src.meshScope;
   return (
-    <div className={`rounded p-2 mb-1 ${isEffective ? 'border border-2 border-success' : 'border border-secondary'} ${s.smallText}`}>
+    <div className={`${s.card} ${s.smallText}`}>
       <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="fw-semibold text-break">{src.namespace}/{src.name}</div>
+        <div className={`${s.section} text-break`}>{src.namespace}/{src.name}</div>
         <div className="d-flex gap-1 flex-shrink-0 align-items-center">
-          {isEffective && <span className="badge bg-success">effective</span>}
-          <span className="badge text-ink-dark" style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#6c757d' }}>
+          {isEffective && <span className={`${s.miniChip} ${s.miniChipAllow}`}>effective</span>}
+          <span className={s.verdictChip} style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#7a848e' }}>
             {scope}
           </span>
-          <span className="badge bg-secondary">{src.meshSource}</span>
+          <span className={s.typeChip}>{src.meshSource}</span>
           <ManifestButton kind="pa" namespace={src.namespace} name={src.name} />
         </div>
       </div>
       {src.portModes && Object.keys(src.portModes).length > 0 && (
         <div className="d-flex flex-wrap gap-1 mt-1">
           {Object.entries(src.portModes).map(([port, mode]) => (
-            <span key={port} className="badge bg-info text-dark">
+            <span key={port} className={s.portChip}>
               {port}: {mode}
             </span>
           ))}
@@ -40,30 +41,30 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
   const effectiveKey = `${mtls.effectiveSource?.namespace ?? ''}/${mtls.effectiveSource?.name ?? ''}`;
   const hasEffective = mtls.effectiveSource?.name !== undefined && mtls.effectiveSource?.name !== '';
   return (
-    <div className="mt-2">
+    <div className="d-flex flex-column gap-2">
       <div className="d-flex align-items-center gap-2">
-        <span className="text-secondary">Verdict</span>
+        <span className={s.eyebrow}>Verdict</span>
         <span
-          className="badge text-uppercase text-ink-dark"
-          style={{ background: MTLS_VERDICT_COLOR[mtls.verdict] ?? '#6c757d' }}
+          className={s.verdictChip}
+          style={{ background: MTLS_VERDICT_COLOR[mtls.verdict] ?? '#7a848e' }}
         >
           {mtls.verdict}
         </span>
       </div>
       {hasEffective && mtls.effectiveSource && (
-        <div className={`text-secondary ${s.smallText} mt-1`}>
-          Effective: {mtls.effectiveSource.namespace}/{mtls.effectiveSource.name}
+        <div className={`${s.dim} ${s.smallText} ${s.mono}`}>
+          effective: {mtls.effectiveSource.namespace}/{mtls.effectiveSource.name}
         </div>
       )}
       {mtls.portOverrides && Object.keys(mtls.portOverrides).length > 0 && (
-        <div className="mt-2">
-          <div className="text-secondary">Port overrides</div>
-          <div className="d-flex flex-wrap gap-1 mt-1">
+        <div className="d-flex flex-column gap-1">
+          <div className={s.eyebrow}>Port overrides</div>
+          <div className="d-flex flex-wrap gap-1">
             {Object.entries(mtls.portOverrides).map(([port, mode]) => (
               <span
                 key={port}
-                className="badge text-ink-dark"
-                style={{ background: MTLS_VERDICT_COLOR[mode] ?? '#6c757d' }}
+                className={s.verdictChip}
+                style={{ background: MTLS_VERDICT_COLOR[mode] ?? '#7a848e' }}
               >
                 {port}: {mode}
               </span>
@@ -72,17 +73,17 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
         </div>
       )}
       {mtls.issues && mtls.issues.length > 0 && (
-        <div className="mt-2">
-          <div className="text-warning">Issues</div>
-          <ul className={`ps-3 mb-0 ${s.smallText}`}>
+        <div className={s.semanticWarn}>
+          <div className={`${s.eyebrow} ${s.eyebrowWarn}`}>mTLS issues</div>
+          <ul className={`ps-3 mb-0 ${s.body}`}>
             {mtls.issues.map((issue, i) => <li key={i}>{issue}</li>)}
           </ul>
         </div>
       )}
       {mtls.sources && mtls.sources.length > 0 && (
-        <div className="mt-2">
-          <div className="text-secondary">PeerAuthentications</div>
-          <div className="mt-1">
+        <div className="d-flex flex-column gap-1">
+          <div className={s.eyebrow}>PeerAuthentications</div>
+          <div>
             {mtls.sources.map((src, i) => (
               <MtlsSourceRow key={i} src={src} isEffective={`${src.namespace}/${src.name}` === effectiveKey} />
             ))}
@@ -96,21 +97,25 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
 export function MeshCard({ source, membership }: { source: string; membership: MeshMembership }) {
   const inMesh = membership.inMesh;
   return (
-    <div className="border border-secondary rounded p-2">
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="fw-semibold">{source}</div>
-        <span className={`badge ${inMesh ? 'bg-success' : 'bg-secondary'}`}>
+    <div className={s.tier1}>
+      <div className="d-flex justify-content-between align-items-start gap-2">
+        <div className="d-flex align-items-center gap-2">
+          <EngineBadge engine={source} />
+          <span className={s.section}>{source}</span>
+        </div>
+        <span className={`${s.miniChip} ${inMesh ? s.miniChipAllow : s.miniChipDim}`}>
           {inMesh ? 'in mesh' : 'not in mesh'}
         </span>
       </div>
       {inMesh && (membership.provider || membership.mode) && (
-        <div className={`text-secondary ${s.smallText}`}>
+        <div className={`${s.body} ${s.dim}`}>
           {membership.provider}{membership.mode ? ` · ${membership.mode}` : ''}
         </div>
       )}
       {membership.waypoint && (
-        <div className={`text-secondary ${s.smallText} mt-1`}>
-          Waypoint: {membership.waypoint.namespace}/{membership.waypoint.name}
+        <div className="d-flex align-items-center gap-1">
+          <span className={s.eyebrow}>Waypoint</span>
+          <span className={`${s.body} ${s.mono}`}>{membership.waypoint.namespace}/{membership.waypoint.name}</span>
         </div>
       )}
       {membership.mtls && <MtlsBlock mtls={membership.mtls} />}

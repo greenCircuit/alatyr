@@ -30,20 +30,38 @@ import RiskyWorkloadsTable from './RiskyWorkloadsTable';
 // a true partition — while the chips below stay per-key. Gray = no signals.
 const NO_SIGNAL_COLOR = '#495057';
 
-function Section({ title, link, onLink, children }: {
-  title: string; link?: string; onLink?: () => void; children: ReactNode;
+// Section header: quieter than uppercase eyebrow — `fs-13` semibold title
+// + optional `hint` for context (e.g. "click row for detail"). Trailing link
+// uses `text-secondary` to match the rest of the app's action-link convention.
+function Section({ title, hint, link, onLink, children }: {
+  title: string; hint?: string; link?: string; onLink?: () => void; children: ReactNode;
 }) {
   return (
     <div className="d-flex flex-column gap-2">
       <div className="d-flex align-items-baseline justify-content-between">
-        <span className="text-secondary text-uppercase fs-11 tracking-wide fw-bold">{title}</span>
+        <div className="d-flex align-items-baseline gap-2">
+          <span className="text-light fs-13 fw-semibold">{title}</span>
+          {hint && <span className="text-secondary fs-12">{hint}</span>}
+        </div>
         {link && (
-          <button type="button" className="btn btn-link btn-sm p-0 fs-12" onClick={onLink}>
+          <button type="button" className="btn btn-link btn-sm p-0 fs-12 text-secondary" onClick={onLink}>
             {link}
           </button>
         )}
       </div>
       {children}
+    </div>
+  );
+}
+
+// Zone divider: bigger visual break between groups of related sections
+// (Posture / Coverage / Drilldowns). Gives the page rhythm so an operator
+// can zone in on the group that matches their current task.
+function ZoneDivider({ label }: { label: string }) {
+  return (
+    <div className="d-flex align-items-center gap-3">
+      <span className="text-secondary text-uppercase fs-11 tracking-wider fw-bold">{label}</span>
+      <span className="flex-grow-1 border-top border-secondary opacity-25" />
     </div>
   );
 }
@@ -113,7 +131,6 @@ export default function ClusterStatusView() {
     () => mergedIssues.filter((issue) => issueTier(issue.type) !== 'info'),
     [mergedIssues],
   );
-  const hasBlocking = actionableIssues.some((issue) => issueTier(issue.type) === 'blocking');
 
   const nodeSeverity = useMemo(() => nodeSeverityStats(nodes), [nodes]);
 
@@ -145,26 +162,36 @@ export default function ClusterStatusView() {
       <div className="d-flex flex-column gap-4 p-3 mx-auto container-lg">
         {loading && <div className="text-secondary fs-12">Refreshing cluster data…</div>}
 
+        <ZoneDivider label="Posture" />
+
         <StatCards
           workloads={nodes.length}
           policies={coverage.policyTotal}
           namespacesSelected={selectedNamespaces.size}
           namespacesTotal={availableNamespaces.length}
           issues={actionableIssues.length}
-          issuesBlocking={hasBlocking}
+          issuesBlocking={actionableIssues.filter((issue) => issueTier(issue.type) === 'blocking').length}
+          exposedCount={exposedNodes.length}
+          exposedNamespaces={new Set(exposedNodes.map((node) => node.namespace)).size}
         />
 
         <ExposedCallout nodes={exposedNodes} onSeeAll={openTables('workloads')} />
 
-        <Section title="Issues" link="Open in tables →" onLink={openTables('issues')}>
+        <ZoneDivider label="Coverage" />
+
+        <Section title="Issues" hint="what's broken right now" link="Open in tables →" onLink={openTables('issues')}>
           <IssueRollup issues={issuesInScope} bare />
         </Section>
 
         <Section title="Policies by engine" link="Open in tables →" onLink={openTables('policies')}>
           <EngineRollup edges={preEngineEdges} bare />
           {singleEngineCount > 0 && availablePolicySources.length > 1 && (
-            <div className="text-secondary fs-12" title="Workloads carrying status keys from only one of the enabled engines — defense-in-depth gap">
-              <span className="text-warning">●</span> {singleEngineCount} workload{singleEngineCount === 1 ? '' : 's'} covered by only one engine
+            <div
+              className="d-inline-flex align-items-center gap-2 text-secondary fs-12"
+              title="Workloads carrying status keys from only one of the enabled engines — defense-in-depth gap"
+            >
+              <span className="swatch-dot" style={{ background: SEVERITY_COLOR.warning }} />
+              {singleEngineCount} workload{singleEngineCount === 1 ? '' : 's'} covered by only one engine
             </div>
           )}
         </Section>
@@ -173,23 +200,28 @@ export default function ClusterStatusView() {
           <CoverageBar stats={coverage} />
         </Section>
 
-        <Section title="Node statuses" link="Open in tables →" onLink={openTables('workloads')}>
+        <Section title="Node statuses" hint="worst-severity per workload" link="Open in tables →" onLink={openTables('workloads')}>
           {nodes.length === 0 ? (
             <div className="text-secondary fs-12">No workloads in the current scope.</div>
           ) : (
             <>
-              <ProportionBar segments={[
-                ...SEVERITY_TIERS.map((tier) => ({
-                  key: `worst: ${tier}`, count: nodeSeverity[tier], color: SEVERITY_COLOR[tier],
-                })),
-                { key: 'no status signals', count: nodeSeverity.none, color: NO_SIGNAL_COLOR },
-              ]} />
+              <ProportionBar
+                height={8}
+                segments={[
+                  ...SEVERITY_TIERS.map((tier) => ({
+                    key: `worst: ${tier}`, count: nodeSeverity[tier], color: SEVERITY_COLOR[tier],
+                  })),
+                  { key: 'no status signals', count: nodeSeverity.none, color: NO_SIGNAL_COLOR },
+                ]}
+              />
               <StatusRollup nodes={nodes} bare />
             </>
           )}
         </Section>
 
-        <Section title="Top risky workloads" link="Open in tables →" onLink={openTables('workloads')}>
+        <ZoneDivider label="Drilldowns" />
+
+        <Section title="Top risky workloads" hint="ranked worst-first · click row for detail">
           <RiskyWorkloadsTable
             rows={riskyRows}
             onShowNode={(node) => setSelectedNode(node)}
@@ -197,7 +229,7 @@ export default function ClusterStatusView() {
           />
         </Section>
 
-        <Section title="Namespaces">
+        <Section title="Namespaces" hint="click row to drill into graph">
           <NamespaceTable
             rows={nsRows}
             onSelect={(ns) => { selectNamespaceOnly(ns); setView('graph'); }}

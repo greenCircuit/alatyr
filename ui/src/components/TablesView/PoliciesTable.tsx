@@ -13,6 +13,7 @@ import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
 import { IssueChip } from './WorkloadsTable';
 import { policyIssueKey, type IssueIndex } from '../../store/issueIndex';
+import s from '../DetailPanel/DetailPanel.module.css';
 
 type Col = 'name' | 'engine' | 'namespace' | 'action' | 'direction' | 'rules' | 'reach' | 'issues';
 
@@ -102,7 +103,7 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
   };
 
   if (rows.length === 0) {
-    return <div className="text-secondary p-3">No policies match the current filters.</div>;
+    return <div className={`${s.tier1} ${s.dim} ${s.body}`}>No policies match the current filters.</div>;
   }
 
   return (
@@ -132,21 +133,21 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
             <td><EngineBadge engine={row.engine} /></td>
             <td>{row.namespace || '—'}</td>
             <td>
-              {row.action === 1
-                ? <span className="badge bg-danger">deny</span>
-                : <span className="badge bg-success">allow</span>}
+              <span className="chip-verdict" style={{ background: row.action === 1 ? 'var(--color-deny)' : 'var(--color-allow)' }}>
+                {row.action === 1 ? 'deny' : 'allow'}
+              </span>
             </td>
             <td>
               <div className="d-flex flex-wrap gap-1">
                 {row.directions.map((d) => <DirectionBadge key={d} direction={d} />)}
               </div>
             </td>
-            <td><span className="badge bg-secondary">{row.edges.length}</span></td>
+            <td><span className="chip-count">{row.edges.length}</span></td>
             <td>
               <span className="text-secondary">src </span>
-              <span className="badge bg-info text-dark">{row.srcCount}</span>
+              <span className="chip-count chip-count-src">{row.srcCount}</span>
               <span className="text-secondary ms-2">dst </span>
-              <span className="badge bg-warning text-dark">{row.dstCount}</span>
+              <span className="chip-count chip-count-dst">{row.dstCount}</span>
             </td>
             <td onClick={(e) => e.stopPropagation()}>
               <IssueChip issues={row.issues} />

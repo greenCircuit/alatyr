@@ -7,15 +7,17 @@ import { SEVERITY_COLOR } from '../../../data/policies';
 import type { DirectionReason } from '../../../data/policies';
 import type { ChipState } from './reachability';
 
-// Per-direction reason → chip label + bootstrap badge class. Blocked reasons go
-// red/amber; permitted / no-opinion stay quiet. Shared by the Tier-1 blocker
-// list and the Tier-2 per-direction breakdown.
-export const REASON_META: Record<DirectionReason, { label: string; badge: string }> = {
-  'permitted':       { label: 'permitted',                   badge: 'bg-success' },
-  'no-opinion':      { label: 'no policy',                   badge: 'bg-secondary' },
-  'explicit-deny':   { label: 'explicit deny',               badge: 'bg-danger' },
-  'default-deny':    { label: 'default-deny',                badge: 'bg-danger' },
-  'locked-no-match': { label: 'blocked · no matching rule',  badge: 'bg-warning text-dark' },
+// Per-direction reason → chip label + semantic tone. Callers map tone to
+// their local module class (e.g. `.reasonAllow` / `.reasonDeny`). Blocked
+// reasons go red/amber; permitted / no-opinion stay quiet. Shared by the
+// Tier-1 blocker list and the Tier-2 per-direction breakdown.
+export type ReasonTone = 'allow' | 'deny' | 'warn' | 'inert';
+export const REASON_META: Record<DirectionReason, { label: string; tone: ReasonTone }> = {
+  'permitted':       { label: 'permitted',                   tone: 'allow' },
+  'no-opinion':      { label: 'no policy',                   tone: 'inert' },
+  'explicit-deny':   { label: 'explicit deny',               tone: 'deny'  },
+  'default-deny':    { label: 'default-deny',                tone: 'deny'  },
+  'locked-no-match': { label: 'blocked · no matching rule',  tone: 'warn'  },
 };
 
 // Selecting-policy chip accent per join state. Green opens the path, red blocks

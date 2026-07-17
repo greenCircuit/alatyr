@@ -71,7 +71,7 @@ export default function IssueRollup({ issues, onToggled, bare = false }: IssueRo
           >
             <span aria-hidden="true" style={{ color }}>●</span>
             <span>{ISSUE_TYPE_LABEL[type]}</span>
-            <span className="badge bg-secondary ms-1">{count}</span>
+            <span className="chip-count ms-1">{count}</span>
           </button>
         );
       })}

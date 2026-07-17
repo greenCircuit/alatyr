@@ -1,6 +1,7 @@
 // Rule-coverage posture: segmented proportion bar + a chip per coverage class.
-// Zero-count chips stay visible — "no allow-all policies" is the signal an
-// operator came here for, hiding it would look like the class isn't checked.
+// Zero-count chips stay visible (muted) — "no allow-all policies" is the
+// signal an operator came here for; hiding it would look like the class
+// isn't checked.
 
 import type { Coverage } from '../../data/policies';
 import { SEVERITY_COLOR } from '../../data/policies';
@@ -40,17 +41,24 @@ export default function CoverageBar({ stats }: { stats: CoverageStats }) {
         <div className="text-secondary fs-12">No policies in the current scope.</div>
       )}
       <div className="d-flex align-items-center flex-wrap gap-3 fs-12">
-        {COVERAGE_CLASSES.map((coverageClass) => (
-          <span
-            key={coverageClass}
-            className="d-inline-flex align-items-center gap-1"
-            title={COVERAGE_DESCRIPTION[coverageClass]}
-          >
-            <span aria-hidden="true" style={{ color: COVERAGE_COLOR[coverageClass] }}>●</span>
-            {coverageClass}
-            <span className="badge bg-secondary ms-1">{stats.byClass[coverageClass]}</span>
-          </span>
-        ))}
+        {COVERAGE_CLASSES.map((coverageClass) => {
+          const count = stats.byClass[coverageClass];
+          const zero  = count === 0;
+          return (
+            <span
+              key={coverageClass}
+              className="d-inline-flex align-items-center gap-1"
+              title={COVERAGE_DESCRIPTION[coverageClass]}
+            >
+              <span
+                className="swatch-dot"
+                style={{ background: COVERAGE_COLOR[coverageClass], opacity: zero ? 0.4 : 1 }}
+              />
+              <span className={zero ? 'text-secondary' : 'text-light'}>{coverageClass}</span>
+              <span className={`tnum ${zero ? 'text-secondary opacity-50' : 'text-secondary'}`}>{count}</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );
