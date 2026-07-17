@@ -108,3 +108,11 @@
     width: 10px;
     height: 10px;
 }
+
+/* Tabular numerals — digits share a fixed advance width so numbers align
+ * column-by-column and don't jitter on refresh. Apply to KPI values and
+ * numeric table columns. */
+.tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}

@@ -6,19 +6,27 @@
 // (colored reason badge), then the imperative fix the panel only implies.
 
 import type { Issue, PolicyRef, DirectionReason } from '../../data/policies';
-import { DIR_COLOR, REASON_META } from '../DetailPanel/shared/presentation';
+import { REASON_META, type ReasonTone } from '../DetailPanel/shared/presentation';
 import { EngineBadge, EngineLogo } from '../../data/engineIcons';
 import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
 import { useManifestStore } from '../../store/manifestStore';
+import s from '../DetailPanel/DetailPanel.module.css';
 
 type Direction = 'egress' | 'ingress';
 
 // Which endpoint owns the fix, per direction. Egress blocks leave the source;
-// ingress blocks land on the destination. Colors match the reachability panel's
-// SRC=info / DST=warning column identity.
-const DIRECTION_SIDE: Record<Direction, { role: string; sideColor: string }> = {
-  egress:  { role: 'SRC', sideColor: 'bg-info' },
-  ingress: { role: 'DST', sideColor: 'bg-warning' },
+// ingress blocks land on the destination. Role tokens (SRC=blue / DST=amber)
+// match the reachability panel's endpoint identity.
+const DIRECTION_SIDE: Record<Direction, { role: 'SRC' | 'DST' }> = {
+  egress:  { role: 'SRC' },
+  ingress: { role: 'DST' },
+};
+
+const REASON_TONE_CLASS: Record<ReasonTone, string> = {
+  allow: s.reasonAllow,
+  deny:  s.reasonDeny,
+  warn:  s.reasonWarn,
+  inert: s.reasonInert,
 };
 
 // Imperative the panel only implies ("Edit to allow" / "delete the deny"). Kept
@@ -67,7 +75,8 @@ function PolicyChip({ policy, onOpen, showEngine }: {
     <span className="d-inline-flex align-items-center gap-1" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className="badge bg-dark border border-secondary text-truncate text-light fs-11 max-w-180 cursor-pointer"
+        className="chip-label text-truncate max-w-180"
+        style={{ cursor: 'pointer' }}
         title={`${policy.source} · ${policy.namespace}/${policy.name}`}
         onClick={openPolicyOrManifest}
       >
@@ -92,9 +101,11 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
   onOpen:    (source: string, namespace: string, name: string) => boolean;
 }) {
   const side = DIRECTION_SIDE[direction];
-  const { tint, arrow } = DIR_COLOR[direction];
   const meta = reason ? REASON_META[reason] : undefined;
   const verb = reason ? REASON_VERB[reason] : undefined;
+  const dirOutlineClass = direction === 'egress' ? s.dirOutlineEgress : s.dirOutlineIngress;
+  const dirArrow = direction === 'egress' ? '↑' : '↓';
+  const rolePillClass = side.role === 'SRC' ? s.roleSrc : s.roleDst;
   // A permitted direction is the SATISFIED side of the conflict — show it muted
   // as confirmation (✓ allowed by <policy>) so the operator sees both sides here
   // instead of digging through the panel to learn the other side is already fine.
@@ -108,23 +119,26 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
       {engines.map((engine) => (
         <EngineBadge key={engine} engine={engine} />
       ))}
-      {/* Direction: thin tinted outline + arrow — an accent, not a filled badge,
-          so the only saturated pill is the SRC/DST side that names the fix target. */}
-      <span className="badge bg-dark border" style={{ borderColor: tint, color: tint }}>
-        {arrow} {direction}
+      {/* Direction: thin role-tinted outline + arrow — an accent, not a filled
+          badge, so the only saturated pill is the SRC/DST side that names the
+          fix target. Role tokens keep hue vocabulary consistent w/ DirectionArrow. */}
+      <span className={`${s.dirOutline} ${dirOutlineClass}`}>
+        {dirArrow} {direction}
       </span>
       {/* The filled SRC/DST pill names the endpoint to EDIT — layering rows have
           nothing to fix, so the pill would misdirect. */}
       {!layering && (
-        <span className={`badge ${side.sideColor} text-dark`}>
+        <span className={`${s.rolePill} ${rolePillClass}`}>
           {side.role}{endpoint && ` · ${endpoint}`}
         </span>
       )}
       {permitted ? (
         // Satisfied side — green check + the policy that already admits this peer.
         <>
-          <span className="text-success fs-11">✓ allowed{allowed.length === 0 && ' (no policy governs)'}</span>
-          {allowed.length > 0 && <span className="text-secondary fs-11">by</span>}
+          <span className={`${s.body} text-allow`} style={{ fontWeight: 600 }}>
+            ✓ allowed{allowed.length === 0 && ' (no policy governs)'}
+          </span>
+          {allowed.length > 0 && <span className={`${s.smallText} ${s.dim}`}>by</span>}
           {allowed.map((policy) => (
             <PolicyChip key={`${policy.source}|${policy.namespace}|${policy.name}`} policy={policy} onOpen={onOpen} showEngine />
           ))}
@@ -136,28 +150,30 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
         // Reads coarse-first: the ns-level allow works, narrowed by the fine tier.
         <>
           <span
-            className="badge bg-info text-dark"
+            className={`${s.reasonChip} ${s.reasonInert}`}
             title="Coarse ns-level allow intentionally narrowed by a pod-level policy — nothing to fix"
           >
             Layered
           </span>
           {/* Lead-in renders unconditionally — a bare "narrowed by <chip>" with
               no framing reads like a finding. Chips only when refs exist. */}
-          <span className="text-success fs-11">✓ ns-level allow verified at pod level</span>
+          <span className={`${s.body} text-allow`} style={{ fontWeight: 600 }}>
+            ✓ ns-level allow verified at pod level
+          </span>
           {allowed.map((policy) => (
             <PolicyChip key={`${policy.source}|${policy.namespace}|${policy.name}`} policy={policy} onOpen={onOpen} showEngine />
           ))}
-          <span className="text-secondary fs-11">narrowed to specific pods by</span>
+          <span className={`${s.smallText} ${s.dim}`}>narrowed to specific pods by</span>
           {culprits.map((culprit) => (
             <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
           ))}
         </>
       ) : (
         <>
-          {/* Cause — the shared reason badge, same label + color as the panel. */}
-          {meta && <span className={`badge ${meta.badge}`}>{meta.label}</span>}
-          {/* Action — the imperative, subordinate to the cause badge. */}
-          {verb && <span className="text-secondary fs-11">→ {verb}</span>}
+          {/* Cause — the shared reason chip, token-tinted per tone. */}
+          {meta && <span className={`${s.reasonChip} ${REASON_TONE_CLASS[meta.tone]}`}>{meta.label}</span>}
+          {/* Action — the imperative, subordinate to the cause chip. */}
+          {verb && <span className={`${s.smallText} ${s.dim}`}>→ {verb}</span>}
           {culprits.map((culprit) => (
             <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
           ))}
@@ -182,7 +198,7 @@ export function CulpritActions({ issue, onOpen }: {
   const showEgress  = egress.length > 0 || isBlockReason(issue.egressReason) || issue.egressReason === 'permitted';
   const showIngress = ingress.length > 0 || isBlockReason(issue.ingressReason) || issue.ingressReason === 'permitted';
   if (!showEgress && !showIngress) {
-    return <span className="text-secondary">—</span>;
+    return <span className={s.dim}>—</span>;
   }
   // Engines behind a merged same-pair row (k8s egress + istio ingress). Prefer
   // the culprits' own source; when a block direction has no policy ref to point

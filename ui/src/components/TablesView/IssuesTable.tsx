@@ -2,13 +2,14 @@
 // Workloads + Policies tabs. Reuses the store's showReachability/setSelectedNode
 // handlers so a row click lands in the same panel the drawer does.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { Issue, IssueType, Severity, WorkloadNode } from '../../data/policies';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
 import { ISSUE_TYPE_LABEL, TYPE_SEVERITY } from '../FilterPanel/parts/constants';
 import { CulpritActions } from './CulpritActions';
+import s from '../DetailPanel/DetailPanel.module.css';
 
 // Numeric rank so severity sort has an intent order (Blocking before Warning).
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -82,8 +83,8 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
 
   if (findings.length === 0 && infoRows.length === 0) {
     return (
-      <div className="text-secondary p-3 d-flex align-items-center gap-2">
-        <span className="fs-18" style={{ color: SEVERITY_COLOR.secure }}>✓</span>
+      <div className={`${s.tier1} ${s.body} ${s.dim} d-flex align-items-center gap-2`}>
+        <span className={s.verdictTextAllow}>✓</span>
         No issues match the current filters.
       </div>
     );
@@ -136,7 +137,7 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
           >
             <td colSpan={3} className="text-secondary fs-12 py-2">
               <span className="me-2">{showInfo ? '▾' : '▸'}</span>
-              <span className="badge bg-info text-dark me-2">Expected layering · {infoRows.length}</span>
+              <span className="chip-mini me-2">Expected layering · {infoRows.length}</span>
               ns-level allows narrowed by pod-level baselines — working as designed, nothing to fix
             </td>
           </tr>
@@ -158,14 +159,19 @@ function IssueBadge({ issueType, severity }: { issueType: IssueType; severity: S
   const severityTitle = isHigh ? 'Blocking'
     : SEVERITY_RANK[severity] >= SEVERITY_RANK.warning ? 'Warning'
     : 'Informational — expected behavior';
+  // Peripheral color rule (STYLEGUIDE §3): severity ● dot signals severity,
+  // finding kind is a neutral mono chip. No wall-of-color across rows.
   return (
     <span
-      className="badge d-inline-flex align-items-center gap-1 text-white"
-      style={{ background: SEVERITY_COLOR[severity] }}
+      className="d-inline-flex align-items-center gap-1"
       title={severityTitle}
     >
-      <span aria-hidden="true">●</span>
-      {ISSUE_TYPE_LABEL[issueType]}
+      <span
+        className={s.sevDot}
+        style={{ '--sev': SEVERITY_COLOR[severity] } as unknown as CSSProperties}
+        aria-hidden="true"
+      >●</span>
+      <span className={s.findingKind}>{ISSUE_TYPE_LABEL[issueType]}</span>
     </span>
   );
 }
@@ -176,7 +182,7 @@ function KindBadge({ node }: { node?: WorkloadNode }) {
   if (!node?.type) return null;
   const isNamespace = node.type === 'namespace';
   return (
-    <span className={`badge ${isNamespace ? 'bg-warning text-dark' : 'bg-secondary'} fs-11 ms-1`}>
+    <span className={`${isNamespace ? s.crossNsChip : s.typeChip} ms-1`}>
       {node.type}
     </span>
   );

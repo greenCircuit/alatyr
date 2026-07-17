@@ -108,7 +108,7 @@ export interface PolicyRef {
   name:       string;
   namespace:  string;
   ruleIndex:  number;
-  action?:    string;    // "allow" | "deny" — set for selecting-policy refs, omitted for rule contributors
+  action?:    'allow' | 'deny';    // set for selecting-policy refs, omitted for rule contributors
   direction?: string;    // "ingress" | "egress" | "both"
 }
 

@@ -12,6 +12,7 @@ import { StatusBadge } from '../PolicyGraph/parts/legend';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
 import type { IssueIndex } from '../../store/issueIndex';
 import { IssuesPopover } from './IssuesPopover';
+import s from '../DetailPanel/DetailPanel.module.css';
 
 type Col = 'name' | 'namespace' | 'type' | 'statuses' | 'policies' | 'issues';
 
@@ -77,7 +78,7 @@ export default function WorkloadsTable({
   };
 
   if (rows.length === 0) {
-    return <div className="text-secondary p-3">No workloads match the current filters.</div>;
+    return <div className={`${s.tier1} ${s.dim} ${s.body}`}>No workloads match the current filters.</div>;
   }
 
   return (
@@ -102,12 +103,10 @@ export default function WorkloadsTable({
             onClick={() => selectRow(node)}
             className="cursor-pointer"
           >
-            <td className="text-break fw-semibold">{node.label}</td>
-            <td>{node.namespace || '—'}</td>
+            <td className={`text-break ${s.section}`}>{node.label}</td>
+            <td className={s.mono}>{node.namespace || '—'}</td>
             <td>
-              <span
-                className={`badge ${node.type === 'namespace' ? 'bg-warning text-dark' : 'bg-secondary'}`}
-              >
+              <span className={node.type === 'namespace' ? s.crossNsChip : s.typeChip}>
                 {node.type}
               </span>
             </td>
@@ -154,7 +153,7 @@ function PolicyCountChips({
   byEngine: Record<string, number>;
 }) {
   if (total === 0) {
-    return <span className="badge bg-danger" title="No policies touch this workload">0</span>;
+    return <span className="chip-count chip-count-deny" title="No policies touch this workload">0</span>;
   }
   return (
     <div className="d-flex flex-wrap gap-1">
@@ -226,12 +225,14 @@ function LabelChips({ labels }: { labels: Record<string, string> | null | undefi
   return (
     <div className="d-flex flex-wrap gap-1">
       {shown.map(([k, v]) => (
-        <span key={k} className="badge bg-secondary fw-normal">
-          {k}={v}
+        <span key={k} className="chip-label">
+          <span className="chip-label-key">{k}</span>
+          <span className="chip-label-eq">=</span>
+          <span className="chip-label-value">{v}</span>
         </span>
       ))}
       {hidden > 0 && (
-        <span className="badge bg-secondary" title={entries.slice(3).map(([k, v]) => `${k}=${v}`).join(' ')}>
+        <span className="chip-count" title={entries.slice(3).map(([k, v]) => `${k}=${v}`).join(' ')}>
           +{hidden}
         </span>
       )}

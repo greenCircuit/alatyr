@@ -78,6 +78,658 @@
   font-size: 11px;
 }
 
+/* ── Surface hierarchy — ported from DesignPreview/tokens.module.css.
+   See ui/STYLEGUIDE.md §3. Neutral bg + colored left stripe replaces
+   the old `border border-secondary rounded p-2` boilerplate.
+   Wall-of-red/green on lists = signal fatigue. State reads via stripe. */
+
+/* Tier 2 leaf card — the shared shell for PolicyRow, RuleRow, NeighborGroup,
+   PolicyRefRow, RuleGroupCard. Neutral bg, subtle radius, no border. */
+.card {
+  background: var(--color-tier2-bg);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-left: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* State variants — colored left stripe only. Never fill full bg. */
+.cardDeny  { border-left-color: var(--color-deny);  }
+.cardAllow { border-left-color: var(--color-allow); }
+.cardWarn  { border-left-color: var(--color-warn);  }
+
+/* Card variants — flush (no bottom margin, for side-by-side use), dashed
+   (wildcard placeholder), button (interactive card w/ hover). */
+.cardFlush  { margin-bottom: 0; }
+.cardDashed { border-style: dashed; border-left-style: solid; }
+.cardButton {
+  width: 100%;
+  background: var(--color-tier2-bg);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 120ms ease;
+}
+.cardButton:hover  { background: #ffffff1c; }
+.cardButton:active { background: #ffffff26; }
+
+/* Deny-all posture — hard block, full border so it stands apart from softer
+   allow/unenforced postures. See ui/STYLEGUIDE.md §3 exception. */
+.postureRow {
+  background: var(--color-tier2-bg);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid transparent;
+}
+.postureDenyAll {
+  border: 1px solid var(--color-deny);
+  border-left-color: var(--color-deny);
+}
+
+/* Section eyebrow — replaces `text-uppercase text-secondary small fw-semibold`
+   boilerplate above section groups (Deny/Allow split, per-engine cards). */
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7a848e;
+  letter-spacing: 0.04em;
+}
+.eyebrowDeny  { color: var(--color-deny);  }
+.eyebrowAllow { color: var(--color-allow); }
+.eyebrowWarn  { color: var(--color-warn);  }
+
+/* ── Role pill: SRC / DST endpoint indicator. Bright solid — reads spatially,
+   never competes w/ semantic allow/deny hue. */
+.rolePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #0b0d0f;
+}
+.roleSrc { background: var(--color-role-src); }
+.roleDst { background: var(--color-role-dst); }
+
+/* ── Label strip: workload/endpoint k8s labels. Click chip = copy `key=value`
+   for kubectl -l. `copy selector` button copies full comma-joined selector.
+   Filter system-label prefixes to disclosure to keep the strip readable. */
+.labelStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.labelChip {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff10;
+  border: 0;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #d5dbe1;
+  cursor: copy;
+  font-family: inherit;
+  transition: background 120ms ease;
+}
+.labelChip:hover  { background: #ffffff1c; }
+.labelChip:active { background: #ffffff26; }
+.labelKey   { color: #9aa3ad; }
+.labelEq    { color: #4a5058; margin: 0 2px; }
+.labelValue { color: #e6ecf2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.labelCopyAll {
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #9aa3ad;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  cursor: copy;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.labelCopyAll:hover { color: #d5dbe1; border-color: #ffffff40; background: #ffffff08; }
+
+/* System-label disclosure — muted "Show N system labels" toggle. */
+.systemLabelToggle {
+  background: transparent;
+  border: 0;
+  color: #7a848e;
+  font-size: 10px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.systemLabelToggle:hover { color: #a4b0bb; }
+
+/* ── ActionIcon — colored square w/ ✓ or ✗ for policy action. Reads pre-attentive
+   at scroll speed vs a text badge. */
+.actionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.actionAllow { background: var(--color-allow); }
+.actionDeny  { background: var(--color-deny);  }
+
+/* ── Type scale (STYLEGUIDE §3): 11px eyebrow / 13px body / 15px section / 18px hero.
+   Bootstrap default 12/14/16 collapses hierarchy into one register — do not use. */
+.body {
+  font-size: 13px;
+  color: #cdd2d7;
+}
+.section {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6ecf2;
+}
+.hero {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ── Text helpers — dim + mono, replace inline color styles. */
+.dim  { color: #7a848e; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ── Policy meta row — flex row for policy card headers.
+   ActionIcon + name section + EngineChip + ns + [badges] · state + [YAML]. */
+.policyMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Listens line — `listens: 8080/tcp, 9090/tcp` under endpoint card. */
+.listensLine {
+  font-size: 12px;
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Sub-row — child row inside a card. Gap-based separation, no border-top.
+   Auditor rule #2: rules-between-items reads as admin table. */
+.subRow {
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+/* ── Verdict callout — HERO surface, ONE per panel. Full tinted bg + 4px
+   stripe for scroll-speed answer. Class variants set color per verdict tone.
+   STYLEGUIDE §3 exception — only place full tint is legal on any DetailPanel
+   surface. */
+.verdictCallout {
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-left: 4px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background 120ms ease;
+}
+.verdictAllow { background: var(--color-allow-bg); border-left-color: var(--color-allow); }
+.verdictDeny  { background: var(--color-deny-bg);  border-left-color: var(--color-deny); }
+.verdictWarn  { background: var(--color-warn-bg);  border-left-color: var(--color-warn); }
+
+/* Hero verdict text — one-line answer inside .verdictCallout. Color set by
+   sibling .verdictDeny/Warn/Allow via inheritance (parent scope). */
+.verdictText {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.verdictTextAllow { color: var(--color-allow); }
+.verdictTextDeny  { color: var(--color-deny); }
+.verdictTextWarn  { color: var(--color-warn); }
+
+/* ── Tier 1: group surface — subtle tint, no border, 12px padding. Wraps a
+   logical section (identity block, mesh block) so contents flow inside a
+   quiet card without adding a hard border. STYLEGUIDE §3. */
+.tier1 {
+  background: var(--color-tier1-bg);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Semantic surfaces — neutral tier2 bg + colored 3px left stripe. Used
+   for finding/section shells where wall-of-tint would create signal fatigue.
+   Stripe carries state peripherally, content stays calm. */
+.semanticWarn,
+.semanticDeny,
+.semanticAllow {
+  background: var(--color-tier2-bg);
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.semanticWarn  { border-left-color: var(--color-warn); }
+.semanticDeny  { border-left-color: var(--color-deny); }
+.semanticAllow { border-left-color: var(--color-allow); }
+
+/* ── Direction arrow — colored arrow+word for ingress/egress. Replaces the
+   old Bootstrap pill DirectionBadge inside DetailPanel surfaces. */
+.dirArrow {
+  font-size: 13px;
+  font-weight: 600;
+}
+.dirEgress  { color: var(--color-role-src); }
+.dirIngress { color: var(--color-role-dst); }
+
+/* ── Severity dot — colored bullet driven by --sev var so callers set the
+   color from data without inline typography. */
+.sevDot {
+  color: var(--sev, #7a848e);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ── Coverage chip — blanket-posture verdicts (deny all / allow all / allow
+   all ns / unenforced). Token-tinted, mono; replaces Bootstrap `bg-danger`,
+   `bg-warning text-dark`, `border border-secondary` pills. */
+.coverageChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+}
+.coverageDeny  { background: color-mix(in srgb, var(--color-deny) 22%, transparent);  color: #ffcaca; }
+.coverageWarn  { background: color-mix(in srgb, var(--color-warn) 22%, transparent);  color: #ffcaa7; }
+.coverageInert { background: #ffffff10; color: #9aa3ad; font-weight: 600; text-transform: none; }
+
+/* ── L7 chip — hosts/methods/paths. Info-tinted mono. Negated variant uses
+   deny tint + line-through so exclusions read as removals, not additions. */
+.l7Chip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-info) 18%, transparent);
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.l7ChipNeg {
+  background: color-mix(in srgb, var(--color-deny) 18%, transparent);
+  color: #ffcaca;
+  text-decoration: line-through;
+}
+.l7Key {
+  font-size: 10px;
+  color: #9aa3ad;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* ── Reason chip — cause label on culprit / blocker rows ("explicit deny",
+   "blocked · no matching rule"). Tinted bg + colored ink, prose casing.
+   Replaces Bootstrap `bg-danger` / `bg-warning text-dark` badges. */
+.reasonChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.reasonAllow { background: color-mix(in srgb, var(--color-allow) 22%, transparent); color: #b7f2c9; }
+.reasonDeny  { background: color-mix(in srgb, var(--color-deny)  22%, transparent); color: #ffcaca; }
+.reasonWarn  { background: color-mix(in srgb, var(--color-warn)  22%, transparent); color: #ffcaa7; }
+.reasonInert { background: #ffffff10; color: #9aa3ad; font-weight: 600; }
+
+/* Muted card variant — soft-fade a whole card so it reads as ambient
+   evidence, not the deciding row. Replaces Bootstrap `opacity-75`. */
+.cardMuted { opacity: 0.7; }
+
+/* ── Tab strip — thin text tabs w/ 2px info underline on active. Replaces
+   Bootstrap `nav nav-tabs border-secondary` admin chrome. Row itself sits
+   above tables/panels; single hairline separates it from content below. */
+.tabStrip {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-bottom: 1px solid #ffffff14;
+  padding: 0 12px;
+}
+.tabButton {
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  color: #9aa3ad;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.tabButton:hover { color: #d5dbe1; }
+.tabButtonActive {
+  color: #e6ecf2;
+  font-weight: 600;
+  border-bottom-color: var(--color-info);
+}
+
+/* ── Catch-all / any-port copy — italic dim text for "any workload",
+   "any port", wildcard placeholders. Bakes italic into a semantic token so
+   callers stop reaching for Bootstrap `fst-italic`. */
+.catchAll {
+  font-style: italic;
+  color: #7a848e;
+}
+
+/* ── Utility: push element to the right of a flex row (margin-left: auto)
+   or make it fill remaining flex space. Kills inline flex hacks. */
+.pushRight { margin-left: auto; }
+.flexFill  { flex: 1; min-width: 0; }
+
+/* ── Endpoint row — side-by-side SRC/DST layout for edge + reachability
+   panels. `1fr auto 1fr` w/ centered arrow; min-w-0 on cells so long labels
+   wrap inside instead of breaking the grid. */
+.endpointRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.endpointRow > * {
+  min-width: 0;
+}
+/* Middle column (arrow or swap button) vertically centers between cards. */
+.endpointRow > *:nth-child(2) {
+  align-self: center;
+}
+.endpointArrow {
+  color: #7a848e;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ── Direction outline chip — thin colored border + arrow. Used on
+   CulpritActions to name direction w/o competing with the filled SRC/DST
+   role pill. Uses --color-role-src/dst so it matches DirectionArrow. */
+.dirOutline {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.dirOutlineEgress  { color: var(--color-role-src);   border-color: var(--color-role-src); }
+.dirOutlineIngress { color: var(--color-role-dst);   border-color: var(--color-role-dst); }
+.dirOutlineMesh    { color: var(--color-engine-mesh); border-color: var(--color-engine-mesh); }
+.dirOutlineBoth    { color: var(--color-allow);       border-color: var(--color-allow); }
+
+/* ── L7 block — tinted info bg + tighter padding so hosts/methods/paths
+   read as a distinct L7 gate inside a PolicyRow/NeighborGroup card. */
+.l7Block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--color-info) 12%, transparent);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+/* ── Primary button — ONE per panel (Pin-as-source, primary action).
+   Solid, role-src tinted, dark ink. Ghosts everywhere else. */
+.primaryButton {
+  background: var(--color-role-src);
+  color: var(--color-ink-on-bright);
+  border: 0;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.primaryButton:hover  { filter: brightness(1.12); }
+.primaryButton:active { filter: brightness(0.94); }
+
+/* ── Ghost button — secondary action, transparent bg + subtle border. */
+.ghostButton {
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #d5dbe1;
+  border-radius: 3px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.ghostButton:hover { background: #ffffff10; border-color: #ffffff40; }
+
+/* ── Count capsule — inbound/outbound peer counts. Role-tinted solid, dark
+   ink. Sits in a details summary next to the engine chip. */
+.countCapsule {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-ink-on-bright);
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.countIn  { background: var(--color-role-src); }
+.countOut { background: var(--color-role-dst); }
+
+/* Disclosure summary — chevron rotates on open. Replaces Bootstrap details
+   list-style w/ tokened chevron + gap layout. */
+.disclosureSummary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+.disclosureSummary::-webkit-details-marker { display: none; }
+.disclosureSummary::before {
+  content: '▸';
+  font-size: 10px;
+  color: #7a848e;
+  transition: transform 120ms ease;
+  display: inline-block;
+}
+details[open] > .disclosureSummary::before { transform: rotate(90deg); }
+
+/* ── Icon button — square ghost, for glyph-only actions (⇄, ×). Tighter
+   than ghostButton, symmetric padding for icons. */
+.iconButton {
+  background: transparent;
+  border: 1px solid #ffffff26;
+  color: #d5dbe1;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.iconButton:hover { background: #ffffff10; border-color: #ffffff40; color: #e6ecf2; }
+
+/* ── Disclosure button — inline `▸ label` toggle inside cards. Replaces
+   `btn btn-link` which renders as blue-underline hover, wrong register. */
+.disclosureButton {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.disclosureButton:hover { color: #d5dbe1; }
+
+/* ── Port chip — mono, info-tinted. Replaces Bootstrap `badge bg-info text-dark`
+   which reads as generic tag not typed data. Auditor rule #1. */
+.portChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-info) 18%, transparent);
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.portChipAny {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #7a848e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* ── Finding kind chip — neutral mono taxonomy chip on findings. Severity
+   signals through a colored ● dot BEFORE the chip, not by tinting the chip.
+   Mockup: peripheral color, central neutrality. */
+.findingKind {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff14;
+  color: #9aa3ad;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+/* ── Type chip — workload/endpoint type (deployment/service/cronjob/etc).
+   Dim + mono. Reads as metadata, not a status. */
+.typeChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff10;
+  color: #9aa3ad;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
+}
+
+/* ── Cross-ns / policy-level chip — warn-tinted, subtle. Reads as
+   "watch out, this is off-axis" not a hard warning. */
+.crossNsChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-warn) 18%, transparent);
+  color: #ffcaa7;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+}
+
+/* ── Verdict chip — colored solid pill for verdict/mode indicators
+   (allow/deny/warn banner tags, mTLS mode, in-mesh state). Bg color set inline
+   from data. Uses dark ink so bright backgrounds stay legible. */
+.verdictChip {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0b0d0f;
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Count chip — numeric tally next to a tab/section label. Neutral,
+   mono, tighter than portChip. Used across TablesView tabs + rollups. */
+.countChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff10;
+  color: #d5dbe1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 20px;
+  justify-content: center;
+}
+.countChipSrc  { background: color-mix(in srgb, var(--color-role-src) 22%, transparent); color: #cde4ff; }
+.countChipDst  { background: color-mix(in srgb, var(--color-role-dst) 22%, transparent); color: #ffe1a8; }
+.countChipDeny { background: color-mix(in srgb, var(--color-deny)     22%, transparent); color: #ffcaca; }
+.countChipWarn { background: color-mix(in srgb, var(--color-warn)     22%, transparent); color: #ffcaa7; }
+
+/* ── Mini chip — small tagged flag (L7 marker, "effective", etc). Neutral
+   info-tinted, mono, tighter than portChip. */
+.miniChip {
+  display: inline-flex;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-info) 22%, transparent);
+  color: #cde4ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.miniChipAllow { background: color-mix(in srgb, var(--color-allow) 22%, transparent); color: #b7f2c9; }
+.miniChipDim   { background: #ffffff10; color: #9aa3ad; }
+
+/* ── Peer chip — distinct-peer summary above per-policy cards. Lighter than
+   labelChip: shows a peer identity, not a k=v pair. */
+.peerChip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff10;
+  color: #d5dbe1;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* Tier-2 disclosure toggle — pointer + the reveal triangle sits inline. */
 .detailsSummary {
   cursor: pointer;
@@ -149,6 +801,25 @@
   border-left-color: var(--accent);
   border-left-width: 4px;
 }
+
+/* Drawer header — bottom separator, subtle. Replaces `border-bottom border-secondary`
+   which reads as heavy admin rule in dark UI. */
+.drawerHeader {
+  border-bottom: 1px solid #ffffff14;
+}
+
+/* Drawer close button — ghost X, tuned for dark drawer chrome. */
+.drawerClose {
+  background: transparent;
+  border: 0;
+  color: #9aa3ad;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: color 120ms ease;
+}
+.drawerClose:hover { color: #e6ecf2; }
 
 /* Raw-manifest drawer: a flex child of .rightDock, sits to the LEFT of the
    DetailPanel. flex-shrink:0 keeps its width; the panel yields space instead. */

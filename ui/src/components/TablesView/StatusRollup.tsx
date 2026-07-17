@@ -79,7 +79,7 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
               {cfg.symbol}
             </span>
             <span>{key}</span>
-            <span className="badge bg-secondary ms-1">{count}</span>
+            <span className="chip-count ms-1">{count}</span>
           </button>
         );
       })}

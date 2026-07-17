@@ -76,7 +76,7 @@ export default function EngineRollup({ edges, bare = false }: EngineRollupProps)
           >
             <EngineLogo engine={engine} size={12} />
             <span>{engine}</span>
-            <span className="badge bg-secondary ms-1">{count}</span>
+            <span className="chip-count ms-1">{count}</span>
           </button>
         );
       })}

@@ -113,7 +113,7 @@ export function ManifestButton({ kind, namespace, name, highlight, highlightPeer
   return (
     <button
       type="button"
-      className={`btn btn-sm btn-outline-secondary py-0 px-1 ${s.smallText}`}
+      className={s.ghostButton}
       onClick={() => open({ kind, namespace, name, highlight, highlightPeer })}
     >
       YAML
@@ -198,39 +198,39 @@ function ManifestModal({ kind, namespace, name, highlight, highlightPeer, onClos
   // read side by side, panel pinned right, YAML to its left.
   return (
     <div className={s.manifestDrawer}>
-      <div className="d-flex justify-content-between align-items-start p-3 border-bottom border-secondary">
+      <div className={`d-flex justify-content-between align-items-start p-3 ${s.drawerHeader}`}>
         <div className="d-flex flex-column gap-1">
-          <span className="fw-bold text-light small">{headerKind}</span>
-          <span className="text-secondary small">{namespace}/{name}</span>
+          <span className={s.section}>{headerKind}</span>
+          <span className={`${s.dim} ${s.body} ${s.mono}`}>{namespace}/{name}</span>
         </div>
         <div className="d-flex gap-2 align-items-center">
           {state.phase === 'ready' && (
-            <button className="btn btn-sm btn-outline-secondary" onClick={copy}>
+            <button className={s.ghostButton} onClick={copy}>
               {copied ? 'Copied' : 'Copy'}
             </button>
           )}
-          <button className="btn-close btn-close-white btn-sm" onClick={onClose} />
+          <button className={s.drawerClose} onClick={onClose} aria-label="Close drawer">×</button>
         </div>
       </div>
 
       <div className="p-3 d-flex flex-column min-h-0">
         {state.phase === 'loading' && (
-          <div className="text-secondary small py-4 text-center">Fetching…</div>
+          <div className={`${s.dim} ${s.body} py-4 text-center`}>Fetching…</div>
         )}
 
         {state.phase === 'error' && (
-          <div className="small">
+          <div className={s.body}>
             {state.notFound ? (
-              <div className="text-warning">
-                <div className="fw-semibold mb-1">⚠ Not found in cluster</div>
-                <div className="text-secondary">
+              <div style={{ color: 'var(--color-warn)' }}>
+                <div className={`${s.section} mb-1`}>⚠ Not found in cluster</div>
+                <div className={s.dim}>
                   Edge is on the graph but the object is gone — graph may be stale.
                 </div>
               </div>
             ) : (
-              <div className="text-danger">{state.message}</div>
+              <div style={{ color: 'var(--color-deny)' }}>{state.message}</div>
             )}
-            <button className="btn btn-sm btn-outline-secondary mt-3" onClick={load}>Retry</button>
+            <button className={s.disclosureButton} onClick={load} style={{ border: '1px solid #ffffff26', padding: '2px 8px', borderRadius: 3, marginTop: 12 }}>Retry</button>
           </div>
         )}
 

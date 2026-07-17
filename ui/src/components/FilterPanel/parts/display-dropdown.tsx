@@ -42,7 +42,7 @@ export function DisplayDropdown() {
       </button>
 
       {open && (
-        <div className="position-absolute bg-dark border border-secondary rounded shadow p-2 dropdown-panel dropdown-panel-lg">
+        <div className="dropdown-shell dropdown-panel dropdown-panel-lg">
           <div className="mb-2">
             <label className="text-secondary text-uppercase fs-10 tracking-wide d-block mb-1" htmlFor="display-layout">
               Layout

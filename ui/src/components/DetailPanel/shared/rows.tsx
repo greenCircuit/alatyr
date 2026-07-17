@@ -3,54 +3,40 @@
 // mid-altitude pieces — they compose the badge primitives and carry the
 // policy-specific layout shared by the workload, edge, and reachability views.
 
-import { useState } from 'react';
 import type { PolicyEdge, NodeRule, NeighborRef, PolicyRef, PolicySelector } from '../../../data/policies';
 import { formatPort, realPorts } from '../../../data/policies';
-import { CoverageBadge, DirectionBadge, EngineBadge, L7Block } from './badges';
+import { CoverageBadge, DirectionArrow, EngineBadge, L7Block, ActionIcon } from './badges';
 import { ManifestButton } from './ManifestModal';
 import { groupNeighborsByPolicy, groupNodeRulesByPolicy, splitByPeer, distinctPeers, type NeighborGroup as NeighborGroupData, type NodeRuleGroup, type PeerSummary } from './groupNeighborsByPolicy';
 import s from '../DetailPanel.module.css';
 
 export function PolicyRow({ p }: { p: PolicyEdge }) {
   const isDeny = p.action === 1;
+  const ports = realPorts(p.ports);
+  // Compact header shape per mockup: ActionIcon + name (section) + EngineChip +
+  // ns · level → YAML on the right. Direction + ports on the second line.
+  // Drops the tabular 4-row Engine/Namespace/Direction/Ports grid — visually
+  // dense but scan-slow, since each field carried its own label.
   return (
-    <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
-        <div className="fw-semibold text-light text-break">{p.policyName}</div>
-        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
-          {isDeny && <span className="badge bg-danger">deny</span>}
-          <span className={`badge ${p.level === 'namespace' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+    <div className={`${s.card} ${isDeny ? s.cardDeny : ''} ${s.smallText}`}>
+      <div className={s.policyMetaRow}>
+        <ActionIcon action={isDeny ? 'deny' : 'allow'} />
+        <span className={`${s.section} text-break ${s.flexFill}`}>{p.policyName}</span>
+        <EngineBadge engine={p.policySource} />
+        <span className={s.dim}>{p.namespace}</span>
+        {p.level === 'namespace' && (
+          <span className={s.crossNsChip} title="Namespace-level edge (one endpoint is a namespace, not a workload)">
             {p.level}
           </span>
-          <ManifestButton kind={p.policySource} namespace={p.namespace} name={p.policyName} />
-        </div>
+        )}
+        <ManifestButton kind={p.policySource} namespace={p.namespace} name={p.policyName} />
       </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Engine:</div>
-        <EngineBadge engine={p.policySource} />
-      </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Namespace:</div>
-        <div>{p.namespace}</div>
-      </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Direction:</div>
-        <DirectionBadge direction={p.direction} />
-      </div>
-      <div>
-        <div className='d-flex gap-1'>
-          <div className="text-secondary">Ports:</div>
-          <div className="d-flex flex-row align-items-start gap-1 mt-1">
-            {realPorts(p.ports)?.map((pt, i) => (
-              <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
-            )) ?? (
-              <span className="badge bg-secondary" title="Policy does not restrict ports — all TCP/UDP allowed">
-                any port
-              </span>
-            )}
-          </div>
-
-        </div>
+      <div className={s.policyMetaRow}>
+        <DirectionArrow direction={p.direction} />
+        <span className={s.dim}>ports:</span>
+        {ports?.length
+          ? ports.map((pt, i) => <span key={i} className={s.portChip}>{formatPort(pt)}/{pt.protocol}</span>)
+          : <span className={`${s.catchAll}`} title="Policy does not restrict ports — all TCP/UDP allowed">any port</span>}
       </div>
       {p.l7Matches && <L7Block blocks={p.l7Matches} />}
     </div>
@@ -73,33 +59,43 @@ function SelectorBlock({ label, sel, policyNs }: { label: string; sel?: PolicySe
     ? `any workload in ${policyNs}`
     : 'any workload';
   return (
-    <div className="mt-2">
-      <div className="text-secondary">{label}</div>
+    <div className="d-flex flex-column gap-1">
+      <div className={s.eyebrow}>{label}</div>
       {isCatchAll ? (
-        <div className="text-secondary mt-1">{catchAllCopy}</div>
+        <div className={`${s.body} ${s.catchAll}`}>{catchAllCopy}</div>
       ) : (
-        <div className="d-flex flex-column gap-1 mt-1">
+        <div className="d-flex flex-column gap-1">
           {pod.length > 0 && (
             <div className="d-flex flex-wrap align-items-center gap-1">
-              <span className="text-secondary">pod:</span>
+              <span className={s.dim}>pod:</span>
               {pod.map(([k, v]) => (
-                <span key={`p-${k}`} className={`badge bg-secondary font-monospace ${s.badgeSm}`}>{k}={v}</span>
+                <span key={`p-${k}`} className={s.labelChip}>
+                  <span className={s.labelKey}>{k}</span>
+                  <span className={s.labelEq}>=</span>
+                  <span className={s.labelValue}>{v}</span>
+                </span>
               ))}
             </div>
           )}
           {ns.length > 0 && (
             <div className="d-flex flex-wrap align-items-center gap-1">
-              <span className="text-secondary">ns:</span>
+              <span className={s.dim}>ns:</span>
               {ns.map(([k, v]) => (
-                <span key={`n-${k}`} className={`badge bg-secondary font-monospace ${s.badgeSm}`}>{k}={v}</span>
+                <span key={`n-${k}`} className={s.labelChip}>
+                  <span className={s.labelKey}>{k}</span>
+                  <span className={s.labelEq}>=</span>
+                  <span className={s.labelValue}>{v}</span>
+                </span>
               ))}
             </div>
           )}
           {nsNames.length > 0 && (
             <div className="d-flex flex-wrap align-items-center gap-1">
-              <span className="text-secondary">from ns:</span>
+              <span className={s.dim}>from ns:</span>
               {nsNames.map((name) => (
-                <span key={`ns-${name}`} className={`badge bg-secondary font-monospace ${s.badgeSm}`}>{name}</span>
+                <span key={`ns-${name}`} className={s.labelChip}>
+                  <span className={s.labelValue}>{name}</span>
+                </span>
               ))}
             </div>
           )}
@@ -149,9 +145,9 @@ function PeerHeadline({ peer }: { peer: ReturnType<typeof rulePeer> }) {
   return (
     <>
       {peer.label}
-      {peer.ns && !isNamespace && <span className="text-secondary"> / {peer.ns}</span>}
+      {peer.ns && !isNamespace && <span className={s.dim}> / {peer.ns}</span>}
       {peer.kind && (
-        <span className={`badge ms-2 ${isNamespace ? 'bg-warning text-dark' : 'bg-secondary'} ${s.badgeSm}`}>
+        <span className={`${s.typeChip} ms-2`}>
           {peer.kind}
         </span>
       )}
@@ -163,7 +159,7 @@ function PortBadges({ ports }: { ports?: NodeRule['ports'] }) {
   const real = realPorts(ports);
   if (!real?.length) {
     return (
-      <span className="badge bg-secondary" title="Rule does not restrict ports — all TCP/UDP allowed">
+      <span className={s.portChipAny} title="Rule does not restrict ports — all TCP/UDP allowed">
         any port
       </span>
     );
@@ -171,7 +167,7 @@ function PortBadges({ ports }: { ports?: NodeRule['ports'] }) {
   return (
     <>
       {real.map((port, index) => (
-        <span key={index} className="badge bg-info text-dark">{formatPort(port)}/{port.protocol}</span>
+        <span key={index} className={s.portChip}>{formatPort(port)}/{port.protocol}</span>
       ))}
     </>
   );
@@ -183,36 +179,28 @@ export function RuleRow({ rule }: { rule: NodeRule }) {
   const peer = rulePeer(rule);
   const { verb: peerVerb, arrow: peerArrow } = peer;
   return (
-    <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
+    <div className={`${s.card} ${isDeny ? s.cardDeny : ''} ${s.smallText}`}>
       <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="fw-semibold text-light text-break">
-          {peerVerb}: {peerArrow} <PeerHeadline peer={peer} />
+        <div className={`${s.policyMetaRow} ${s.flexFill}`}>
+          <ActionIcon action={isDeny ? 'deny' : 'allow'} />
+          <span className={`${s.section} text-break`}>
+            {peerVerb}: {peerArrow} <PeerHeadline peer={peer} />
+          </span>
         </div>
-        {isDeny && <span className="badge bg-danger flex-shrink-0">deny</span>}
       </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Direction:</div>
-        <DirectionBadge direction={rule.direction} />
-      </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Ports:</div>
-        <div className="d-flex flex-wrap align-items-center gap-1">
-          {ports?.length ? (
-            ports.map((pt, i) => (
-              <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
-            ))
-          ) : (
-            <span className="badge bg-secondary" title="Rule does not restrict ports — all TCP/UDP allowed">
-              any port
-            </span>
-          )}
-        </div>
+      <div className={s.policyMetaRow}>
+        <DirectionArrow direction={rule.direction} />
+        <span className={s.dim}>ports:</span>
+        {ports?.length
+          ? ports.map((pt, i) => <span key={i} className={s.portChip}>{formatPort(pt)}/{pt.protocol}</span>)
+          : <span className={`${s.catchAll}`} title="Rule does not restrict ports — all TCP/UDP allowed">any port</span>}
       </div>
       {rule.l7Match && <L7Block blocks={[rule.l7Match]} />}
       {rule.contributor && (
-        <div className="mt-3 pt-2 border-top border-secondary">
-          <div className="d-flex justify-content-between align-items-start gap-2">
-            <div className="fw-semibold">Policy: {rule.contributor.name}</div>
+        <div className={s.subRow}>
+          <div className={s.policyMetaRow}>
+            <span className={s.dim}>policy:</span>
+            <span className={`${s.section} text-break ${s.flexFill}`}>{rule.contributor.name}</span>
             <ManifestButton
               kind={rule.contributor.source}
               namespace={rule.contributor.namespace}
@@ -254,29 +242,28 @@ function RuleGroupCard({ group }: { group: NodeRuleGroup }) {
   // color, peer-side in the secondary — same split the node panel uses.
   const nodeSelectors = group.rules.map((rule) => (rule.direction === 'ingress' ? rule.dstSelector : rule.srcSelector));
   return (
-    <div className={`border ${isDeny ? 'border-danger' : 'border-secondary'} rounded p-2 mb-2 ${s.smallText}`}>
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="fw-bold text-light text-break">{contributor.name}</div>
-        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
-          {isDeny && <span className="badge bg-danger">deny</span>}
-          <ManifestButton
-            kind={contributor.source}
-            namespace={contributor.namespace}
-            name={contributor.name}
-            highlight={selectorLines(...nodeSelectors)}
-            highlightPeer={selectorLines(...peers.map((peer) => peer.selector))}
-          />
-        </div>
+    <div className={`${s.card} ${isDeny ? s.cardDeny : ''} ${s.smallText}`}>
+      <div className={s.policyMetaRow}>
+        <ActionIcon action={isDeny ? 'deny' : 'allow'} />
+        <span className={`${s.section} text-break ${s.flexFill}`}>{contributor.name}</span>
+        <EngineBadge engine={contributor.source} />
+        <span className={s.dim}>{contributor.namespace}</span>
+        <ManifestButton
+          kind={contributor.source}
+          namespace={contributor.namespace}
+          name={contributor.name}
+          highlight={selectorLines(...nodeSelectors)}
+          highlightPeer={selectorLines(...peers.map((peer) => peer.selector))}
+        />
       </div>
-      <div className={s.fieldRow}>
-        <div className={s.fieldLabel}>Direction:</div>
-        <DirectionBadge direction={group.rules[0].direction} />
+      <div className={s.policyMetaRow}>
+        <DirectionArrow direction={group.rules[0].direction} />
       </div>
       {group.rules.map((rule, index) => {
         const peer = peers[index];
         return (
-          <div key={index} className="border-top border-secondary pt-2 mt-2">
-            <div className="fw-semibold text-light text-break">
+          <div key={index} className={s.subRow}>
+            <div className={`${s.section} text-break`}>
               {peer.arrow} <PeerHeadline peer={peer} />
             </div>
             <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
@@ -320,11 +307,11 @@ function NeighborPeerRow({ neighbor, nodeIsSource }: { neighbor: NeighborRef; no
   const nodeSelector = nodeIsSource ? rule.srcSelector : rule.dstSelector;
   const contributor = rule.contributor?.name ? rule.contributor : undefined;
   return (
-    <div className={`border-top border-secondary pt-2 mt-2 ${s.smallText}`}>
+    <div className={`${s.subRow} ${s.smallText}`}>
       <div className="d-flex justify-content-between align-items-start gap-2">
-        <div className="fw-semibold text-light text-break">
+        <div className={`${s.section} text-break`}>
           {peerArrow} {peerLabel}
-          {peerNs && <span className="text-secondary"> / {peerNs}</span>}
+          {peerNs && <span className={s.dim}> / {peerNs}</span>}
         </div>
         {/* Per-peer YAML: highlights only this peer's selector (+ this node's),
             so a single-color highlight still correlates one rule to one peer. The
@@ -372,7 +359,7 @@ export function NeighborGroup({ group, nodeIsSource, nodeNamespace }: { group: N
   const peerSummary = `${peerVerb} ${peerCount} peer${peerCount > 1 ? 's' : ''}`;
   // Collapse big fan-outs by default; small lists stay open so a click isn't
   // needed for the common 1-3 peer case.
-  const [peersOpen, setPeersOpen] = useState(peerCount <= PEER_COLLAPSE_THRESHOLD);
+  const defaultOpen = peerCount <= PEER_COLLAPSE_THRESHOLD;
   const sortedPeers = [...group.peers].sort(
     (left, right) => peerSortKey(left, nodeIsSource).localeCompare(peerSortKey(right, nodeIsSource)),
   );
@@ -381,9 +368,11 @@ export function NeighborGroup({ group, nodeIsSource, nodeNamespace }: { group: N
   // Manifest highlight spans the node selector plus every peer selector so the
   // rendered YAML lights up all sources the grouped card represents.
   const peerSelectors = group.peers.map((peer) => (nodeIsSource ? peer.Rule.dstSelector : peer.Rule.srcSelector));
-  // Deny cards carry a danger border so they read as blocks even mid-scroll,
-  // past the "Denied by policy" section header.
-  const borderClass = isDeny ? 'border-danger' : 'border-secondary';
+  // State-colored left stripe reads as block/allow at scroll speed. Full-bg
+  // tint on every card was the wall-of-red anti-pattern (STYLEGUIDE §3).
+  // Allow rows stay neutral — wall-of-green on lists = signal fatigue.
+  // Only deny gets a stripe (STYLEGUIDE §3 central-neutrality).
+  const stripeClass = isDeny ? s.cardDeny : '';
   // Flag cross-ns policies: an ingress rule authored in another namespace is a
   // common blind spot when auditing what can reach a workload. Treat a zero-value
   // contributor (empty name — backend sends the struct, never null) as absent so
@@ -391,61 +380,49 @@ export function NeighborGroup({ group, nodeIsSource, nodeNamespace }: { group: N
   const contributor = rule.contributor?.name ? rule.contributor : undefined;
   const crossNs = !!contributor && !!nodeNamespace && contributor.namespace !== nodeNamespace;
   return (
-    <div className={`border ${borderClass} rounded p-2 mb-2 ${s.smallText}`}>
-      {/* Policy name is the headline — it's what the operator edits to change
-          the verdict. Peer count + manifest sit alongside as supporting detail. */}
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
-        <div className="d-flex flex-column">
-          <div className="fw-bold text-light text-break d-flex align-items-center gap-2 flex-wrap">
+    <div className={`${s.card} ${stripeClass} ${s.smallText}`}>
+      {/* PolicyMetaRow header per mockup: ActionIcon + name + engine + ns +
+          optional cross-ns badge + coverage · YAML. Compact single line. */}
+      <div className={s.policyMetaRow}>
+        <ActionIcon action={isDeny && rule.coverage !== 'unenforced' ? 'deny' : 'allow'} />
+        <div className={`d-flex align-items-baseline flex-wrap gap-2 ${s.flexFill}`}>
+          <span className={`${s.section} text-break`}>
             {contributor ? contributor.name : peerSummary}
-            {crossNs && (
-              <span
-                className={`badge bg-warning text-dark ${s.badgeSm}`}
-                title={`Policy lives in ${contributor!.namespace}, not this workload's namespace (${nodeNamespace})`}
-              >
-                ns: {contributor!.namespace}
-              </span>
-            )}
-          </div>
-          {contributor && <div className="text-secondary small">{peerSummary}</div>}
-        </div>
-        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
-          {/* Suppress the deny verb when the rule is unenforced — "No effect"
-              is a state, and "deny No effect" contradicts itself. */}
-          {isDeny && rule.coverage !== 'unenforced' && <span className="badge bg-danger">deny</span>}
-          <CoverageBadge coverage={rule.coverage} />
+          </span>
           {contributor && (
-            <ManifestButton
-              kind={contributor.source}
-              namespace={contributor.namespace}
-              name={contributor.name}
-              highlight={selectorLines(nodeSelector)}
-              highlightPeer={selectorLines(...peerSelectors)}
-            />
+            <span className={`${s.body} ${s.dim} ${s.mono}`}>{contributor.namespace}</span>
           )}
         </div>
+        {crossNs && (
+          <span
+            className={s.crossNsChip}
+            title={`Policy lives in ${contributor!.namespace}, not this workload's namespace (${nodeNamespace})`}
+          >
+            cross-ns
+          </span>
+        )}
+        <CoverageBadge coverage={rule.coverage} />
+        {contributor && (
+          <ManifestButton
+            kind={contributor.source}
+            namespace={contributor.namespace}
+            name={contributor.name}
+            highlight={selectorLines(nodeSelector)}
+            highlightPeer={selectorLines(...peerSelectors)}
+          />
+        )}
       </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Direction:</div>
-        <DirectionBadge direction={rule.direction} />
-      </div>
-      <div className={`${s.fieldRow} mb-1`}>
-        <div className={s.fieldLabel}>Ports:</div>
-        <div className="d-flex flex-wrap align-items-center gap-1">
-          {ports?.length ? (
-            ports.map((pt, i) => (
-              <span key={i} className="badge bg-info text-dark">{formatPort(pt)}/{pt.protocol}</span>
-            ))
-          ) : (
-            <span className="badge bg-secondary" title="Rule does not restrict ports — all TCP/UDP allowed">
-              any port
-            </span>
-          )}
-        </div>
+      {contributor && <div className={`${s.dim} ${s.smallText}`}>{peerSummary}</div>}
+      <div className={s.policyMetaRow}>
+        <DirectionArrow direction={rule.direction} />
+        <span className={s.dim}>ports:</span>
+        {ports?.length
+          ? ports.map((pt, i) => <span key={i} className={s.portChip}>{formatPort(pt)}/{pt.protocol}</span>)
+          : <span className={`${s.catchAll}`} title="Rule does not restrict ports — all TCP/UDP allowed">any port</span>}
       </div>
       {rule.l7Match && <L7Block blocks={[rule.l7Match]} />}
       {contributor && (
-        <div className="mt-2 pt-2 border-top border-secondary">
+        <div className={s.subRow}>
           <SelectorBlock
             label={nodeIsSource ? 'Source (this node)' : 'Destination (this node)'}
             sel={nodeSelector}
@@ -453,18 +430,12 @@ export function NeighborGroup({ group, nodeIsSource, nodeNamespace }: { group: N
           />
         </div>
       )}
-      <div className="mt-2">
-        <button
-          type="button"
-          className="btn btn-link p-0 text-decoration-none text-uppercase text-secondary small fw-semibold d-flex align-items-center gap-1"
-          onClick={() => setPeersOpen((open) => !open)}
-          aria-expanded={peersOpen}
-        >
-          <span>{peersOpen ? '▾' : '▸'}</span>
+      <details open={defaultOpen}>
+        <summary className={`${s.disclosureSummary} ${s.eyebrow}`}>
           {peerVerb} ({peerCount})
-        </button>
-        {peersOpen && sortedPeers.map((peer, i) => <NeighborPeerRow key={i} neighbor={peer} nodeIsSource={nodeIsSource} />)}
-      </div>
+        </summary>
+        {sortedPeers.map((peer, i) => <NeighborPeerRow key={i} neighbor={peer} nodeIsSource={nodeIsSource} />)}
+      </details>
     </div>
   );
 }
@@ -479,7 +450,7 @@ function PeerChips({ peers }: { peers: PeerSummary[] }) {
       {peers.map((peer) => (
         <span
           key={peer.id}
-          className={`badge bg-secondary ${s.badgeSm}`}
+          className={s.peerChip}
           title={peer.namespace ? `${peer.label} / ${peer.namespace}` : peer.label}
         >
           {peer.label}
@@ -492,11 +463,12 @@ function PeerChips({ peers }: { peers: PeerSummary[] }) {
 // A titled run of neighbor cards — the deny/allow split within one direction.
 // Title carries the distinct-peer count (not ref count), and the chip row lists
 // those peers once before the per-policy cards.
-function NeighborSection({ title, groups, nodeIsSource, nodeNamespace }: { title: string; groups: NeighborGroupData[]; nodeIsSource: boolean; nodeNamespace?: string }) {
+function NeighborSection({ title, groups, nodeIsSource, nodeNamespace, tone }: { title: string; groups: NeighborGroupData[]; nodeIsSource: boolean; nodeNamespace?: string; tone?: 'deny' | 'allow' }) {
   const peers = distinctPeers(groups, nodeIsSource);
+  const toneClass = tone === 'deny' ? s.eyebrowDeny : tone === 'allow' ? s.eyebrowAllow : '';
   return (
     <div className="mb-2">
-      <div className="text-uppercase text-secondary small fw-semibold mb-1">
+      <div className={`${s.eyebrow} ${toneClass} mb-1`}>
         {title} · {peers.length} peer{peers.length > 1 ? 's' : ''}
       </div>
       <PeerChips peers={peers} />
@@ -512,13 +484,15 @@ function NeighborSection({ title, groups, nodeIsSource, nodeNamespace }: { title
 function PostureRow({ neighbor }: { neighbor: NeighborRef }) {
   const rule = neighbor.Rule;
   const contributor = rule.contributor?.name ? rule.contributor : undefined;
-  const borderClass = rule.coverage === 'deny all' ? 'border-danger' : 'border-secondary';
+  // Deny-all posture gets full border (not just stripe) — hard-block scroll-speed
+  // read, STYLEGUIDE §3 exception. Other postures use standard postureRow.
+  const postureClass = rule.coverage === 'deny all' ? `${s.postureRow} ${s.postureDenyAll}` : s.postureRow;
   return (
-    <div className={`border ${borderClass} rounded p-2 mb-2 d-flex justify-content-between align-items-center gap-2 ${s.smallText}`}>
+    <div className={`${postureClass} d-flex justify-content-between align-items-center gap-2 ${s.smallText}`}>
       <div className="d-flex align-items-center gap-2 flex-wrap">
-        <DirectionBadge direction={rule.direction} />
+        <DirectionArrow direction={rule.direction} />
         <CoverageBadge coverage={rule.coverage} />
-        {contributor && <span className="fw-semibold text-light text-break">{contributor.name}</span>}
+        {contributor && <span className={`${s.section} text-break`}>{contributor.name}</span>}
       </div>
       {contributor && (
         <ManifestButton kind={contributor.source} namespace={contributor.namespace} name={contributor.name} />
@@ -556,29 +530,26 @@ export function NeighborList({ neighbors, nodeIsSource, nodeNamespace }: { neigh
   return (
     <>
       {postureBlock}
-      <NeighborSection title="⛔ Denied by policy" groups={denyGroups} nodeIsSource={nodeIsSource} nodeNamespace={nodeNamespace} />
+      <NeighborSection title="⛔ Denied by policy" groups={denyGroups} nodeIsSource={nodeIsSource} nodeNamespace={nodeNamespace} tone="deny" />
       {allowGroups.length > 0 && (
-        <NeighborSection title="✓ Allowed by policy" groups={allowGroups} nodeIsSource={nodeIsSource} nodeNamespace={nodeNamespace} />
+        <NeighborSection title="✓ Allowed by policy" groups={allowGroups} nodeIsSource={nodeIsSource} nodeNamespace={nodeNamespace} tone="allow" />
       )}
     </>
   );
 }
 
 export function PolicyRefRow({ policyRef }: { policyRef: PolicyRef }) {
+  const stripeClass = policyRef.action === 'deny' ? s.cardDeny
+                    : '';
   return (
-    <div className={`border border-secondary rounded p-2 mb-2 ${s.smallText}`}>
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="fw-semibold text-light text-break">{policyRef.name}</div>
-        <div className="d-flex gap-1 flex-shrink-0 align-items-center">
-          {policyRef.action === 'deny' && <span className="badge bg-danger">deny</span>}
-          {policyRef.action === 'allow' && <span className="badge bg-success">allow</span>}
-          {policyRef.direction && <DirectionBadge direction={policyRef.direction} />}
-          <ManifestButton kind={policyRef.source} namespace={policyRef.namespace} name={policyRef.name} />
-        </div>
-      </div>
-      <div className={s.fieldRow}>
-        <div className={s.fieldLabel}>Namespace:</div>
-        <div>{policyRef.namespace}</div>
+    <div className={`${s.card} ${stripeClass} ${s.smallText}`}>
+      <div className={s.policyMetaRow}>
+        {policyRef.action && <ActionIcon action={policyRef.action} />}
+        <span className={`${s.section} text-break ${s.flexFill}`}>{policyRef.name}</span>
+        <EngineBadge engine={policyRef.source} />
+        <span className={s.dim}>{policyRef.namespace}</span>
+        {policyRef.direction && <DirectionArrow direction={policyRef.direction} />}
+        <ManifestButton kind={policyRef.source} namespace={policyRef.namespace} name={policyRef.name} />
       </div>
     </div>
   );
@@ -586,7 +557,7 @@ export function PolicyRefRow({ policyRef }: { policyRef: PolicyRef }) {
 
 export function PolicyRefList({ items }: { items?: PolicyRef[] }) {
   if (!items || items.length === 0) {
-    return <div className={`text-secondary ${s.smallText}`}>none</div>;
+    return <div className={`${s.dim} ${s.smallText}`}>none</div>;
   }
   return <div>{items.map((p, i) => <PolicyRefRow key={i} policyRef={p} />)}</div>;
 }

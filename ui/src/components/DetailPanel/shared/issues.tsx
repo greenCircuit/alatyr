@@ -3,39 +3,38 @@
 // leave the panel and hunt the drawer/table for "is this thing broken".
 // Reuses CulpritActions so the remediation language matches the Issues table.
 
+import type { CSSProperties } from 'react';
 import type { Issue } from '../../../data/policies';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../../data/policies';
 import { TYPE_SEVERITY, ISSUE_TYPE_LABEL } from '../../FilterPanel/parts/constants';
-import { EngineBadge } from './badges';
 import { CulpritActions } from '../../TablesView/CulpritActions';
 import { useGraphStore } from '../../../store/graphStore';
 import s from '../DetailPanel.module.css';
 
-function IssueCard({ issue }: { issue: Issue }) {
+function IssueRow({ issue }: { issue: Issue }) {
   const showReachability  = useGraphStore((store) => store.showReachability);
   const selectPolicyByRef = useGraphStore((store) => store.selectPolicyByRef);
   const color = SEVERITY_COLOR[TYPE_SEVERITY[issue.type]];
-  const engines = issue.engines?.length ? issue.engines : issue.engine ? [issue.engine] : [];
+  // Flat row inside .semanticWarn shell — no per-issue card wrapper.
+  // Peripheral color, central neutrality: severity ● dot signals severity,
+  // finding kind is a neutral mono chip. Engines shown via CulpritActions
+  // below (per-direction engine badge) so top row stays scannable.
   return (
-    <div className={`border rounded p-2 ${s.smallText}`} style={{ borderColor: color }}>
-      <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
-        <div className="d-flex align-items-center gap-1 flex-wrap">
-          <span className="badge text-ink-dark" style={{ background: color }}>
-            {ISSUE_TYPE_LABEL[issue.type] ?? issue.type}
-          </span>
-          {engines.map((engine) => <EngineBadge key={engine} engine={engine} />)}
-        </div>
+    <div className="d-flex flex-column gap-1">
+      <div className={s.policyMetaRow}>
+        <span className={s.sevDot} style={{ '--sev': color } as unknown as CSSProperties} aria-label={TYPE_SEVERITY[issue.type]}>●</span>
+        <span className={s.findingKind}>{ISSUE_TYPE_LABEL[issue.type] ?? issue.type}</span>
+        <span className={`${s.body} ${s.flexFill}`}>{issue.message}</span>
         {issue.src && issue.dst && (
           <button
             type="button"
-            className="btn btn-sm btn-outline-light py-0 px-2 fs-11 flex-shrink-0"
+            className={`${s.ghostButton} flex-shrink-0`}
             onClick={() => showReachability(issue.src!, issue.dst!)}
           >
-            Open reachability
+            Reachability →
           </button>
         )}
       </div>
-      <div className="text-light mb-1">{issue.message}</div>
       <CulpritActions issue={issue} onOpen={selectPolicyByRef} />
     </div>
   );
@@ -44,12 +43,12 @@ function IssueCard({ issue }: { issue: Issue }) {
 function IssueSection({ issues }: { issues: Issue[] }) {
   if (issues.length === 0) return null;
   return (
-    <div>
-      <div className="text-uppercase text-secondary small fw-semibold mb-1">
-        Detected issues ({issues.length})
+    <div className={s.semanticWarn}>
+      <div className={s.section}>
+        {issues.length} finding{issues.length === 1 ? '' : 's'}
       </div>
       <div className="d-flex flex-column gap-2">
-        {issues.map((issue, index) => <IssueCard key={index} issue={issue} />)}
+        {issues.map((issue, index) => <IssueRow key={index} issue={issue} />)}
       </div>
     </div>
   );

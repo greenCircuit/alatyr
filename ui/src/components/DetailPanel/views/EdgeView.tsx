@@ -23,18 +23,19 @@ export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
   return (
     <>
       <EdgeReachabilityBanner result={reachability} loading={reachabilityLoading} />
-      <div className="d-flex flex-column gap-1 mb-3">
+      <div className={`${s.endpointRow} mb-3`}>
         <EndpointCard role="src" node={src} coverage={first.coverage} />
+        <span className={s.endpointArrow} aria-hidden>→</span>
         <EndpointCard role="dst" node={dst} coverage={first.coverage} />
       </div>
       {/* Findings on this pair — why an allow edge may still not carry traffic. */}
       <div className="mb-3">
         <PairIssues srcId={first.source} dstId={first.target} />
       </div>
-      <div className={`text-secondary mb-2 ${s.smallText}`}>
+      <div className={`${s.eyebrow} mb-2`}>
         Policies ({edges.length})
       </div>
-      <div className={edges.length > 1 ? s.policyGrid : ''}>
+      <div className={edges.length > 1 ? s.policyGrid : 'd-flex flex-column gap-2'}>
         {edges.map((p) => <PolicyRow key={p.id} p={p} />)}
       </div>
     </>
