@@ -54,6 +54,12 @@ func defaultMeshSource(client k8s.KubernetesClient, logger *slog.Logger) mesh.Me
 	return meshistio.New(client, logger)
 }
 
+// MeshSource returns the single registered mesh provider. Nil when none
+// configured — callers must guard.
+func (b *Builder) MeshSource() mesh.MeshSource {
+	return b.meshSource
+}
+
 // MeshSources exposes the registered mesh source (as a slice for the api-layer
 // helpers that still iterate). Returns an empty slice when no mesh provider
 // is configured so callers can range safely.

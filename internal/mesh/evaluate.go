@@ -30,7 +30,7 @@ type MeshSource interface {
 	// CanReach decides whether mesh-layer policy permits src → dst. port=0
 	// means "any port" — use workload-level verdict; otherwise check the
 	// port-level override first. Two ResolveMtls calls per invocation.
-	CanReach(ctx context.Context, src, dst models.WorkloadNode, srcNsLabels, dstNsLabels map[string]string, port uint32) models.MeshVerdict
+	CanReach(srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict
 
 	// BuildMeshMembership eagerly resolves MeshMembership for every workload
 	// in the ns index. Root PA fetched once; ns PA fetched once per ns.

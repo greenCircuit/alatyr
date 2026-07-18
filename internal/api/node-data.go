@@ -67,7 +67,7 @@ func (s *Server) getReachability(c echo.Context) error {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	result := store.IsNodesReachable(c.Request().Context(), s.cache, s.store.MeshSources(), srcId, srcNs, dstId, dstNs)
+	result := store.IsEndpointsReachable(c.Request().Context(), s.cache, s.store.MeshSource(), srcId, srcNs, dstId, dstNs)
 	return c.JSON(http.StatusOK, result)
 }
 
@@ -76,6 +76,6 @@ func (s *Server) getReachability(c echo.Context) error {
 func (s *Server) getIssues(c echo.Context) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	issues := store.GetIssues(c.Request().Context(), s.cache)
+	issues := store.GetIssues(c.Request().Context(), s.cache, s.store.MeshSource())
 	return c.JSON(http.StatusOK, issues)
 }

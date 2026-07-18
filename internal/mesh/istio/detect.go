@@ -42,16 +42,20 @@ func (s *source) ResolveMtls(ctx context.Context, workload models.WorkloadNode, 
 	return resolveMtls(workload, nsPAs, rootPAs), nil
 }
 
+
 // CanReach denies when dst requires STRICT mTLS and src cannot speak mTLS
-// (not enrolled or PA DISABLE). port=0 means workload-level Verdict.
-// TODO(perf): re-resolves both sides — callers that already hold MtlsState
-// pay 2 redundant fetches. Add CanReachFromStates variant.
-func (s *source) CanReach(ctx context.Context, srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict {
-	if (dstMesh.InMesh && dstMesh.Mtls.Verdict == models.MeshStrict) && (!srcMesh.InMesh) {
-		return models.MeshVerdict{Verdict: "blocked", Reason: "scr is not in mesh"}
+func (s *source) CanReach(srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict {
+	// Mtls is nil until BuildMeshMembership stamps it — treat as not-strict
+	// rather than deref.
+	dstStrict := dstMesh.InMesh && dstMesh.Mtls != nil && dstMesh.Mtls.Verdict == models.MeshStrict
+	if !dstStrict {
+		return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
 	}
-	if (dstMesh.InMesh && dstMesh.Mtls.Verdict == models.MeshStrict) && (!srcMesh.InMesh && srcMesh.Mtls.Verdict == models.MeshUnset || srcMesh.Mtls.Verdict == models.MeshDisable ) {
-		return models.MeshVerdict{Verdict: "blocked", Reason: "scr is in  mesh but it is disabled"}
+	if !srcMesh.InMesh {
+		return models.MeshVerdict{Verdict: "deny", Reason: "dst requires STRICT mTLS but src is not in mesh"}
+	}
+	if srcMesh.Mtls != nil && srcMesh.Mtls.Verdict == models.MeshDisable {
+		return models.MeshVerdict{Verdict: "deny", Reason: "dst requires STRICT mTLS but src mTLS is disabled"}
 	}
 	return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
 }

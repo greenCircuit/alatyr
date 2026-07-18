@@ -13,9 +13,9 @@ import (
 
 // GetIssues runs every issue detector over the cache and returns the combined
 // findings. Endpoint-facing aggregator.
-func GetIssues(ctx context.Context, data *models.Cache) []models.Issue {
+func GetIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshSource) []models.Issue {
 	var issues []models.Issue
-	policyIssues := PolicyIssues(ctx, data)
+	policyIssues := PolicyIssues(ctx, data, meshSource)
 	dnsIssues := MissingDns(ctx, data)
 	issues = append(issues, policyIssues...)
 	issues = append(issues, dnsIssues...)
@@ -113,13 +113,12 @@ func MissingDns(ctx context.Context, data *models.Cache) []models.Issue {
 
 // PolicyIssues flags policy conflicts: an ALLOW rule whose src→dst path is
 // still blocked once every engine's rules + locks are intersected — one policy
-// permits the edge while another denies or locks it out. Mesh is excluded on
-// purpose; transport-layer blocks are a separate class (MeshConflicts).
-func PolicyIssues(ctx context.Context, data *models.Cache) []models.Issue {
+// permits the edge while another denies or locks it out. Mesh runs in the same
+// pair loop: transport-layer blocks emit as MeshConflicts alongside.
+func PolicyIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshSource) []models.Issue {
 	var issues []models.Issue
 	checkedPolicy := make(map[string]bool) // srcId-dstId already evaluated
-	var noMesh []mesh.MeshSource           // policy-only: skip transport layer
-	prober := newReachabilityProber(data, noMesh)
+	prober := newReachabilityProber(data, nil)
 
 	for _, eval := range data.EvaluationResults {
 		for _, nsRules := range eval.AllowByNs {
@@ -142,6 +141,32 @@ func PolicyIssues(ctx context.Context, data *models.Cache) []models.Issue {
 				dstNode, dstOk := data.WorkloadByID[rule.DstID]
 				if !dstOk {
 					continue
+				}
+
+				// Transport layer: this pair has an allow rule, so a mesh deny is
+				// a conflict. checkedPolicy already dedups pairs — no second map.
+				// Skip ns nodes: membership is per-workload; the zero membership
+				// would false-positive a namespace endpoint as "not in mesh".
+				if meshSource != nil &&
+					srcNode.Type != models.NodeTypeNamespace && dstNode.Type != models.NodeTypeNamespace {
+					meshReach := MeshReachabilityUsingNodes(data, meshSource, srcNode, dstNode)
+					if meshReach.Verdict == "deny" {
+						meshIssue := models.Issue{
+							Type:    models.MeshConflicts,
+							Message: "mesh blocks a permitted path: " + meshReach.Reason,
+							Engine:  meshSource.Name(),
+							Src:     &srcNode,
+							Dst:     &dstNode,
+						}
+						if meshReach.EffectiveSource != nil {
+							meshIssue.IngressCulprits = []models.PolicyRef{{
+								Source:    meshSource.Name(),
+								Name:      meshReach.EffectiveSource.Name,
+								Namespace: meshReach.EffectiveSource.Namespace,
+							}}
+						}
+						issues = append(issues, meshIssue)
+					}
 				}
 
 				verdict := prober.probe(ctx, rule.SrcID, srcNode.Namespace, rule.DstID, dstNode.Namespace)
@@ -199,4 +224,3 @@ func PolicyIssues(ctx context.Context, data *models.Cache) []models.Issue {
 	}
 	return issues
 }
-
