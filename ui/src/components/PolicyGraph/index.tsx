@@ -12,7 +12,8 @@ import cola from 'cytoscape-cola';
 // @ts-ignore
 import fcose from 'cytoscape-fcose';
 import { useGraphStore } from '../../store/graphStore';
-import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, MeshBadgeMeta } from '../../data/policies';
+import { meshBadgeMeta } from '../../data/policies';
 import { buildElements, buildAggregatedElements } from './parts/elements';
 import { edgeEngines } from './parts/bundling';
 import { buildIssueMarks, pairKey, type IssueMark } from './parts/issueMarkers';
@@ -23,6 +24,7 @@ import { SEVERITY_COLOR } from '../../data/policies';
 import s from './PolicyGraph.module.css';
 
 interface EdgeIcon { id: string; engines: string[] }
+interface MeshMark { id: string; meta: MeshBadgeMeta }
 // One rendered issue marker: element id + resolved mark. Node markers pin to
 // the node's top-right corner, edge markers hang below the edge midpoint.
 interface ElementIssueMark extends IssueMark { id: string }
@@ -44,11 +46,13 @@ export default function PolicyGraph() {
   const badgeLayerRef = useRef<HTMLDivElement>(null);
   const [badgeNodes, setBadgeNodes] = useState<BadgeNode[]>([]);
   const [edgeIcons, setEdgeIcons]   = useState<EdgeIcon[]>([]);
+  const [meshMarks, setMeshMarks]   = useState<MeshMark[]>([]);
   const [nodeIssueMarks, setNodeIssueMarks] = useState<ElementIssueMark[]>([]);
   const [edgeIssueMarks, setEdgeIssueMarks] = useState<ElementIssueMark[]>([]);
   const [legendOpen, setLegendOpen] = useState(true);
   const badgeDivRefs        = useRef<Map<string, HTMLDivElement>>(new Map());
   const edgeIconDivRefs     = useRef<Map<string, HTMLDivElement>>(new Map());
+  const meshMarkDivRefs     = useRef<Map<string, HTMLDivElement>>(new Map());
   const nodeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
   const edgeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -85,6 +89,21 @@ export default function PolicyGraph() {
       // which Cytoscape draws centered on the midpoint.
       div.style.left = `${mid.x}px`;
       div.style.top  = `${mid.y - 16}px`;
+    });
+  }, []);
+
+  // Mesh mark: pinned at node's bottom-left. Corners in use elsewhere —
+  // status badges (top-left), issue marks (top-right), leaving bottom for
+  // this. Only rendered for workload-type nodes.
+  const syncMeshMarkPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    meshMarkDivRefs.current.forEach((div, id) => {
+      const cyNode = cy.getElementById(id);
+      if (cyNode.empty()) return;
+      const bb = cyNode.boundingBox({});
+      div.style.left = `${bb.x1 + 2}px`;
+      div.style.top  = `${bb.y2 - 14}px`;
     });
   }, []);
 
@@ -125,10 +144,11 @@ export default function PolicyGraph() {
     allNodes, allEdges,
     filteredNodes, filteredEdges, selectedNamespaces,
     selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces,
-    aggregateByNamespace, showEngineIcons,
+    aggregateByNamespace, showEngineIcons, showMeshOverlay,
     issues,
     selectedStatuses,
     selectedPolicySources, selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     selectedNode,
     setSelectedNode, setSelectedEdges,
     loading, error,
@@ -153,6 +173,24 @@ export default function PolicyGraph() {
 
   // Position icons after they render
   useEffect(() => { syncEdgeIconPositions(); }, [edgeIcons, syncEdgeIconPositions]);
+
+  // Rebuild mesh marks when the overlay toggle flips, meshStatus map updates,
+  // or the graph relayouts (badgeNodes acts as the "layout done" cue). Only
+  // workload nodes get a mark — namespace / external nodes have no membership.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !showMeshOverlay) { setMeshMarks([]); return; }
+    const marks: MeshMark[] = [];
+    cy.nodes('[ntype = "workload"]').forEach((cyNode) => {
+      const id = cyNode.id();
+      marks.push({ id, meta: meshBadgeMeta(meshStatus[id]) });
+    });
+    setMeshMarks(marks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMeshOverlay, meshStatus, badgeNodes]);
+
+  // Position mesh marks after they render
+  useEffect(() => { syncMeshMarkPositions(); }, [meshMarks, syncMeshMarkPositions]);
 
   // Resolve issue marks against the rendered elements whenever issues arrive or
   // the graph is rebuilt (badgeNodes doubles as the "layout done" cue). A pair
@@ -202,6 +240,7 @@ export default function PolicyGraph() {
       edgeIconDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       nodeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       edgeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      meshMarkDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       return;
     }
     const node     = selectedNodeRef.current;
@@ -243,6 +282,9 @@ export default function PolicyGraph() {
     edgeIssueDivRefs.current.forEach((div, id) => {
       div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
     });
+    meshMarkDivRefs.current.forEach((div, id) => {
+      div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -257,7 +299,7 @@ export default function PolicyGraph() {
 
   // Re-apply dim state to overlays when the badge or engine-icon list changes
   // (after layout adds new badges, or the engine-icon toggle flips)
-  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, nodeIssueMarks, edgeIssueMarks, applyDimming]);
+  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, meshMarks, nodeIssueMarks, edgeIssueMarks, applyDimming]);
 
 
   // Mount once: create Cytoscape instance and wire event handlers
@@ -280,7 +322,7 @@ export default function PolicyGraph() {
     let dragRaf: number | null = null;
     cy.on('drag', 'node', () => {
       if (dragRaf !== null) return;
-      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); syncIssueMarkPositions(); });
+      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); syncMeshMarkPositions(); syncIssueMarkPositions(); });
     });
 
     // Workload / namespace node click – open detail panel for whichever node was tapped.
@@ -400,7 +442,7 @@ export default function PolicyGraph() {
   // showEngineIcons intentionally excluded: it's a pure overlay toggle (no
   // element/label change), so it must not trigger a relayout that reshuffles
   // the graph. The edge-icon overlay reacts to it separately below.
-  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
+  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming, selectedMeshFilters, meshStatus]);
 
   return (
     <div className={`position-relative overflow-hidden ${s.canvas}`}>
@@ -477,6 +519,24 @@ export default function PolicyGraph() {
             >
               <span aria-hidden="true">⚠</span>
               {count > 1 && <span>{count}</span>}
+            </div>
+          ))}
+
+          {/* Mesh membership + mtls chip at bottom-left of each workload node,
+              on when the Mesh overlay toggle is active. Solid tier color +
+              short label so the corner tag is scannable at graph zoom. */}
+          {meshMarks.map(({ id, meta }) => (
+            <div
+              key={`mm-${id}`}
+              ref={(el) => {
+                if (el) meshMarkDivRefs.current.set(id, el);
+                else    meshMarkDivRefs.current.delete(id);
+              }}
+              className={`position-absolute ${s.meshMark}`}
+              style={{ background: meta.color }}
+              title={meta.tooltip}
+            >
+              {meta.short}
             </div>
           ))}
         </div>

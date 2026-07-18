@@ -230,6 +230,68 @@ export interface MeshMembership {
   mtls?:     MtlsState;
 }
 
+// Small presentational descriptor shared by graph overlay, workload table,
+// and status-page rollup so all three surfaces speak the same colors +
+// short labels for a workload's mesh state. `providerLabel` is the dataplane
+// context line (e.g. "istio · ambient", "istio · ambient · waypoint" once L7
+// waypoint binding renders). Out-of-mesh nodes have an empty providerLabel.
+export interface MeshBadgeMeta {
+  short:         string; // tight chip label with provider prefix, e.g. "ist:STR"
+  long:          string; // mtls verdict phrase, e.g. "mTLS STRICT"
+  providerLabel: string; // "istio · ambient" (or "" when out of mesh)
+  color:         string; // background/dot color
+  tooltip:       string;
+}
+
+// Short provider prefix for chip labels — 3 chars, fixed table so future
+// providers get a deterministic tag (`lin` for linkerd, `cil` for cilium mesh).
+function providerPrefix(provider: string): string {
+  const key = provider.toLowerCase();
+  if (key === 'istio')    return 'ist';
+  if (key === 'linkerd')  return 'lin';
+  if (key === 'cilium')   return 'cil';
+  return key.slice(0, 3) || 'mesh';
+}
+
+// providerLabel joins the dataplane facts the operator scans in a hover: which
+// provider owns this workload, which dataplane mode is in play, and (future)
+// whether a waypoint is bound so L7 policy actually runs. Kept as a `·`-joined
+// list so a new segment slots in without changing callers.
+function buildProviderLabel(membership: MeshMembership): string {
+  const parts: string[] = [];
+  if (membership.provider) parts.push(membership.provider);
+  if (membership.mode)     parts.push(membership.mode);
+  if (membership.waypoint) parts.push('waypoint');
+  return parts.join(' · ');
+}
+
+export function meshBadgeMeta(membership: MeshMembership | undefined): MeshBadgeMeta {
+  if (!membership || !membership.inMesh) {
+    return {
+      short:         '—',
+      long:          'Out of mesh',
+      providerLabel: '',
+      color:         '#495057',
+      tooltip:       'Not enrolled in the mesh dataplane',
+    };
+  }
+  const prefix        = providerPrefix(membership.provider ?? 'mesh');
+  const providerLabel = buildProviderLabel(membership);
+  const verdict       = membership.mtls?.verdict ?? 'unset';
+  const tooltipPrefix = providerLabel ? `${providerLabel} — ` : '';
+  switch (verdict) {
+    case 'strict':
+      return { short: `${prefix}:STR`,  long: 'mTLS STRICT',     providerLabel, color: SEVERITY_COLOR.secure,  tooltip: `${tooltipPrefix}mTLS strictly required for peer traffic` };
+    case 'permissive':
+      return { short: `${prefix}:PERM`, long: 'mTLS PERMISSIVE', providerLabel, color: SEVERITY_COLOR.warning, tooltip: `${tooltipPrefix}mTLS accepted but plaintext also allowed` };
+    case 'disable':
+      return { short: `${prefix}:DIS`,  long: 'mTLS DISABLE',    providerLabel, color: SEVERITY_COLOR.high,    tooltip: `${tooltipPrefix}mTLS disabled — plaintext only` };
+    case 'unset':
+    default:
+      return { short: `${prefix}:UNS`,  long: 'mTLS UNSET',      providerLabel, color: SEVERITY_COLOR.info,    tooltip: `${tooltipPrefix}No PA in scope; inherits mesh default (PERMISSIVE)` };
+  }
+}
+
 // /api/node-info response. neighbors key = engine name (k8s/istio); Mesh key =
 // mesh source name (currently only "istio"). Issues = cross-cutting interop
 // findings (e.g. ambient pod missing ztunnel allowance).

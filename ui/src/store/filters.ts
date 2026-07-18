@@ -1,4 +1,14 @@
-import type { WorkloadNode, PolicyEdge } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, MeshMembership, MeshScope } from '../data/policies';
+
+// Flat OR-set of mesh membership + mtls verdict tags. Empty set = no mesh
+// filter applied. Node passes when it matches ANY selected tag.
+export type MeshFilterValue =
+  | 'in-mesh'
+  | 'out-of-mesh'
+  | 'mtls-strict'
+  | 'mtls-permissive'
+  | 'mtls-disable'
+  | 'mtls-unset';
 
 export interface FilterState {
   allNodes:                WorkloadNode[];
@@ -8,9 +18,31 @@ export interface FilterState {
   selectedPolicySources:   Set<string>;
   selectedActions:         Set<number>;
   selectedDirections:      Set<string>;
+  selectedMeshFilters:     Set<MeshFilterValue>;
+  meshStatus:              Record<string, MeshMembership>;
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   searchQuery:             string;
+}
+
+function nodeMatchesMeshFilter(
+  node: WorkloadNode,
+  meshStatus: Record<string, MeshMembership>,
+  selected: Set<MeshFilterValue>,
+): boolean {
+  if (selected.size === 0) return true;
+  const membership = meshStatus[node.id];
+  const inMesh = membership?.inMesh ?? false;
+  const verdict: MeshScope = membership?.mtls?.verdict ?? 'unset';
+  for (const tag of selected) {
+    if (tag === 'in-mesh'         && inMesh)                                 return true;
+    if (tag === 'out-of-mesh'     && !inMesh)                                return true;
+    if (tag === 'mtls-strict'     && inMesh && verdict === 'strict')         return true;
+    if (tag === 'mtls-permissive' && inMesh && verdict === 'permissive')     return true;
+    if (tag === 'mtls-disable'    && inMesh && verdict === 'disable')        return true;
+    if (tag === 'mtls-unset'      && inMesh && verdict === 'unset')          return true;
+  }
+  return false;
 }
 
 export function filteredNodes(s: FilterState): WorkloadNode[] {
@@ -20,6 +52,7 @@ export function filteredNodes(s: FilterState): WorkloadNode[] {
     if (!(n.namespace === '' || s.selectedNamespaces.has(n.namespace))) return false;
     if (!s.selectedNodeTypes.has(n.type)) return false;
     if (q !== '' && !n.label.toLowerCase().includes(q) && !n.namespace.toLowerCase().includes(q)) return false;
+    if (!nodeMatchesMeshFilter(n, s.meshStatus, s.selectedMeshFilters)) return false;
     return true;
   });
 
@@ -34,7 +67,10 @@ export function filteredNodes(s: FilterState): WorkloadNode[] {
   }
 
   const extraNodes = s.allNodes.filter(
-    (n) => reachableIds.has(n.id) && !baseIds.has(n.id) && s.selectedNodeTypes.has(n.type)
+    (n) => reachableIds.has(n.id)
+      && !baseIds.has(n.id)
+      && s.selectedNodeTypes.has(n.type)
+      && nodeMatchesMeshFilter(n, s.meshStatus, s.selectedMeshFilters)
   );
 
   return [...baseNodes, ...extraNodes];

@@ -15,6 +15,7 @@ export function DisplayDropdown() {
     aggregateByNamespace, toggleAggregateByNamespace,
     showConnectedNamespaces, toggleConnectedNamespaces,
     showEngineIcons, toggleEngineIcons,
+    showMeshOverlay, toggleMeshOverlay,
   } = useGraphStore();
 
   const [open, setOpen] = useState(false);
@@ -24,7 +25,8 @@ export function DisplayDropdown() {
   const activeCount =
     (aggregateByNamespace ? 1 : 0) +
     (showConnectedNamespaces ? 1 : 0) +
-    (showEngineIcons ? 1 : 0);
+    (showEngineIcons ? 1 : 0) +
+    (showMeshOverlay ? 1 : 0);
 
   const label = activeCount === 0
     ? 'Display'
@@ -87,7 +89,7 @@ export function DisplayDropdown() {
             </label>
           </div>
 
-          <div className="form-check">
+          <div className="form-check mb-1">
             <input
               className="form-check-input"
               type="checkbox"
@@ -98,6 +100,20 @@ export function DisplayDropdown() {
             <label className="form-check-label text-light fs-13" htmlFor="display-engine-icons">
               ☸ Engine icons
               <div className="text-secondary fs-11">Show which policy engine produced each arrow</div>
+            </label>
+          </div>
+
+          <div className="form-check">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="display-mesh-overlay"
+              checked={showMeshOverlay}
+              onChange={toggleMeshOverlay}
+            />
+            <label className="form-check-label text-light fs-13" htmlFor="display-mesh-overlay">
+              ⛨ Mesh overlay
+              <div className="text-secondary fs-11">Color per-workload mesh + mTLS state on the graph</div>
             </label>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, MeshMembership } from '../data/policies';
 
 export interface Graph {
   nodes: WorkloadNode[];
@@ -79,5 +79,18 @@ export function fetchIssues(): Promise<Issue[]> {
   return fetch('/api/issues').then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<Issue[]>;
+  });
+}
+
+export interface MeshStatusResponse {
+  nodes: Record<string, MeshMembership>;
+}
+
+// fetchMeshStatus pulls the cache-wide mesh membership map. Cheap read —
+// backend serves cache.MeshMembership as-is, no compute.
+export function fetchMeshStatus(): Promise<MeshStatusResponse> {
+  return fetch('/api/mesh-status').then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<MeshStatusResponse>;
   });
 }

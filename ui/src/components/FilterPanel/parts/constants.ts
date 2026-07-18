@@ -2,6 +2,7 @@
 // Kept here so dropdown bodies stay focused on form structure.
 
 import type { StatusKey, IssueType, Severity } from '../../../data/policies';
+import type { MeshFilterValue } from '../../../store/filters';
 
 // Single source of truth for issue-type → severity. Drives badge/accent color
 // and danger-first sort across every issue surface (table, popover, rollup,
@@ -75,3 +76,20 @@ export const LAYOUTS = [
 export const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
 
 export const DIRECTION_LABEL: Record<string, string> = { ingress: 'Ingress', egress: 'Egress' };
+
+export const MESH_FILTER_LABEL: Record<MeshFilterValue, string> = {
+  'in-mesh':         'In mesh',
+  'out-of-mesh':     'Out of mesh',
+  'mtls-strict':     'mTLS STRICT',
+  'mtls-permissive': 'mTLS PERMISSIVE',
+  'mtls-disable':    'mTLS DISABLE',
+  'mtls-unset':      'mTLS UNSET (default)',
+};
+
+// Two logical groups in the dropdown — membership on top, mtls verdicts below.
+// Each group is a small OR-set; combined via OR across groups (node matches
+// if any selected tag applies).
+export const MESH_FILTER_GROUPS: { title: string; values: MeshFilterValue[] }[] = [
+  { title: 'Membership', values: ['in-mesh', 'out-of-mesh'] },
+  { title: 'mTLS mode',  values: ['mtls-strict', 'mtls-permissive', 'mtls-disable', 'mtls-unset'] },
+];

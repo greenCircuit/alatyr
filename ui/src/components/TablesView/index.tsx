@@ -38,16 +38,20 @@ export default function TablesView() {
   const showNamespaceEdges      = useGraphStore((s) => s.showNamespaceEdges);
   const showConnectedNamespaces = useGraphStore((s) => s.showConnectedNamespaces);
   const searchQuery             = useGraphStore((s) => s.searchQuery);
+  const selectedMeshFilters     = useGraphStore((s) => s.selectedMeshFilters);
+  const meshStatus              = useGraphStore((s) => s.meshStatus);
 
   const filterState = useMemo(() => ({
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   }), [
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   ]);
 
@@ -147,7 +151,7 @@ export default function TablesView() {
       {tab === 'policies' && <EngineRollup edges={edgesPreEngine} />}
       {tab === 'issues' && <IssueRollup issues={issues} />}
       <div className="flex-grow-1 overflow-auto">
-        {tab === 'workloads' && <WorkloadsTable nodes={tableNodes} edges={edges} nodeIssues={nodeIssuesAll} />}
+        {tab === 'workloads' && <WorkloadsTable nodes={tableNodes} edges={edges} nodeIssues={nodeIssuesAll} meshStatus={meshStatus} />}
         {tab === 'policies'  && <PoliciesTable edges={tableEdges} policyIssues={policyIssuesAll} />}
         {tab === 'issues'    && <IssuesTable issues={tableIssues} />}
       </div>

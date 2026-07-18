@@ -25,6 +25,7 @@ import ProportionBar from './ProportionBar';
 import NamespaceTable from './NamespaceTable';
 import ExposedCallout from './ExposedCallout';
 import RiskyWorkloadsTable from './RiskyWorkloadsTable';
+import MeshRollup from './MeshRollup';
 
 // Statuses overlap per node, so the bar shows each node's WORST severity —
 // a true partition — while the chips below stay per-key. Gray = no signals.
@@ -87,16 +88,21 @@ export default function ClusterStatusView() {
   const setTablesTab            = useGraphStore((s) => s.setTablesTab);
   const selectNamespaceOnly     = useGraphStore((s) => s.selectNamespaceOnly);
   const setSelectedNode         = useGraphStore((s) => s.setSelectedNode);
+  const meshStatus              = useGraphStore((s) => s.meshStatus);
+  const selectedMeshFilters     = useGraphStore((s) => s.selectedMeshFilters);
+  const toggleMeshFilter        = useGraphStore((s) => s.toggleMeshFilter);
 
   const filterState = useMemo(() => ({
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   }), [
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   ]);
 
@@ -198,6 +204,15 @@ export default function ClusterStatusView() {
 
         <Section title="Rule coverage" link="Open in tables →" onLink={openTables('policies')}>
           <CoverageBar stats={coverage} />
+        </Section>
+
+        <Section title="Mesh posture" hint="chip counts click to filter · jump to graph" link="Open in graph →" onLink={() => setView('graph')}>
+          <MeshRollup
+            nodes={nodes}
+            meshStatus={meshStatus}
+            selectedMeshFilters={selectedMeshFilters}
+            onSelect={(value) => { toggleMeshFilter(value); setView('graph'); }}
+          />
         </Section>
 
         <Section title="Node statuses" hint="worst-severity per workload" link="Open in tables →" onLink={openTables('workloads')}>

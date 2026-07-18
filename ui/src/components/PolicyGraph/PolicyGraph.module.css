@@ -28,6 +28,23 @@
     transform: translate(-50%, -50%);
 }
 
+/* Mesh overlay corner chip. Solid tier color + short label (STR/PERM/DIS/UNS/—).
+   Sits at bottom-left of workload node; other corners hold status + issue marks. */
+.meshMark {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 4px;
+    height: 12px;
+    border: 1px solid #0d0f11;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 10px;
+    box-shadow: 0 0 4px #000c;
+}
+
 /* Issue marker chip — ⚠ + optional count on a solid tier-colored pill
    (background set inline). Filled + outlined so it pops against both the dark
    canvas and node fills. Centered on its anchor point (node corner / below

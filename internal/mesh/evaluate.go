@@ -32,6 +32,11 @@ type MeshSource interface {
 	// port-level override first. Two ResolveMtls calls per invocation.
 	CanReach(ctx context.Context, src, dst models.WorkloadNode, srcNsLabels, dstNsLabels map[string]string, port uint32) models.MeshVerdict
 
+	// BuildMeshMembership eagerly resolves MeshMembership for every workload
+	// in the ns index. Root PA fetched once; ns PA fetched once per ns.
+	// Called from store.PopulateCache to stamp cache.MeshMemberships.
+	BuildMeshMembership(nsIndex map[string]models.NSIndex) (map[string]models.MeshMembership, error)
+
 	Name() string
 }
 

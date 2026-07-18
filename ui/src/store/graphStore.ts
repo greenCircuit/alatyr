@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues } from '../api/client';
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType } from '../data/policies';
-import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges } from './filters';
+import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues, fetchMeshStatus } from '../api/client';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType, MeshMembership } from '../data/policies';
+import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges, type MeshFilterValue } from './filters';
 
 export type TablesTab = 'workloads' | 'policies' | 'issues';
+export type { MeshFilterValue };
 
 interface GraphState {
   allNodes:               WorkloadNode[];
@@ -20,10 +21,13 @@ interface GraphState {
   selectedPolicySources:   Set<string>;
   selectedActions:         Set<number>; // 0 = allow, 1 = deny
   selectedDirections:      Set<string>; // 'ingress' | 'egress'
+  selectedMeshFilters:     Set<MeshFilterValue>;
+  meshStatus:              Record<string, MeshMembership>;
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   aggregateByNamespace:    boolean;
   showEngineIcons:         boolean;
+  showMeshOverlay:         boolean;
   selectedNode:            WorkloadNode | null;
   selectedEdges:           PolicyEdge[];
   nodeInfo:                NodeDetail | null;
@@ -61,6 +65,8 @@ interface GraphState {
   loadClusterState:            () => Promise<void>;
   loadGraph:                   () => Promise<void>;
   loadIssues:                  () => Promise<void>;
+  loadMeshStatus:              () => Promise<void>;
+  toggleMeshFilter:            (value: MeshFilterValue) => void;
   setIssuesDrawerOpen:         (open: boolean) => void;
   toggleIssueType:             (type: IssueType) => void;
   loadNodeInfo:                (nodeId: string, namespace: string) => Promise<void>;
@@ -77,6 +83,7 @@ interface GraphState {
   toggleConnectedNamespaces:   () => void;
   toggleAggregateByNamespace:  () => void;
   toggleEngineIcons:           () => void;
+  toggleMeshOverlay:           () => void;
   setSelectedNode:             (node: WorkloadNode | null) => void;
   setSelectedEdges:            (edges: PolicyEdge[]) => void;
   setSearchQuery:              (q: string) => void;
@@ -115,10 +122,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   selectedPolicySources:   new Set<string>(),
   selectedActions:         new Set<number>(ALL_ACTIONS),
   selectedDirections:      new Set<string>(ALL_DIRECTIONS),
+  selectedMeshFilters:     new Set<MeshFilterValue>(),
+  meshStatus:              {},
   showNamespaceEdges:      true,
   showConnectedNamespaces: false,
   aggregateByNamespace:    false,
   showEngineIcons:         false,
+  showMeshOverlay:         false,
   selectedNode:            null,
   selectedEdges:           [],
   nodeInfo:                null,
@@ -183,10 +193,29 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       // Chained here so both initial load and the refresh button trigger it,
       // after the graph fetch resolves — never against stale data.
       get().loadIssues();
+      // Mesh membership map hydrates alongside graph — filter panel + node
+      // decorations depend on it being present shortly after the graph loads.
+      get().loadMeshStatus();
     } catch (e) {
       set({ loading: false, error: String(e) });
     }
   },
+
+  loadMeshStatus: async () => {
+    try {
+      const data = await fetchMeshStatus();
+      set({ meshStatus: data.nodes ?? {} });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  toggleMeshFilter: (value) =>
+    set((state) => {
+      const next = new Set(state.selectedMeshFilters);
+      next.has(value) ? next.delete(value) : next.add(value);
+      return { selectedMeshFilters: next, selectedNode: null, selectedEdges: [] };
+    }),
 
   loadIssues: async () => {
     set({ issuesLoading: true });
@@ -262,6 +291,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   toggleEngineIcons: () =>
     set((s) => ({ showEngineIcons: !s.showEngineIcons })),
+
+  toggleMeshOverlay: () =>
+    set((s) => ({ showMeshOverlay: !s.showMeshOverlay })),
 
   setSelectedNode: (node) => {
     const src = get().reachabilitySource;

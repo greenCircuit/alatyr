@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { filteredNodes, filteredEdges, type FilterState } from './filters';
-import type { WorkloadNode, PolicyEdge } from '../data/policies';
+import { filteredNodes, filteredEdges, type FilterState, type MeshFilterValue } from './filters';
+import type { WorkloadNode, PolicyEdge, MeshMembership } from '../data/policies';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,8 @@ function state(overrides: Partial<FilterState>): FilterState {
     selectedPolicySources: new Set(['k8s', 'istio']),
     selectedActions: new Set([0, 1]),
     selectedDirections: new Set(['ingress', 'egress']),
+    selectedMeshFilters: new Set<MeshFilterValue>(),
+    meshStatus: {},
     showNamespaceEdges: true,
     showConnectedNamespaces: false,
     searchQuery: '',
@@ -205,6 +207,70 @@ describe('filteredNodes', () => {
         showConnectedNamespaces: false,
       }));
       expect(result.map(n => n.id)).not.toContain('b1');
+    });
+  });
+
+  describe('mesh filter', () => {
+    const inMeshStrict: MeshMembership = { inMesh: true, mtls: { verdict: 'strict' } };
+    const inMeshDisable: MeshMembership = { inMesh: true, mtls: { verdict: 'disable' } };
+    const outOfMesh: MeshMembership = { inMesh: false };
+
+    const meshStatus: Record<string, MeshMembership> = {
+      a1: inMeshStrict,
+      a2: inMeshDisable,
+      b1: outOfMesh,
+      // c1 intentionally absent → treated as out-of-mesh
+    };
+
+    it('empty selection passes every node through', () => {
+      const result = filteredNodes(state({
+        allNodes,
+        selectedNamespaces: new Set(['ns-a', 'ns-b', 'ns-c']),
+        meshStatus,
+        selectedMeshFilters: new Set<MeshFilterValue>(),
+      }));
+      expect(result.map(n => n.id).sort()).toEqual(['a1', 'a2', 'b1', 'c1', 'internet']);
+    });
+
+    it('in-mesh keeps only workloads with inMesh=true', () => {
+      const result = filteredNodes(state({
+        allNodes,
+        selectedNamespaces: new Set(['ns-a', 'ns-b', 'ns-c']),
+        meshStatus,
+        selectedMeshFilters: new Set<MeshFilterValue>(['in-mesh']),
+      }));
+      expect(result.map(n => n.id).sort()).toEqual(['a1', 'a2']);
+    });
+
+    it('out-of-mesh keeps missing + inMesh=false nodes', () => {
+      const result = filteredNodes(state({
+        allNodes,
+        selectedNamespaces: new Set(['ns-a', 'ns-b', 'ns-c']),
+        meshStatus,
+        selectedMeshFilters: new Set<MeshFilterValue>(['out-of-mesh']),
+      }));
+      // b1 (explicit false), c1 (missing entry), internet (missing entry)
+      expect(result.map(n => n.id).sort()).toEqual(['b1', 'c1', 'internet']);
+    });
+
+    it('mtls-strict keeps only workloads with strict verdict', () => {
+      const result = filteredNodes(state({
+        allNodes,
+        selectedNamespaces: new Set(['ns-a', 'ns-b', 'ns-c']),
+        meshStatus,
+        selectedMeshFilters: new Set<MeshFilterValue>(['mtls-strict']),
+      }));
+      expect(result.map(n => n.id)).toEqual(['a1']);
+    });
+
+    it('multiple tags OR together', () => {
+      const result = filteredNodes(state({
+        allNodes,
+        selectedNamespaces: new Set(['ns-a', 'ns-b', 'ns-c']),
+        meshStatus,
+        selectedMeshFilters: new Set<MeshFilterValue>(['mtls-strict', 'mtls-disable']),
+      }));
+      expect(result.map(n => n.id).sort()).toEqual(['a1', 'a2']);
     });
   });
 });

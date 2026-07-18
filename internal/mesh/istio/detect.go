@@ -3,7 +3,6 @@ package istio
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"graph/internal/models"
 )
@@ -47,40 +46,12 @@ func (s *source) ResolveMtls(ctx context.Context, workload models.WorkloadNode, 
 // (not enrolled or PA DISABLE). port=0 means workload-level Verdict.
 // TODO(perf): re-resolves both sides — callers that already hold MtlsState
 // pay 2 redundant fetches. Add CanReachFromStates variant.
-func (s *source) CanReach(ctx context.Context, srcWorkload, dstWorkload models.WorkloadNode, srcNsLabels, dstNsLabels map[string]string, port uint32) models.MeshVerdict {
-	srcMtls, srcErr := s.ResolveMtls(ctx, srcWorkload, srcNsLabels)
-	dstMtls, dstErr := s.ResolveMtls(ctx, dstWorkload, dstNsLabels)
-	if srcErr != nil || dstErr != nil || srcMtls == nil || dstMtls == nil {
-		attrs := []slog.Attr{
-			slog.String("phase", "mesh_can_reach"),
-			slog.String("src_id", srcWorkload.ID),
-			slog.String("src_ns", srcWorkload.Namespace),
-			slog.String("dst_id", dstWorkload.ID),
-			slog.String("dst_ns", dstWorkload.Namespace),
-		}
-		if srcErr != nil {
-			attrs = append(attrs, slog.String("src_error", srcErr.Error()))
-		}
-		if dstErr != nil {
-			attrs = append(attrs, slog.String("dst_error", dstErr.Error()))
-		}
-		s.log.LogAttrs(ctx, slog.LevelWarn, "mesh PA resolve failed", attrs...)
-		return models.MeshVerdict{Verdict: "unknown", Reason: "could not resolve PAs"}
+func (s *source) CanReach(ctx context.Context, srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict {
+	if (dstMesh.InMesh && dstMesh.Mtls.Verdict == models.MeshStrict) && (!srcMesh.InMesh) {
+		return models.MeshVerdict{Verdict: "blocked", Reason: "scr is not in mesh"}
 	}
-
-	dstEffective := effectiveMode(dstMtls, port)
-	srcEffective := effectiveMode(srcMtls, 0)
-
-	if dstEffective == models.MeshStrict && srcEffective == models.MeshDisable {
-		v := models.MeshVerdict{
-			Verdict: "deny",
-			Reason:  "dst requires STRICT mTLS; src cannot speak mTLS (not enrolled or PA DISABLE)",
-		}
-		if dstMtls.EffectiveSource.Name != "" {
-			ref := dstMtls.EffectiveSource
-			v.EffectiveSource = &ref
-		}
-		return v
+	if (dstMesh.InMesh && dstMesh.Mtls.Verdict == models.MeshStrict) && (!srcMesh.InMesh && srcMesh.Mtls.Verdict == models.MeshUnset || srcMesh.Mtls.Verdict == models.MeshDisable ) {
+		return models.MeshVerdict{Verdict: "blocked", Reason: "scr is in  mesh but it is disabled"}
 	}
 	return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
 }
