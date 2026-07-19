@@ -112,6 +112,48 @@ func TestCanReach_DstStrictSrcMtlsNil(t *testing.T) {
 	}
 }
 
+// Dst verdict STRICT but portLevelMtls DISABLE on the queried port — the
+// override wins, plaintext src allowed on that port. An unlisted port falls
+// back to the STRICT verdict and still denies.
+func TestCanReach_PortOverrideDisableRelaxesStrict(t *testing.T) {
+	src := models.MeshMembership{InMesh: false}
+	dst := models.MeshMembership{InMesh: true, Mtls: &models.MtlsState{
+		Verdict:       models.MeshStrict,
+		PortOverrides: map[uint32]models.MeshScope{8080: models.MeshDisable},
+	}}
+
+	verdict := canReachSource().CanReach(src, dst, 8080)
+	if verdict.Verdict != "allow" {
+		t.Fatalf("port 8080 DISABLE override under STRICT verdict: want allow, got %q (%s)", verdict.Verdict, verdict.Reason)
+	}
+
+	verdict = canReachSource().CanReach(src, dst, 9090)
+	if verdict.Verdict != "deny" {
+		t.Fatalf("port 9090 has no override, verdict STRICT: want deny, got %q (%s)", verdict.Verdict, verdict.Reason)
+	}
+}
+
+// Dst verdict PERMISSIVE but portLevelMtls STRICT on the queried port — the
+// override tightens, plaintext src denied on that port. port=0 (no port
+// specified) falls back to the PERMISSIVE verdict and allows.
+func TestCanReach_PortOverrideStrictTightensPermissive(t *testing.T) {
+	src := models.MeshMembership{InMesh: false}
+	dst := models.MeshMembership{InMesh: true, Mtls: &models.MtlsState{
+		Verdict:       models.MeshPermissive,
+		PortOverrides: map[uint32]models.MeshScope{8080: models.MeshStrict},
+	}}
+
+	verdict := canReachSource().CanReach(src, dst, 8080)
+	if verdict.Verdict != "deny" {
+		t.Fatalf("port 8080 STRICT override under PERMISSIVE verdict: want deny, got %q (%s)", verdict.Verdict, verdict.Reason)
+	}
+
+	verdict = canReachSource().CanReach(src, dst, 0)
+	if verdict.Verdict != "allow" {
+		t.Fatalf("port 0 (unspecified), verdict PERMISSIVE: want allow, got %q (%s)", verdict.Verdict, verdict.Reason)
+	}
+}
+
 // Both endpoints zero-value MeshMembership (both out of mesh) → allow. The
 // documented "zero decodes as plaintext-src input" contract.
 func TestCanReach_ZeroValueBothSides(t *testing.T) {

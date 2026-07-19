@@ -43,11 +43,22 @@ func (s *source) ResolveMtls(ctx context.Context, workload models.WorkloadNode, 
 }
 
 
-// CanReach denies when dst requires STRICT mTLS and src cannot speak mTLS
+// CanReach denies when dst requires STRICT mTLS on the queried port and src
+// cannot speak mTLS. portLevelMtls override wins over the workload verdict;
+// port=0 means no port specified, verdict alone decides.
 func (s *source) CanReach(srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict {
 	// Mtls is nil until BuildMeshMembership stamps it — treat as not-strict
 	// rather than deref.
-	dstStrict := dstMesh.InMesh && dstMesh.Mtls != nil && dstMesh.Mtls.Verdict == models.MeshStrict
+	dstMode := models.MeshUnset
+	if dstMesh.InMesh && dstMesh.Mtls != nil {
+		dstMode = dstMesh.Mtls.Verdict
+		if port != 0 {
+			if override, ok := dstMesh.Mtls.PortOverrides[port]; ok {
+				dstMode = override
+			}
+		}
+	}
+	dstStrict := dstMode == models.MeshStrict
 	if !dstStrict {
 		return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
 	}
@@ -154,13 +165,19 @@ func ValidateExternalRules(workload models.WorkloadNode, cache *models.Cache, me
 				continue
 			}
 			// HBONE (15008) only applies when the other end is a mesh peer.
-			// External CIDR dsts (0.0.0.0/0) and non-ambient workloads never
+			// External CIDR peers (0.0.0.0/0) and non-ambient workloads never
 			// tunnel, so restricting their ports is correct — don't flag them.
-			dstWorkload, dstNsLabels := cache.Workload(rule.DstID, rule.DstNamespace)
-			if dstWorkload == nil || !participatesInMesh(*dstWorkload, dstNsLabels) {
+			// k8s ingress rules swap: SrcID holds the peer, DstID the
+			// protected workload itself (see k8spolicy/buildRules.go).
+			peerID, peerNamespace := rule.DstID, rule.DstNamespace
+			if rule.Direction == models.DirectionIngress {
+				peerID, peerNamespace = rule.SrcID, rule.SrcNamespace
+			}
+			peerWorkload, peerNsLabels := cache.Workload(peerID, peerNamespace)
+			if peerWorkload == nil || !participatesInMesh(*peerWorkload, peerNsLabels) {
 				continue
 			}
-			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, rule.DstID, rule.Contributor.Name, rule.Contributor.Namespace)
+			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, peerID, rule.Contributor.Name, rule.Contributor.Namespace)
 			if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
 				missingPort := true
 				for _, port := range rule.Ports {

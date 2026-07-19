@@ -58,24 +58,46 @@ func meshCache() *models.Cache {
 					{ID: "dst-root", Namespace: RootNamespace},
 				},
 			},
+			// The protected workload's own ambient ns. A regressed gate that
+			// resolves the peer via DstID on ingress rules lands here (always
+			// in-mesh) and false-flags — keeps the P1#3 swap tests sensitive.
+			"ns-src": {
+				NSNode: &models.WorkloadNode{
+					ID:        "ns-src",
+					Namespace: "ns-src",
+					Type:      models.NodeTypeNamespace,
+					Labels:    ambientLabels,
+				},
+				Workloads: []models.WorkloadNode{
+					{ID: "src-workload", Namespace: "ns-src"},
+				},
+			},
 		},
 	}
 }
 
-// allowRule builds an ALLOW NodeRule with one contributing policy.
-func allowRule(direction models.Direction, dstID string, ports []int) models.NodeRule {
+// allowRule builds an ALLOW NodeRule with one contributing policy. peerID is
+// the far end of the rule: DstID for egress, SrcID for ingress — k8s ingress
+// rules swap, DstID holds the protected workload itself (see
+// k8spolicy/buildRules.go), and these fixtures mirror that prod shape.
+func allowRule(direction models.Direction, peerID string, ports []int) models.NodeRule {
 	rulePorts := make([]models.Port, 0, len(ports))
-	for _, p := range ports {
-		rulePorts = append(rulePorts, models.Port{Port: p, Protocol: "TCP"})
+	for _, port := range ports {
+		rulePorts = append(rulePorts, models.Port{Port: port, Protocol: "TCP"})
 	}
-	return models.NodeRule{
-		Direction:    direction,
-		Action:       models.ActionAllow,
-		Ports:        rulePorts,
-		DstID:        dstID,
-		DstNamespace: testDstNs,
-		Contributor:  models.PolicyRef{Name: "np1", Namespace: "ns-a"},
+	rule := models.NodeRule{
+		Direction:   direction,
+		Action:      models.ActionAllow,
+		Ports:       rulePorts,
+		Contributor: models.PolicyRef{Name: "np1", Namespace: "ns-a"},
 	}
+	if direction == models.DirectionIngress {
+		rule.SrcID, rule.SrcNamespace = peerID, testDstNs
+		rule.DstID, rule.DstNamespace = "src-workload", "ns-src"
+	} else {
+		rule.DstID, rule.DstNamespace = peerID, testDstNs
+	}
+	return rule
 }
 
 func policies(rules ...models.NodeRule) map[string]models.NodeInfo {
@@ -288,31 +310,39 @@ func TestValidateExternalRules_ErrorAttribution(t *testing.T) {
 	}
 }
 
-// Dsts that never tunnel HBONE must not be flagged for missing 15008,
+// Peers that never tunnel HBONE must not be flagged for missing 15008,
 // regardless of direction or restricted ports:
 //   - external CIDR (0.0.0.0/0) — not a workload, leaves the mesh
 //   - in-cluster workload opted out of ambient (dst-plain)
 //   - workload in an unloaded/uncached namespace
-func TestValidateExternalRules_OutOfMeshDstNotFlagged(t *testing.T) {
+//
+// The ingress cases are the P1#3 swap regression: peer sits in SrcID with a
+// non-ambient identity while DstID is the ambient workload itself — a gate
+// resolving DstID for ingress false-flags every one of these.
+func TestValidateExternalRules_OutOfMeshPeerNotFlagged(t *testing.T) {
 	cases := []struct {
 		name      string
 		direction models.Direction
-		dstID     string
-		dstNs     string
+		peerID    string
+		peerNs    string
 	}{
 		{"external CIDR egress", models.DirectionEgress, "0.0.0.0/0", testDstNs},
 		{"external CIDR ingress", models.DirectionIngress, "0.0.0.0/0", testDstNs},
-		{"non-ambient dst egress", models.DirectionEgress, "dst-plain", testDstNs},
-		{"non-ambient dst ingress", models.DirectionIngress, "dst-plain", testDstNs},
-		{"uncached ns dst", models.DirectionEgress, "dst1", "ns-not-loaded"},
+		{"non-ambient peer egress", models.DirectionEgress, "dst-plain", testDstNs},
+		{"non-ambient peer ingress", models.DirectionIngress, "dst-plain", testDstNs},
+		{"uncached ns peer", models.DirectionEgress, "dst1", "ns-not-loaded"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rule := allowRule(tc.direction, tc.dstID, []int{8080})
-			rule.DstNamespace = tc.dstNs
+			rule := allowRule(tc.direction, tc.peerID, []int{8080})
+			if tc.direction == models.DirectionIngress {
+				rule.SrcNamespace = tc.peerNs
+			} else {
+				rule.DstNamespace = tc.peerNs
+			}
 			errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(rule))
 			if len(errors) != 0 {
-				t.Fatalf("out-of-mesh dst must not be flagged, got %v", errors)
+				t.Fatalf("out-of-mesh peer must not be flagged, got %v", errors)
 			}
 		})
 	}

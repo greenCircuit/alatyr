@@ -61,6 +61,7 @@ const(
 	MeshDisable    MeshScope = "disable"
 	MeshStrict 	   MeshScope = "strict"
 	MeshPermissive MeshScope = "permissive"
+	MeshUnknown    MeshScope = "unknown"
 )
 
 type  MeshSource string
@@ -74,14 +75,13 @@ const(
 // overall metrics of mesh so can display then without doing any filtering
 type MeshMetrics struct {
 	NsEnrolled        int32 `json:"nsEnrolled"`
-    NsTotal           int32 `json:"nsTotal"`
     NsPartial         int32 `json:"nsPartial"`
     WorkloadsEnrolled int32 `json:"workloadsEnrolled"`
-    WorkloadsTotal    int32 `json:"workloadsTotal"`
     MtlsStrict        int32 `json:"mtlsStrict"`
     MtlsPermissive    int32 `json:"mtlsPermissive"`
     MtlsDisabled      int32 `json:"mtlsDisabled"`
     MtlsUnset         int32 `json:"mtlsUnset"`
+    MtlsUnknown       int32 `json:"mtlsUnknown"`
 }
 
 type MeshBuildResult struct {

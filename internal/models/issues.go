@@ -10,6 +10,7 @@ const (
 	MeshConflicts    	  IssueType = "mesh conflict"		   // have edge, but node outside mesh want to talk to node is strict mesh
 	NodeLockOut      	  IssueType = "node lockout"		   // no has all egress/ingress deny all policy so it can't really talk to anyone
 	IssuesPartial	 	  IssueType = "partial access"         // no has all egress/ingress deny all policy so it can't really talk to anyone
+	IssuesFailedToFetch   IssueType=  "failed to fetch"         // no has all egress/ingress deny all policy so it can't really talk to anyone
 )
 
 type Issue struct {

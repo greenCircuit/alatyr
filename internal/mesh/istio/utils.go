@@ -69,14 +69,3 @@ func participatesInMesh(workload models.WorkloadNode, nsLabels map[string]string
 	}
 	return inAmbientMesh(workload.Labels, nsLabels)
 }
-
-// effectiveMode returns the per-port override if set, else Verdict.
-// port=0 means no port specified.
-func effectiveMode(state *models.MtlsState, port uint32) models.MeshScope {
-	if port != 0 && state.PortOverrides != nil {
-		if override, ok := state.PortOverrides[port]; ok {
-			return override
-		}
-	}
-	return state.Verdict
-}

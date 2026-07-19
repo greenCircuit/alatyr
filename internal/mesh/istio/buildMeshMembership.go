@@ -8,10 +8,11 @@ import (
 )
 
 // BuildMeshMembership resolves MeshMembership for every workload in the given
-// ns index and tallies cluster-wide MeshMetrics in the same pass. Ambient-
-// enrolled namespaces get InMesh=true plus MtlsState from a single-shot PA
-// precedence walk (root PA fetched once, ns PA once per ns). Non-enrolled
-// namespaces get InMesh=false with no PA fetch.
+// ns index and tallies mesh MeshMetrics in the same pass. Enrollment is
+// per-workload: workload label wins over ns label, root/ingress system
+// workloads always participate (participatesInMesh). PA precedence walk:
+// root PA fetched once, ns PA once per ns. NsTotal/WorkloadsTotal
+// denominators are stamped by the store from cache sizes, not here.
 func (s *source) BuildMeshMembership(nsIndex map[string]models.NSIndex) (models.MeshBuildResult, error) {
 	var meshMetrics models.MeshMetrics
 	var meshIssues []models.Issue
@@ -21,86 +22,89 @@ func (s *source) BuildMeshMembership(nsIndex map[string]models.NSIndex) (models.
 	// misses the mesh-wide fallback, but every workload still gets an
 	// InMesh verdict from its ns/workload PA. UI surfaces the fetch failure
 	// via meshIssues; caller keeps the graph.
-	globalPa, err := s.client.GetPeerAuthentications(RootNamespace)
-	if err != nil {
+	globalPa, globalPaErr := s.client.GetPeerAuthentications(RootNamespace)
+	if globalPaErr != nil {
 		s.log.LogAttrs(context.TODO(), slog.LevelError, "mesh root PA fetch failed",
 			slog.String("phase", "mesh_build_membership"),
 			slog.String("ns", RootNamespace),
-			slog.String("error", err.Error()),
+			slog.String("error", globalPaErr.Error()),
 		)
 		meshIssues = append(meshIssues, models.Issue{
-			Type:    models.MeshMisconfig,
-			Message: "root peer authentications fetch failed for " + RootNamespace + ": " + err.Error(),
+			Type:    models.IssuesFailedToFetch,
+			Message: "root peer authentications fetch failed for " + RootNamespace + ": " + globalPaErr.Error(),
 			Engine:  SourceName,
 		})
 		globalPa = nil
 	}
 
 	for ns, idx := range nsIndex {
-		meshMetrics.NsTotal++
-		nsLabels := idx.NSNode.Labels
-		if nsLabels[AmbientEnrollmentKey] != AmbientEnrollmentValue {
-			for _, node := range idx.Workloads {
-				if node.Type == models.NodeTypeNamespace {
-					continue
-				}
-				meshMetrics.WorkloadsTotal++
-				membership[node.ID] = models.MeshMembership{InMesh: false}
-			}
-			continue
+		// NSNode is nil when the ns object fetch raced a deletion — resolve
+		// enrollment from workload labels alone instead of panicking.
+		var nsLabels map[string]string
+		if idx.NSNode != nil {
+			nsLabels = idx.NSNode.Labels
+		}
+
+		var nsEnrolled bool
+		var nsPartialRecorded bool
+		if nsLabels[AmbientEnrollmentKey] == AmbientEnrollmentValue || ns == RootNamespace || ns == IngressNamespace {
+			meshMetrics.NsEnrolled++
+			nsEnrolled = true
 		}
 
 		// Degrade instead of fail: one flaky ns PA fetch must not tear down
-		// /api/graph for the whole cluster. Workloads in this ns still get
-		// InMesh=true from the ns label, but Mtls stays nil (unknown). UI
-		// surfaces the fetch failure via meshIssues.
-		nsPa, err := s.client.GetPeerAuthentications(ns)
-		if err != nil {
+		// /api/graph for the whole cluster. Enrolled workloads in this ns
+		// still get InMesh=true from labels with an explicit unknown mTLS
+		// verdict. UI surfaces the fetch failure via meshIssues.
+		nsPa, paFetchError := s.client.GetPeerAuthentications(ns)
+		if paFetchError != nil {
 			s.log.LogAttrs(context.TODO(), slog.LevelError, "mesh ns PA fetch failed",
 				slog.String("phase", "mesh_build_membership"),
 				slog.String("ns", ns),
-				slog.String("error", err.Error()),
+				slog.String("error", paFetchError.Error()),
 			)
 			meshIssues = append(meshIssues, models.Issue{
-				Type:    models.MeshMisconfig,
-				Message: "peer authentications fetch failed for " + ns + ": " + err.Error(),
+				Type:    models.IssuesFailedToFetch,
+				Message: "peer authentications fetch failed for " + ns + ": " + paFetchError.Error(),
 				Engine:  SourceName,
 				Node:    idx.NSNode,
 			})
-			for _, node := range idx.Workloads {
-				if node.Type == models.NodeTypeNamespace {
-					continue
-				}
-				meshMetrics.WorkloadsTotal++
-				meshMetrics.WorkloadsEnrolled++
-				membership[node.ID] = models.MeshMembership{
-					InMesh:   true,
-					Provider: SourceName,
-					Mode:     "ambient",
-					Mtls:     nil,
-				}
-			}
-			meshMetrics.NsEnrolled++
-			continue
 		}
-		meshMetrics.NsEnrolled++
 
-		// Track per-ns enrollment split so we can flag partial enrollment
-		// (workload label overrides ns label — some workloads may opt out).
-		var enrolledInNs, optedOutInNs int
 		for _, node := range idx.Workloads {
 			if node.Type == models.NodeTypeNamespace {
 				continue
 			}
-			meshMetrics.WorkloadsTotal++
 
-			if !inAmbientMesh(node.Labels, nsLabels) {
-				optedOutInNs++
+			// Workload label wins over ns label: explicit skip opts out of an
+			// enrolled ns, explicit ambient opts into a non-enrolled ns.
+			optedOut := node.Labels[AmbientEnrollmentKey] == AmbientSkipValue
+			enrolled := !optedOut &&
+				(nsEnrolled || node.Labels[AmbientEnrollmentKey] == AmbientEnrollmentValue)
+			if !enrolled {
+				if optedOut && nsEnrolled && !nsPartialRecorded {
+					meshMetrics.NsPartial++
+					nsPartialRecorded = true
+				}
 				membership[node.ID] = models.MeshMembership{InMesh: false}
 				continue
 			}
-			enrolledInNs++
 			meshMetrics.WorkloadsEnrolled++
+
+			// Membership is known from labels even when a PA fetch failed;
+			// the verdict is not — explicit unknown, never invented. Root
+			// failure blanks all verdicts (shared RBAC — ns fetches fail with
+			// it in practice); nil Mtls stays reserved for "not populated".
+			if paFetchError != nil || globalPaErr != nil {
+				meshMetrics.MtlsUnknown++
+				membership[node.ID] = models.MeshMembership{
+					InMesh:   true,
+					Provider: SourceName,
+					Mode:     "ambient",
+					Mtls:     &models.MtlsState{Verdict: models.MeshUnknown},
+				}
+				continue
+			}
 
 			mtls := resolveMtls(node, nsPa, globalPa)
 			if mtls != nil {
@@ -115,8 +119,7 @@ func (s *source) BuildMeshMembership(nsIndex map[string]models.NSIndex) (models.
 					meshMetrics.MtlsUnset++
 				}
 				// Promote per-workload PA hygiene warnings to cluster-wide
-				// Issue rows so /api/issues surfaces them alongside policy
-				// conflicts. Node pointer copied so appending the loop var
+				// Issue rows. Node pointer copied so appending the loop var
 				// address doesn't smear across iterations.
 				if len(mtls.Issues) > 0 {
 					workloadCopy := node
@@ -136,9 +139,6 @@ func (s *source) BuildMeshMembership(nsIndex map[string]models.NSIndex) (models.
 				Mode:     "ambient",
 				Mtls:     mtls,
 			}
-		}
-		if enrolledInNs > 0 && optedOutInNs > 0 {
-			meshMetrics.NsPartial++
 		}
 	}
 

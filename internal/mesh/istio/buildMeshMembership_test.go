@@ -66,9 +66,9 @@ func plainNs(nsName string, workloads ...models.WorkloadNode) models.NSIndex {
 	}
 }
 
-// Non-enrolled ns: every workload gets InMesh=false, NO ns PA fetch happens
-// (only root PA fetched). Guards the fast-path skip.
-func TestBuildMeshMembership_NonEnrolledNsSkipsPaFetch(t *testing.T) {
+// Non-enrolled ns: every workload gets a bare InMesh=false membership (no
+// provider, no Mtls — nothing invented for workloads outside the mesh).
+func TestBuildMeshMembership_NonEnrolledNs(t *testing.T) {
 	client := &fakePAClient{
 		paByNs: map[string][]*istiosec.PeerAuthentication{RootNamespace: nil},
 	}
@@ -84,9 +84,6 @@ func TestBuildMeshMembership_NonEnrolledNsSkipsPaFetch(t *testing.T) {
 		t.Fatalf("unexpected err: %v", err)
 	}
 
-	if client.callsByNs["ns-plain"] != 0 {
-		t.Errorf("non-enrolled ns PA fetched %d times; want 0", client.callsByNs["ns-plain"])
-	}
 	if client.callsByNs[RootNamespace] != 1 {
 		t.Errorf("root PA fetches: want 1, got %d", client.callsByNs[RootNamespace])
 	}
@@ -96,25 +93,23 @@ func TestBuildMeshMembership_NonEnrolledNsSkipsPaFetch(t *testing.T) {
 			t.Errorf("%s missing from memberships", id)
 			continue
 		}
-		if m.InMesh {
-			t.Errorf("%s: InMesh=true, want false", id)
+		if m.InMesh || m.Provider != "" || m.Mtls != nil {
+			t.Errorf("%s: want bare InMesh=false membership, got %+v", id, m)
 		}
-	}
-	if result.Metrics.WorkloadsTotal != 2 {
-		t.Errorf("WorkloadsTotal: want 2, got %d", result.Metrics.WorkloadsTotal)
 	}
 	if result.Metrics.WorkloadsEnrolled != 0 {
 		t.Errorf("WorkloadsEnrolled: want 0, got %d", result.Metrics.WorkloadsEnrolled)
 	}
-	if result.Metrics.NsEnrolled != 0 || result.Metrics.NsTotal != 1 {
-		t.Errorf("Ns metrics: want NsTotal=1 NsEnrolled=0, got total=%d enrolled=%d",
-			result.Metrics.NsTotal, result.Metrics.NsEnrolled)
+	if result.Metrics.NsEnrolled != 0 {
+		t.Errorf("NsEnrolled: want 0, got %d", result.Metrics.NsEnrolled)
 	}
 }
 
 // Root PA fetch error degrades: no error returned, mesh build continues,
-// membership still computed from ns/workload PAs, failure surfaces as a
-// MeshMisconfig issue. Prevents "one flaky RBAC row tears down /api/graph".
+// membership still resolves from labels, but every enrolled workload's mTLS
+// verdict goes explicit-unknown (root fallback unavailable → any resolved
+// verdict could lie). Failure surfaces as an IssuesFailedToFetch issue.
+// Prevents "one flaky RBAC row tears down /api/graph".
 func TestBuildMeshMembership_RootPaErrorDegrades(t *testing.T) {
 	sentinel := errors.New("root boom")
 	client := &fakePAClient{
@@ -140,22 +135,29 @@ func TestBuildMeshMembership_RootPaErrorDegrades(t *testing.T) {
 	if !m.InMesh {
 		t.Errorf("wl1 should still be InMesh from ns label, got %+v", m)
 	}
-	// One MeshMisconfig issue must attribute the fetch error to the source.
+	if m.Mtls == nil || m.Mtls.Verdict != models.MeshUnknown {
+		t.Errorf("wl1 verdict must be explicit unknown under root failure, got %+v", m.Mtls)
+	}
+	if result.Metrics.MtlsUnknown != 1 {
+		t.Errorf("MtlsUnknown: want 1, got %d", result.Metrics.MtlsUnknown)
+	}
 	var found bool
 	for _, issue := range result.Issues {
-		if issue.Type == models.MeshMisconfig && issue.Engine == SourceName &&
+		if issue.Type == models.IssuesFailedToFetch && issue.Engine == SourceName &&
 			containsSubstring(issue.Message, "root boom") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("root PA failure should surface as MeshMisconfig issue with error text, got %+v", result.Issues)
+		t.Errorf("root PA failure should surface as IssuesFailedToFetch issue with error text, got %+v", result.Issues)
 	}
 }
 
 // Per-ns PA fetch error degrades: no error returned, other namespaces still
-// resolve, workloads in the failed ns are still marked InMesh (from ns label)
-// but with Mtls=nil (unknown). Failure surfaces as a MeshMisconfig issue.
+// resolve, enrolled workloads in the failed ns are still marked InMesh (from
+// labels) with an explicit unknown mTLS verdict — and opted-out workloads
+// stay InMesh=false, not blanket-stamped true. Failure surfaces as an
+// IssuesFailedToFetch issue naming the ns.
 func TestBuildMeshMembership_NsPaErrorDegrades(t *testing.T) {
 	sentinel := errors.New("ns boom")
 	strictPA := makePA("ns-strict", "ns-good", istioapi.PeerAuthentication_MutualTLS_STRICT, nil, time.Unix(100, 0))
@@ -164,7 +166,11 @@ func TestBuildMeshMembership_NsPaErrorDegrades(t *testing.T) {
 		errByNs: map[string]error{"ns-bad": sentinel},
 	}
 	idx := map[string]models.NSIndex{
-		"ns-bad":  ambientNs("ns-bad", models.WorkloadNode{ID: "wl-bad", Namespace: "ns-bad"}),
+		"ns-bad": ambientNs("ns-bad",
+			models.WorkloadNode{ID: "wl-bad", Namespace: "ns-bad"},
+			models.WorkloadNode{ID: "wl-bad-out", Namespace: "ns-bad",
+				Labels: map[string]string{AmbientEnrollmentKey: AmbientSkipValue}},
+		),
 		"ns-good": ambientNs("ns-good", models.WorkloadNode{ID: "wl-good", Namespace: "ns-good"}),
 	}
 
@@ -177,7 +183,7 @@ func TestBuildMeshMembership_NsPaErrorDegrades(t *testing.T) {
 	if !good.InMesh || good.Mtls == nil || good.Mtls.Verdict != models.MeshStrict {
 		t.Errorf("healthy ns must resolve normally, got %+v (mtls=%+v)", good, good.Mtls)
 	}
-	// The failing ns still marks workloads InMesh (from ns label) but Mtls unknown.
+	// The failing ns still marks enrolled workloads InMesh, verdict unknown.
 	bad, ok := result.Memberships["wl-bad"]
 	if !ok {
 		t.Fatalf("wl-bad missing from memberships despite degrade")
@@ -185,18 +191,29 @@ func TestBuildMeshMembership_NsPaErrorDegrades(t *testing.T) {
 	if !bad.InMesh {
 		t.Errorf("wl-bad should still be InMesh from ns label, got %+v", bad)
 	}
-	if bad.Mtls != nil {
-		t.Errorf("wl-bad Mtls should be nil (unknown), got %+v", bad.Mtls)
+	if bad.Mtls == nil || bad.Mtls.Verdict != models.MeshUnknown {
+		t.Errorf("wl-bad verdict must be explicit unknown, got %+v", bad.Mtls)
+	}
+	// Only the failing ns's enrolled workload counts unknown; the healthy
+	// ns keeps its strict bucket. unknown + strict == enrolled.
+	if result.Metrics.MtlsUnknown != 1 || result.Metrics.MtlsStrict != 1 {
+		t.Errorf("mtls buckets: want unknown=1 strict=1, got unknown=%d strict=%d",
+			result.Metrics.MtlsUnknown, result.Metrics.MtlsStrict)
+	}
+	// Opt-out label still wins during the degrade path.
+	if result.Memberships["wl-bad-out"].InMesh {
+		t.Errorf("wl-bad-out opted out; degrade path must not stamp it InMesh, got %+v",
+			result.Memberships["wl-bad-out"])
 	}
 	var found bool
 	for _, issue := range result.Issues {
-		if issue.Type == models.MeshMisconfig && issue.Engine == SourceName &&
+		if issue.Type == models.IssuesFailedToFetch && issue.Engine == SourceName &&
 			containsSubstring(issue.Message, "ns boom") && containsSubstring(issue.Message, "ns-bad") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("ns PA failure should surface as MeshMisconfig issue naming the ns, got %+v", result.Issues)
+		t.Errorf("ns PA failure should surface as IssuesFailedToFetch issue naming the ns, got %+v", result.Issues)
 	}
 }
 
@@ -249,8 +266,10 @@ func TestBuildMeshMembership_EnrolledNsStrict(t *testing.T) {
 	}
 }
 
-// Workload label overrides ns label. Ambient ns + opted-out workload =
-// InMesh=false for that workload, plus NsPartial bumped.
+// Workload label overrides ns label. Ambient ns + opted-out workloads =
+// InMesh=false with nil Mtls for those workloads, NsPartial bumped exactly
+// once per ns regardless of how many opt out. nil PA lists throughout also
+// guard the resolveMtls-returns-nil path against panics.
 func TestBuildMeshMembership_WorkloadLabelOverridesNs(t *testing.T) {
 	client := &fakePAClient{
 		paByNs: map[string][]*istiosec.PeerAuthentication{
@@ -263,6 +282,8 @@ func TestBuildMeshMembership_WorkloadLabelOverridesNs(t *testing.T) {
 			models.WorkloadNode{ID: "wl-in", Namespace: "ns-a"},
 			models.WorkloadNode{ID: "wl-out", Namespace: "ns-a",
 				Labels: map[string]string{AmbientEnrollmentKey: AmbientSkipValue}},
+			models.WorkloadNode{ID: "wl-out2", Namespace: "ns-a",
+				Labels: map[string]string{AmbientEnrollmentKey: AmbientSkipValue}},
 		),
 	}
 
@@ -273,18 +294,17 @@ func TestBuildMeshMembership_WorkloadLabelOverridesNs(t *testing.T) {
 	if !result.Memberships["wl-in"].InMesh {
 		t.Errorf("wl-in should be in mesh")
 	}
-	if result.Memberships["wl-out"].InMesh {
-		t.Errorf("wl-out label opt-out ignored: %+v", result.Memberships["wl-out"])
+	for _, id := range []string{"wl-out", "wl-out2"} {
+		m := result.Memberships[id]
+		if m.InMesh || m.Mtls != nil {
+			t.Errorf("%s label opt-out ignored: %+v", id, m)
+		}
 	}
 	if result.Metrics.NsPartial != 1 {
-		t.Errorf("NsPartial: want 1 (mixed enrollment), got %d", result.Metrics.NsPartial)
+		t.Errorf("NsPartial: want 1 (counted once per ns, not per workload), got %d", result.Metrics.NsPartial)
 	}
 	if result.Metrics.WorkloadsEnrolled != 1 {
 		t.Errorf("WorkloadsEnrolled: want 1, got %d", result.Metrics.WorkloadsEnrolled)
-	}
-	// Total counts opted-out workloads too — they still consume a slot.
-	if result.Metrics.WorkloadsTotal != 2 {
-		t.Errorf("WorkloadsTotal: want 2, got %d", result.Metrics.WorkloadsTotal)
 	}
 }
 
@@ -314,8 +334,8 @@ func TestBuildMeshMembership_NsNodeSkipped(t *testing.T) {
 	if _, ok := result.Memberships["ns/ns-a"]; ok {
 		t.Errorf("ns node leaked into memberships map")
 	}
-	if result.Metrics.WorkloadsTotal != 1 {
-		t.Errorf("WorkloadsTotal: want 1 (ns node skipped), got %d", result.Metrics.WorkloadsTotal)
+	if result.Metrics.WorkloadsEnrolled != 1 {
+		t.Errorf("WorkloadsEnrolled: want 1 (ns node skipped), got %d", result.Metrics.WorkloadsEnrolled)
 	}
 }
 
@@ -355,6 +375,103 @@ func TestBuildMeshMembership_MtlsIssuesSurfaceAsMeshIssues(t *testing.T) {
 	}
 }
 
+// Per-workload enrollment — regression test for the review finding "workload
+// opt-in on non-ambient ns silently dropped". A workload carrying the ambient
+// label in an unlabeled ns must get full membership including the PA
+// precedence walk (root PA verdict must land on it), while its unlabeled
+// neighbor stays out. Root/ingress system namespaces participate without any
+// label — ztunnel/gateway always speak HBONE.
+func TestBuildMeshMembership_PerWorkloadEnrollment(t *testing.T) {
+	rootStrict := makePA("mesh-default", RootNamespace, istioapi.PeerAuthentication_MutualTLS_STRICT, nil, time.Unix(100, 0))
+	client := &fakePAClient{
+		paByNs: map[string][]*istiosec.PeerAuthentication{
+			RootNamespace: {rootStrict},
+		},
+	}
+	idx := map[string]models.NSIndex{
+		"ns-plain": plainNs("ns-plain",
+			models.WorkloadNode{ID: "wl-optin", Namespace: "ns-plain",
+				Labels: map[string]string{AmbientEnrollmentKey: AmbientEnrollmentValue}},
+			models.WorkloadNode{ID: "wl-plain", Namespace: "ns-plain"},
+		),
+		RootNamespace:    plainNs(RootNamespace, models.WorkloadNode{ID: "wl-ztunnel", Namespace: RootNamespace}),
+		IngressNamespace: plainNs(IngressNamespace, models.WorkloadNode{ID: "wl-gw", Namespace: IngressNamespace}),
+	}
+
+	result, err := buildSource(client).BuildMeshMembership(idx)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	// The review-finding case: opt-in label in an unlabeled ns. Graph and
+	// detail panel must agree — full membership, PA walk included.
+	optin := result.Memberships["wl-optin"]
+	if !optin.InMesh || optin.Provider != SourceName || optin.Mode != "ambient" {
+		t.Errorf("wl-optin: workload label must win over unlabeled ns, got %+v", optin)
+	}
+	if optin.Mtls == nil || optin.Mtls.Verdict != models.MeshStrict {
+		t.Errorf("wl-optin: root PA precedence walk must run for opt-in workload, got %+v", optin.Mtls)
+	}
+	// Unlabeled neighbor in the same ns stays out.
+	if result.Memberships["wl-plain"].InMesh {
+		t.Errorf("wl-plain: unlabeled workload in unlabeled ns must stay out, got %+v",
+			result.Memberships["wl-plain"])
+	}
+	// System namespaces participate without labels.
+	for _, id := range []string{"wl-ztunnel", "wl-gw"} {
+		if !result.Memberships[id].InMesh {
+			t.Errorf("%s: root/ingress workloads always participate, got %+v", id, result.Memberships[id])
+		}
+	}
+	if result.Metrics.WorkloadsEnrolled != 3 {
+		t.Errorf("WorkloadsEnrolled: want 3 (optin + ztunnel + gw), got %d", result.Metrics.WorkloadsEnrolled)
+	}
+	if result.Metrics.NsEnrolled != 2 {
+		t.Errorf("NsEnrolled: want 2 (root + ingress only), got %d", result.Metrics.NsEnrolled)
+	}
+}
+
+// Real ambient system-ns names. A typo'd constant (P0#2: "istio ingress",
+// space for hyphen) passes every constant-vs-constant test while missing
+// real clusters — literals here pin the contract.
+func TestSystemNamespaceConstants(t *testing.T) {
+	if RootNamespace != "istio-system" {
+		t.Errorf("RootNamespace: want istio-system, got %q", RootNamespace)
+	}
+	if IngressNamespace != "istio-ingress" {
+		t.Errorf("IngressNamespace: want istio-ingress, got %q", IngressNamespace)
+	}
+}
+
+// NSNode can be nil when the ns object fetch raced a deletion. Must not
+// panic; enrollment resolves from workload labels alone.
+func TestBuildMeshMembership_NilNSNode(t *testing.T) {
+	client := &fakePAClient{
+		paByNs: map[string][]*istiosec.PeerAuthentication{RootNamespace: nil},
+	}
+	idx := map[string]models.NSIndex{
+		"ns-gone": {
+			Workloads: []models.WorkloadNode{
+				{ID: "wl-optin", Namespace: "ns-gone",
+					Labels: map[string]string{AmbientEnrollmentKey: AmbientEnrollmentValue}},
+				{ID: "wl-plain", Namespace: "ns-gone"},
+			},
+		},
+	}
+
+	result, err := buildSource(client).BuildMeshMembership(idx)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !result.Memberships["wl-optin"].InMesh {
+		t.Errorf("wl-optin: workload label must still enroll under nil NSNode, got %+v",
+			result.Memberships["wl-optin"])
+	}
+	if result.Memberships["wl-plain"].InMesh {
+		t.Errorf("wl-plain: want InMesh=false, got %+v", result.Memberships["wl-plain"])
+	}
+}
+
 // Mixed cluster: enrolled + non-enrolled ns + mixed mTLS verdicts. Metrics
 // aggregate across the whole pass without cross-ns contamination.
 func TestBuildMeshMembership_MetricsAggregateAcrossNs(t *testing.T) {
@@ -377,14 +494,8 @@ func TestBuildMeshMembership_MetricsAggregateAcrossNs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if result.Metrics.NsTotal != 3 {
-		t.Errorf("NsTotal: want 3, got %d", result.Metrics.NsTotal)
-	}
 	if result.Metrics.NsEnrolled != 2 {
 		t.Errorf("NsEnrolled: want 2, got %d", result.Metrics.NsEnrolled)
-	}
-	if result.Metrics.WorkloadsTotal != 3 {
-		t.Errorf("WorkloadsTotal: want 3, got %d", result.Metrics.WorkloadsTotal)
 	}
 	if result.Metrics.WorkloadsEnrolled != 2 {
 		t.Errorf("WorkloadsEnrolled: want 2, got %d", result.Metrics.WorkloadsEnrolled)
