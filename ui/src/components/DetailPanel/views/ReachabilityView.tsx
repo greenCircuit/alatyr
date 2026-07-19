@@ -24,7 +24,9 @@ import { PolicyRefList, RuleGroupList } from '../shared/rows';
 import { RolePill, LabelStrip, EngineBadge, ActionIcon } from '../shared/badges';
 import { EndpointCard } from '../shared/edge-composites';
 import { ManifestButton } from '../shared/ManifestModal';
-import { MTLS_VERDICT_COLOR, REASON_META, CHIP_STATE } from '../shared/presentation';
+import { REASON_META, CHIP_STATE } from '../shared/presentation';
+import { MtlsChip } from '../shared/MtlsChip';
+import type { MtlsScope } from '../../../data/policies';
 import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
 // ── Tier 0 ──────────────────────────────────────────────────────────────────
@@ -343,12 +345,7 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
             {inMesh ? 'in mesh' : 'not in mesh'}
           </span>
           {verdict && (
-            <span
-              className={s.verdictChip}
-              style={{ background: MTLS_VERDICT_COLOR[verdict] ?? '#6c757d' }}
-            >
-              mTLS: {verdict}
-            </span>
+            <MtlsChip scope={verdict as MtlsScope} label={`mTLS: ${verdict}`} />
           )}
         </div>
       </div>

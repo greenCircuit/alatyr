@@ -3,12 +3,13 @@ package models
 type IssueType string
 
 const (
-	NoDNSEgress 	 IssueType = "no dns"
-	MeshMisconfig    IssueType = "mesh policy"			// multiple peear auth, missing ports for ingress egress
-	PolicyConflicts  IssueType = "policy conflict"		// multiple polices one allow other deny
-	MeshConflicts    IssueType = "mesh conflict"		// have edge, but node outside mesh want to talk to node is strict mesh 
-	NodeLockOut      IssueType = "node lockout"		    // no has all egress/ingress deny all policy so it can't really talk to anyone
-	IssuesPartial	 IssueType = "partial access"       // no has all egress/ingress deny all policy so it can't really talk to anyone
+	NoDNSEgress 	 	  IssueType = "no dns"
+	MeshMisconfig    	  IssueType = "mesh policy"			   // PA duplicates, root-selector-ignored, unset fallbacks
+	MeshTransportBlocked  IssueType = "mesh transport blocked" // L3 policy strips a port the mesh dataplane needs (HBONE 15008, future sidecar ports)
+	PolicyConflicts  	  IssueType = "policy conflict"		   // multiple polices one allow other deny
+	MeshConflicts    	  IssueType = "mesh conflict"		   // have edge, but node outside mesh want to talk to node is strict mesh
+	NodeLockOut      	  IssueType = "node lockout"		   // no has all egress/ingress deny all policy so it can't really talk to anyone
+	IssuesPartial	 	  IssueType = "partial access"         // no has all egress/ingress deny all policy so it can't really talk to anyone
 )
 
 type Issue struct {

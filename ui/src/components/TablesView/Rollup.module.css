@@ -24,3 +24,65 @@
     padding: 2px 4px;
     border-radius: 3px;
 }
+
+/* Aligned-grid variant — used on the status page inside a card. Long status
+ * keys have different label widths (`ns-ingress-access` vs `air-gapped`),
+ * so a chip-wrap layout makes counts jitter across rows. This lays each
+ * entry into a fixed 3-track row (symbol + label | count) inside a
+ * responsive grid so the count column is tabular and scannable.
+ */
+/* Status-page rollup — flex-wrap grid, 3 items per row. Each row uses the
+ * shared `.chip` styling from this module so status keys and mesh scope
+ * chips look identical to IssueRollup / EngineRollup — one chip language
+ * across the whole page. Layout ONLY here: flex-basis carves 3 columns,
+ * `.chip` (or `.chip + .active/.dimmed`) styles the button surface.
+ */
+.gridRollup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+}
+
+.gridSlot {
+    flex: 0 0 calc(33.333% - 4px);
+    min-width: 0;
+    display: flex;
+}
+
+.gridSlot > * {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+}
+
+/* Pill variant — fully rounded, tighter padding, used for scope filters on
+ * the status page. Color/border set inline from bucket state.
+ */
+.chipPill {
+    border-radius: 100px;
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: opacity 120ms ease;
+}
+.chipPill:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Flat variant — informational breakdown, NOT a filter affordance.
+ * No border, no hover, muted bg. Encodes "read-only" in the chip so the
+ * reader sees at-a-glance which chips act and which merely inform.
+ */
+.chipFlat {
+    background: #1a1f26;
+    color: #c8ced4;
+    font-size: 12px;
+    line-height: 1;
+    border: 0;
+    cursor: default;
+}
+.chipFlat:hover  { background: #1a1f26; }
+.chipFlat:active { background: #1a1f26; }

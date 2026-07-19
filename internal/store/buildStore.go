@@ -182,11 +182,33 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 			)
 			return fmt.Errorf("mesh %s: %w", b.meshSource.Name(), err)
 		}
-		cache.MeshMembership = result
+		cache.MeshMembership = result.Memberships
+		cache.MeshMetrics = result.Metrics
+		cache.MeshIssues = result.Issues
+
+		// Transport-layer hygiene: per enrolled workload, check whether other
+		// engines' rules restrict ports without allowing HBONE (15008). Runs
+		// after engine evaluation and mesh membership are both populated so
+		// GetNodeData + ambient membership are ready.
+		for nodeID, membership := range cache.MeshMembership {
+			if !membership.InMesh {
+				continue
+			}
+			workload, ok := cache.WorkloadByID[nodeID]
+			if !ok {
+				continue
+			}
+			policies := GetNodeData(cache, nodeID, workload.Namespace)
+			cache.MeshIssues = append(cache.MeshIssues,
+				meshistio.ValidateExternalRules(workload, cache, &membership, policies)...)
+		}
+
 		b.log.Debug("mesh populate done",
 			slog.String("phase", "mesh_populate"),
 			slog.String("provider", b.meshSource.Name()),
-			slog.Int("node_count", len(result)),
+			slog.Int("node_count", len(result.Memberships)),
+			slog.Int("issue_count", len(cache.MeshIssues)),
+			slog.Any("metrics", result.Metrics),
 			slog.Int64("duration_ms", time.Since(meshStart).Milliseconds()),
 		)
 	}

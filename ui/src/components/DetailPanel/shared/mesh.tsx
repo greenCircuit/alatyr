@@ -3,11 +3,11 @@
 // reachability pane has its own slimmer mesh card (in reachability.tsx) so
 // these components stay tuned to the detail-panel layout.
 
-import type { MeshMembership, MtlsState, MtlsSource } from '../../../data/policies';
+import type { MeshMembership, MtlsScope, MtlsState, MtlsSource } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
-import { MTLS_VERDICT_COLOR } from './presentation';
 import { ManifestButton } from './ManifestModal';
 import { EngineBadge } from './badges';
+import { MtlsChip } from './MtlsChip';
 
 function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boolean }) {
   const scope = src.meshScope;
@@ -17,9 +17,7 @@ function MtlsSourceRow({ src, isEffective }: { src: MtlsSource; isEffective: boo
         <div className={`${s.section} text-break`}>{src.namespace}/{src.name}</div>
         <div className="d-flex gap-1 flex-shrink-0 align-items-center">
           {isEffective && <span className={`${s.miniChip} ${s.miniChipAllow}`}>effective</span>}
-          <span className={s.verdictChip} style={{ background: MTLS_VERDICT_COLOR[scope] ?? '#7a848e' }}>
-            {scope}
-          </span>
+          <MtlsChip scope={scope as MtlsScope} />
           <span className={s.typeChip}>{src.meshSource}</span>
           <ManifestButton kind="pa" namespace={src.namespace} name={src.name} />
         </div>
@@ -44,12 +42,7 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
     <div className="d-flex flex-column gap-2">
       <div className="d-flex align-items-center gap-2">
         <span className={s.eyebrow}>Verdict</span>
-        <span
-          className={s.verdictChip}
-          style={{ background: MTLS_VERDICT_COLOR[mtls.verdict] ?? '#7a848e' }}
-        >
-          {mtls.verdict}
-        </span>
+        <MtlsChip scope={mtls.verdict as MtlsScope} />
       </div>
       {hasEffective && mtls.effectiveSource && (
         <div className={`${s.dim} ${s.smallText} ${s.mono}`}>
@@ -61,23 +54,9 @@ function MtlsBlock({ mtls }: { mtls: MtlsState }) {
           <div className={s.eyebrow}>Port overrides</div>
           <div className="d-flex flex-wrap gap-1">
             {Object.entries(mtls.portOverrides).map(([port, mode]) => (
-              <span
-                key={port}
-                className={s.verdictChip}
-                style={{ background: MTLS_VERDICT_COLOR[mode] ?? '#7a848e' }}
-              >
-                {port}: {mode}
-              </span>
+              <MtlsChip key={port} scope={mode as MtlsScope} label={`${port}: ${mode}`} />
             ))}
           </div>
-        </div>
-      )}
-      {mtls.issues && mtls.issues.length > 0 && (
-        <div className={s.semanticWarn}>
-          <div className={`${s.eyebrow} ${s.eyebrowWarn}`}>mTLS issues</div>
-          <ul className={`ps-3 mb-0 ${s.body}`}>
-            {mtls.issues.map((issue, i) => <li key={i}>{issue}</li>)}
-          </ul>
         </div>
       )}
       {mtls.sources && mtls.sources.length > 0 && (

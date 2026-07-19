@@ -33,9 +33,10 @@ type MeshSource interface {
 	CanReach(srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict
 
 	// BuildMeshMembership eagerly resolves MeshMembership for every workload
-	// in the ns index. Root PA fetched once; ns PA fetched once per ns.
-	// Called from store.PopulateCache to stamp cache.MeshMemberships.
-	BuildMeshMembership(nsIndex map[string]models.NSIndex) (map[string]models.MeshMembership, error)
+	// in the ns index and returns cluster-wide MeshMetrics alongside. Root PA
+	// fetched once; ns PA fetched once per ns. Called from store.PopulateCache
+	// to stamp cache.MeshMembership + cache.MeshMetrics.
+	BuildMeshMembership(nsIndex map[string]models.NSIndex) (models.MeshBuildResult, error)
 
 	Name() string
 }

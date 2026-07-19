@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues, fetchMeshStatus } from '../api/client';
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType, MeshMembership } from '../data/policies';
+import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues, fetchMeshStatus, fetchMeshMetrics } from '../api/client';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType, MeshMembership, MeshMetrics } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges, type MeshFilterValue } from './filters';
 
 export type TablesTab = 'workloads' | 'policies' | 'issues';
@@ -23,6 +23,7 @@ interface GraphState {
   selectedDirections:      Set<string>; // 'ingress' | 'egress'
   selectedMeshFilters:     Set<MeshFilterValue>;
   meshStatus:              Record<string, MeshMembership>;
+  meshMetrics:             MeshMetrics | null;
   showNamespaceEdges:      boolean;
   showConnectedNamespaces: boolean;
   aggregateByNamespace:    boolean;
@@ -66,6 +67,7 @@ interface GraphState {
   loadGraph:                   () => Promise<void>;
   loadIssues:                  () => Promise<void>;
   loadMeshStatus:              () => Promise<void>;
+  loadMeshMetrics:             () => Promise<void>;
   toggleMeshFilter:            (value: MeshFilterValue) => void;
   setIssuesDrawerOpen:         (open: boolean) => void;
   toggleIssueType:             (type: IssueType) => void;
@@ -124,6 +126,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   selectedDirections:      new Set<string>(ALL_DIRECTIONS),
   selectedMeshFilters:     new Set<MeshFilterValue>(),
   meshStatus:              {},
+  meshMetrics:             null,
   showNamespaceEdges:      true,
   showConnectedNamespaces: false,
   aggregateByNamespace:    false,
@@ -196,6 +199,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       // Mesh membership map hydrates alongside graph — filter panel + node
       // decorations depend on it being present shortly after the graph loads.
       get().loadMeshStatus();
+      get().loadMeshMetrics();
     } catch (e) {
       set({ loading: false, error: String(e) });
     }
@@ -205,6 +209,15 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     try {
       const data = await fetchMeshStatus();
       set({ meshStatus: data.nodes ?? {} });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadMeshMetrics: async () => {
+    try {
+      const data = await fetchMeshMetrics();
+      set({ meshMetrics: data });
     } catch (e) {
       set({ error: String(e) });
     }

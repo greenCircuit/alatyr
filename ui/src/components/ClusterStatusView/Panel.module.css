@@ -1,0 +1,98 @@
+/* Section card — every section on the status page is a bordered card of the
+ * same subtle-elevation surface. Zones are just grid rows between cards,
+ * carried by whitespace + column layout, not zone dividers or wrappers.
+ */
+
+.card {
+    background: #1a1f26;
+    border: 1px solid #2a323b;
+    border-radius: 6px;
+    padding: 18px 20px;
+}
+
+.cardDanger {
+    background: #2a1518;
+    border: 1.5px solid #7a2531;
+}
+
+/* Section title inside a card. `fs-14 fw-bold` matches the artifact's
+ * headline weight. No uppercase — sentence case reads faster.
+ */
+.title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #e9ecef;
+}
+
+.subtitle {
+    font-size: 11.5px;
+    color: #7a848e;
+    margin-top: 2px;
+}
+
+/* Mesh column headers — bigger + stronger than a plain eyebrow because the
+ * two columns share the same shape, chip vocabulary, and font. Under stress
+ * (3am pager) operators risk reading left, acting on right. Column TINT +
+ * icon glyph + full-width badge across the top of each column makes the
+ * scope difference the LOUDEST thing in the card.
+ */
+.meshInnerGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.meshCol {
+    border-radius: 6px;
+    padding: 14px 16px;
+    border: 1px solid transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Neutral tier tint — mirrors node/detail panel surface treatment. Colored
+ * left-border stripe carries the scope semantic without saturating the bg.
+ */
+.meshColTruth {
+    background: var(--color-tier1-bg);
+    border-left: 3px solid var(--color-allow);
+}
+
+.meshColScope {
+    background: var(--color-tier2-bg);
+    border-left: 3px solid var(--color-info);
+}
+
+/* Column header — full-width bar, uppercase, icon glyph, ends with a small
+ * hint line. Not a chip. Reads as SECTION LABEL for the column below it.
+ */
+.meshColHeader {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid;
+}
+
+.meshColHeaderTruth { border-bottom-color: #ffffff10; }
+.meshColHeaderScope { border-bottom-color: #ffffff10; }
+
+.meshColLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.meshColLabelTruth { color: var(--color-allow); }
+.meshColLabelScope { color: var(--color-info); }
+
+.meshColHint {
+    font-size: 11px;
+    color: #7a848e;
+    padding-left: 22px;
+}

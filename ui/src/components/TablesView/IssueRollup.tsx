@@ -9,12 +9,22 @@ import type { Issue, IssueType } from '../../data/policies';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import { ISSUE_TYPE_LABEL, TYPE_SEVERITY } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
+import { EngineLogo } from '../../data/engineIcons';
 import r from './Rollup.module.css';
+
+// Mesh-family issue types get an engine glyph inside the chip so operators
+// scanning a rollup of red chips can tell mesh-layer failures from L3
+// policy conflicts without reading the label.
+const ISSUE_ENGINE: Partial<Record<IssueType, string>> = {
+  'mesh conflict':          'istio',
+  'mesh transport blocked': 'istio',
+  'mesh policy':            'istio',
+};
 
 // Blocking classes first — same left-to-right triage order as the table's default
 // severity-desc sort. Info-class (partial access) trails last.
 const TYPE_ORDER: IssueType[] = [
-  'policy conflict', 'mesh conflict', 'node lockout', 'mesh policy', 'no dns', 'partial access',
+  'policy conflict', 'mesh conflict', 'mesh transport blocked', 'node lockout', 'mesh policy', 'no dns', 'partial access',
 ];
 
 interface IssueRollupProps {
@@ -69,7 +79,9 @@ export default function IssueRollup({ issues, onToggled, bare = false }: IssueRo
             title={`click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${color}` }}
           >
-            <span aria-hidden="true" style={{ color }}>●</span>
+            {ISSUE_ENGINE[type]
+              ? <EngineLogo engine={ISSUE_ENGINE[type]!} size={10} />
+              : <span aria-hidden="true" style={{ color }}>●</span>}
             <span>{ISSUE_TYPE_LABEL[type]}</span>
             <span className="chip-count ms-1">{count}</span>
           </button>

@@ -8,6 +8,7 @@ import { useRef, useState } from 'react';
 import { useGraphStore } from '../../../store/graphStore';
 import { useOutsideClick } from './useOutsideClick';
 import { LAYOUTS } from './constants';
+import { ShieldIcon } from '../../DetailPanel/shared/StatusIcon';
 
 export function DisplayDropdown() {
   const {
@@ -111,9 +112,12 @@ export function DisplayDropdown() {
               checked={showMeshOverlay}
               onChange={toggleMeshOverlay}
             />
-            <label className="form-check-label text-light fs-13" htmlFor="display-mesh-overlay">
-              ⛨ Mesh overlay
-              <div className="text-secondary fs-11">Color per-workload mesh + mTLS state on the graph</div>
+            <label className="form-check-label text-light fs-13 d-inline-flex align-items-center gap-2" htmlFor="display-mesh-overlay">
+              <ShieldIcon />
+              <span>
+                Mesh overlay
+                <div className="text-secondary fs-11">Color per-workload mesh + mTLS state on the graph</div>
+              </span>
             </label>
           </div>
         </div>

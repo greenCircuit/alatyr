@@ -1,4 +1,4 @@
-import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, MeshMembership } from '../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, MeshMembership, MeshMetrics } from '../data/policies';
 
 export interface Graph {
   nodes: WorkloadNode[];
@@ -92,5 +92,14 @@ export function fetchMeshStatus(): Promise<MeshStatusResponse> {
   return fetch('/api/mesh-status').then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<MeshStatusResponse>;
+  });
+}
+
+// fetchMeshMetrics returns cluster-wide mesh posture counters. Populated by
+// BuildMeshMembership during graph build; unaffected by UI filter scope.
+export function fetchMeshMetrics(): Promise<MeshMetrics> {
+  return fetch('/api/mesh-metrics').then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<MeshMetrics>;
   });
 }

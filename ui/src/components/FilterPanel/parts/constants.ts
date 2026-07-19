@@ -8,12 +8,13 @@ import type { MeshFilterValue } from '../../../store/filters';
 // and danger-first sort across every issue surface (table, popover, rollup,
 // drawer). Colors are always the same per type, so this lives in one place.
 export const TYPE_SEVERITY: Record<IssueType, Severity> = {
-  'policy conflict': 'high',
-  'partial access':  'info',
-  'mesh conflict':   'high',
-  'node lockout':    'high',
-  'mesh policy':     'warning',
-  'no dns':          'warning',
+  'policy conflict':        'high',
+  'partial access':         'info',
+  'mesh conflict':          'high',
+  'mesh transport blocked': 'high',
+  'node lockout':           'high',
+  'mesh policy':            'info',
+  'no dns':                 'warning',
 };
 
 // Three-tier fold of the six-value severity scale — the triage granularity
@@ -30,17 +31,19 @@ export const SEVERITY_TIER: Record<Severity, IssueTier> = {
 export const issueTier = (type: IssueType): IssueTier => SEVERITY_TIER[TYPE_SEVERITY[type]];
 
 export const ISSUE_TYPE_LABEL: Record<IssueType, string> = {
-  'no dns':          'No DNS egress',
-  'mesh policy':     'Mesh policy hygiene',
-  'policy conflict': 'Policy conflict',
-  'partial access':  'Partial access',
-  'mesh conflict':   'Mesh conflict',
-  'node lockout':    'Node lockout',
+  'no dns':                 'No DNS egress',
+  'mesh policy':            'Mesh policy hygiene',
+  'mesh transport blocked': 'Mesh transport blocked',
+  'policy conflict':        'Policy conflict',
+  'partial access':         'Partial access',
+  'mesh conflict':          'Mesh conflict',
+  'node lockout':           'Node lockout',
 };
 
 export const ALL_ISSUE_TYPES: IssueType[] = [
   'policy conflict',
   'mesh conflict',
+  'mesh transport blocked',
   'node lockout',
   'mesh policy',
   'no dns',

@@ -75,8 +75,8 @@ function PolicyChip({ policy, onOpen, showEngine }: {
     <span className="d-inline-flex align-items-center gap-1" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className="chip-label text-truncate max-w-180"
-        style={{ cursor: 'pointer' }}
+        className={`${s.miniChip} ${s.miniChipDim} text-truncate max-w-180`}
+        style={{ cursor: 'pointer', border: 0 }}
         title={`${policy.source} · ${policy.namespace}/${policy.name}`}
         onClick={openPolicyOrManifest}
       >
@@ -198,7 +198,7 @@ export function CulpritActions({ issue, onOpen }: {
   const showEgress  = egress.length > 0 || isBlockReason(issue.egressReason) || issue.egressReason === 'permitted';
   const showIngress = ingress.length > 0 || isBlockReason(issue.ingressReason) || issue.ingressReason === 'permitted';
   if (!showEgress && !showIngress) {
-    return <span className={s.dim}>—</span>;
+    return null;
   }
   // Engines behind a merged same-pair row (k8s egress + istio ingress). Prefer
   // the culprits' own source; when a block direction has no policy ref to point

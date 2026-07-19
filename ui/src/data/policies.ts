@@ -44,6 +44,18 @@ export const SEVERITY_COLOR: Record<Severity, string> = {
   secure:   '#2f9e44',  // green
 };
 
+// mTLS verdict palette — separate axis from SEVERITY_COLOR. The Istio install
+// default is PERMISSIVE; painting the whole dashboard amber for it would
+// misrepresent a healthy default install as a warning. Mirrors the CSS tokens
+// --color-mtls-* in style/colors.css.
+export type MtlsScope = 'strict' | 'permissive' | 'disable' | 'unset';
+export const MTLS_COLOR: Record<MtlsScope, string> = {
+  strict:     '#2f9e44',
+  permissive: '#1864ab',
+  disable:    '#c92a2a',
+  unset:      '#6c757d',
+};
+
 // Single source of truth for status badge presentation. Used by:
 //   - PolicyGraph (tiny on-node badges)
 //   - DetailPanel (larger panel badges, with text label)
@@ -230,6 +242,20 @@ export interface MeshMembership {
   mtls?:     MtlsState;
 }
 
+// Cluster-wide mesh posture snapshot. Populated once per graph build by the
+// istio source and served straight from cache — cheap to poll.
+export interface MeshMetrics {
+  nsEnrolled:        number;
+  nsTotal:           number;
+  nsPartial:         number;
+  workloadsEnrolled: number;
+  workloadsTotal:    number;
+  mtlsStrict:        number;
+  mtlsPermissive:    number;
+  mtlsDisabled:      number;
+  mtlsUnset:         number;
+}
+
 // Small presentational descriptor shared by graph overlay, workload table,
 // and status-page rollup so all three surfaces speak the same colors +
 // short labels for a workload's mesh state. `providerLabel` is the dataplane
@@ -281,14 +307,14 @@ export function meshBadgeMeta(membership: MeshMembership | undefined): MeshBadge
   const tooltipPrefix = providerLabel ? `${providerLabel} — ` : '';
   switch (verdict) {
     case 'strict':
-      return { short: `${prefix}:STR`,  long: 'mTLS STRICT',     providerLabel, color: SEVERITY_COLOR.secure,  tooltip: `${tooltipPrefix}mTLS strictly required for peer traffic` };
+      return { short: `${prefix}:STR`,  long: 'mTLS STRICT',     providerLabel, color: MTLS_COLOR.strict,     tooltip: `${tooltipPrefix}mTLS strictly required for peer traffic` };
     case 'permissive':
-      return { short: `${prefix}:PERM`, long: 'mTLS PERMISSIVE', providerLabel, color: SEVERITY_COLOR.warning, tooltip: `${tooltipPrefix}mTLS accepted but plaintext also allowed` };
+      return { short: `${prefix}:PERM`, long: 'mTLS PERMISSIVE', providerLabel, color: MTLS_COLOR.permissive, tooltip: `${tooltipPrefix}mTLS accepted but plaintext also allowed` };
     case 'disable':
-      return { short: `${prefix}:DIS`,  long: 'mTLS DISABLE',    providerLabel, color: SEVERITY_COLOR.high,    tooltip: `${tooltipPrefix}mTLS disabled — plaintext only` };
+      return { short: `${prefix}:DIS`,  long: 'mTLS DISABLE',    providerLabel, color: MTLS_COLOR.disable,    tooltip: `${tooltipPrefix}mTLS disabled — plaintext only` };
     case 'unset':
     default:
-      return { short: `${prefix}:UNS`,  long: 'mTLS UNSET',      providerLabel, color: SEVERITY_COLOR.info,    tooltip: `${tooltipPrefix}No PA in scope; inherits mesh default (PERMISSIVE)` };
+      return { short: `${prefix}:UNS`,  long: 'mTLS UNSET',      providerLabel, color: MTLS_COLOR.unset,      tooltip: `${tooltipPrefix}No PA in scope; inherits mesh default (PERMISSIVE)` };
   }
 }
 
@@ -298,7 +324,6 @@ export function meshBadgeMeta(membership: MeshMembership | undefined): MeshBadge
 export interface NodeDetail {
   neighbors: Record<string, NodeNeighbors>;
   mesh?:     Record<string, MeshMembership>;
-  issues?:   string[];
 }
 
 // IssueType mirrors models.IssueType — the cross-cutting conflict classes
@@ -306,6 +331,7 @@ export interface NodeDetail {
 export type IssueType =
   | 'no dns'
   | 'mesh policy'
+  | 'mesh transport blocked'
   | 'policy conflict'
   | 'partial access'
   | 'mesh conflict'

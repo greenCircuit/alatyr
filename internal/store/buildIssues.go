@@ -19,6 +19,9 @@ func GetIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshSour
 	dnsIssues := MissingDns(ctx, data)
 	issues = append(issues, policyIssues...)
 	issues = append(issues, dnsIssues...)
+	// Mesh hygiene + transport-blocked issues were computed once during
+	// PopulateCache and parked on the cache — no re-walk here.
+	issues = append(issues, data.MeshIssues...)
 	return  issues
 }
 

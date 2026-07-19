@@ -28,6 +28,16 @@
     --color-info:    #4dabf7;
     --color-unknown: #6c757d;
 
+    /* mTLS axis — deliberately NOT re-using severity tokens. The Istio
+       install default is PERMISSIVE; tinting the whole dashboard amber for
+       it would falsely flag every healthy default install as a warning.
+       Semantics here: green = mutual-auth enforced, blue = default
+       tolerant, red = plaintext-only, gray = mode unresolved. */
+    --color-mtls-strict:     #2f9e44;
+    --color-mtls-permissive: #1864ab;
+    --color-mtls-disable:    #c92a2a;
+    --color-mtls-unset:      #6c757d;
+
     /* Tinted backgrounds — matched to semantic hues at low alpha for
        verdict callouts + policy card fills. */
     --color-allow-bg: #2f9e441a;

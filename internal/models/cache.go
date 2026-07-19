@@ -12,6 +12,8 @@ type Cache struct {
 	// callers that mutate NsIndex must call RebuildWorkloadIndex afterwards.
 	WorkloadByID      map[string]WorkloadNode
 	MeshMembership	  map[string]MeshMembership
+	MeshMetrics       MeshMetrics
+	MeshIssues        []Issue
 }
 
 // RebuildWorkloadIndex regenerates WorkloadByID from NsIndex so consumers get

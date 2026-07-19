@@ -3,8 +3,9 @@
 // no policy at all". Row click drops back to the graph with the workload selected.
 
 import { useMemo, useRef, useState } from 'react';
-import type { WorkloadNode, PolicyEdge, StatusKey, Issue, MeshMembership } from '../../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, Issue, MeshMembership, MtlsScope } from '../../data/policies';
 import { SEVERITY_COLOR, meshBadgeMeta } from '../../data/policies';
+import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
 import { issueTier } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
 import { EngineBadge } from '../../data/engineIcons';
@@ -234,19 +235,14 @@ export function IssueChip({ issues }: { issues: Issue[] }) {
 
 function MeshCell({ membership }: { membership: MeshMembership | undefined }) {
   const meta = meshBadgeMeta(membership);
+  const scope: MtlsScope | 'unknown' = membership?.inMesh ? (membership.mtls?.verdict ?? 'unset') : 'unknown';
   return (
     <div className="d-flex flex-column" title={meta.tooltip}>
       {meta.providerLabel && (
         <span className="text-secondary fs-10">{meta.providerLabel}</span>
       )}
       <span className="d-inline-flex align-items-center gap-1 fs-11">
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'inline-block', width: 8, height: 8, borderRadius: 2,
-            background: meta.color,
-          }}
-        />
+        <MtlsChip scope={scope} variant="dot" />
         {meta.long}
       </span>
     </div>
