@@ -82,7 +82,7 @@ export default function ClusterStatusView() {
   const selectNamespaceOnly     = useGraphStore((s) => s.selectNamespaceOnly);
   const setSelectedNode         = useGraphStore((s) => s.setSelectedNode);
   const meshStatus              = useGraphStore((s) => s.meshStatus);
-  const meshMetrics             = useGraphStore((s) => s.meshMetrics);
+  const clusterMetrics          = useGraphStore((s) => s.clusterMetrics);
   const selectedMeshFilters     = useGraphStore((s) => s.selectedMeshFilters);
   const toggleMeshFilter        = useGraphStore((s) => s.toggleMeshFilter);
 
@@ -201,7 +201,7 @@ export default function ClusterStatusView() {
                   every namespace, every workload · filters do NOT apply
                 </div>
               </div>
-              <ClusterMeshSummary metrics={meshMetrics} />
+              <ClusterMeshSummary metrics={clusterMetrics} />
             </div>
 
             <div className={`${p.meshCol} ${p.meshColScope}`}>

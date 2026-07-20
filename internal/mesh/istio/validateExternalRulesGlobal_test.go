@@ -115,7 +115,7 @@ func TestValidateExternalRules_GlobalOpenIsPerEngine(t *testing.T) {
 	if len(errors) != 1 {
 		t.Fatalf("istio restriction must still flag despite k8s global open (per-engine); got %d: %+v", len(errors), errors)
 	}
-	if !hasIssue(issueMessages(errors), "ap-strict") {
+	if !hasIssue(culpritNames(errors), "ap-strict") {
 		t.Fatalf("flagged issue should attribute to istio policy: %+v", errors)
 	}
 }

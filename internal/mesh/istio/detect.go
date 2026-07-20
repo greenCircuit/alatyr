@@ -233,8 +233,7 @@ func hboneIssue(workload models.WorkloadNode, entry hboneRuleEntry, direction mo
 	}
 	issue := models.Issue{
 		Type:    models.MeshTransportBlocked,
-		Message: fmt.Sprintf("Missing %s rule for policy engine: %s, name: %s, ns: %s need add port %d to %s rule for istio ambient to work",
-			sideLabel, entry.rule.Contributor.Source, entry.rule.Contributor.Name, entry.rule.Contributor.Namespace, ZtunnelHBONEPort, sideLabel),
+		Message: fmt.Sprintf("Policy does not allow ztunnel HBONE port %d; ambient %s traffic is blocked", ZtunnelHBONEPort, sideLabel),
 		Engine: entry.engine,
 		Node:   &workload,
 	}

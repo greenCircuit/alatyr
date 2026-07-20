@@ -11,7 +11,12 @@
       "Bash(python3)",
       "Bash(git *)",
       "Bash(python3 *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Read(//app/**)",
+      "Bash(go test *)",
+      "Bash(mv internal/models/mertics.go internal/models/metrics.go)",
+      "Bash(gofmt -w internal/models/metrics.go)",
+      "Bash(go build *)"
     ]
   }
 }

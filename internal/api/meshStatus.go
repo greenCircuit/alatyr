@@ -24,10 +24,3 @@ func (s *Server) MeshStatuses(c echo.Context) error {
 	return c.JSON(http.StatusOK, MeshStatusResponse{Nodes: s.cache.MeshMembership})
 }
 
-// MeshMetrics returns cluster-wide MeshMetrics from the cache. Populated by
-// BuildMeshMembership during PopulateCache; no compute per request.
-func (s *Server) MeshMetrics(c echo.Context) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return c.JSON(http.StatusOK, s.cache.MeshMetrics)
-}

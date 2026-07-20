@@ -42,7 +42,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/manifest", s.getPolicyManifest)
 	e.GET("/api/issues", s.getIssues)
 	e.GET("/api/mesh-status", s.MeshStatuses)
-	e.GET("/api/mesh-metrics", s.MeshMetrics)
+	e.GET("/api/cluster-metrics", s.ClusterMetrics)
 }
 
 // RegisterUI mounts the embedded SPA at "/". Returns an error instead of

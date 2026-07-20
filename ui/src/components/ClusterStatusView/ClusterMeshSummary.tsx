@@ -1,8 +1,9 @@
-// Cluster-wide mesh posture snapshot. Numbers come from /api/mesh-metrics
-// (server-side, invariant to filter scope). Compact 2-number + 1-bar layout —
+// Cluster-wide mesh posture snapshot. Numbers come from /api/cluster-metrics
+// (server-side, invariant to filter scope): totals at the top level, mesh
+// posture nested. Compact 2-number + 1-bar layout —
 // SRE feedback: 3 bars × 15 chips was scan fatigue.
 
-import type { MeshMetrics } from '../../data/policies';
+import type { ClusterMetrics } from '../../data/policies';
 import { meshBadgeMeta, SEVERITY_COLOR } from '../../data/policies';
 
 const NEUTRAL = '#868e96';
@@ -24,29 +25,31 @@ function Skeleton() {
   );
 }
 
-export default function ClusterMeshSummary({ metrics }: { metrics: MeshMetrics | null }) {
+export default function ClusterMeshSummary({ metrics }: { metrics: ClusterMetrics | null }) {
   if (!metrics) return <Skeleton />;
+  const mesh = metrics.meshMetrics;
 
   const strictMeta     = meshBadgeMeta({ inMesh: true, mtls: { verdict: 'strict' } });
   const permissiveMeta = meshBadgeMeta({ inMesh: true, mtls: { verdict: 'permissive' } });
   const disableMeta    = meshBadgeMeta({ inMesh: true, mtls: { verdict: 'disable' } });
   const unsetMeta      = meshBadgeMeta({ inMesh: true, mtls: { verdict: 'unset' } });
 
-  const nsPct = metrics.nsTotal === 0 ? 0 : Math.round((metrics.nsEnrolled / metrics.nsTotal) * 100);
-  const wlPct = metrics.workloadsTotal === 0 ? 0 : Math.round((metrics.workloadsEnrolled / metrics.workloadsTotal) * 100);
+  const nsPct = metrics.nsTotal === 0 ? 0 : Math.round((mesh.nsEnrolled / metrics.nsTotal) * 100);
+  const wlPct = metrics.workloadTotal === 0 ? 0 : Math.round((mesh.workloadsEnrolled / metrics.workloadTotal) * 100);
 
-  // mTLS partition across ENROLLED workloads. `unknown` catches degraded PA
-  // fetches so the bar remains a true partition rather than silently drifting.
-  const mtlsAccounted = metrics.mtlsStrict + metrics.mtlsPermissive + metrics.mtlsDisabled + metrics.mtlsUnset;
-  const mtlsUnknown   = Math.max(metrics.workloadsEnrolled - mtlsAccounted, 0);
-  const totalForBar   = mtlsAccounted + mtlsUnknown;
+  // mTLS partition across ENROLLED workloads. Server-counted `mtlsUnknown`
+  // covers degraded PA fetches; the local remainder guard keeps the bar a
+  // true partition even if the counters ever drift.
+  const mtlsBucketed = mesh.mtlsStrict + mesh.mtlsPermissive + mesh.mtlsDisabled + mesh.mtlsUnset;
+  const mtlsUnknown  = mesh.mtlsUnknown + Math.max(mesh.workloadsEnrolled - mtlsBucketed - mesh.mtlsUnknown, 0);
+  const totalForBar  = mtlsBucketed + mtlsUnknown;
 
   const segments = [
-    { key: 'strict',     count: metrics.mtlsStrict,     color: strictMeta.color,     label: 'STRICT' },
-    { key: 'permissive', count: metrics.mtlsPermissive, color: permissiveMeta.color, label: 'permissive' },
-    { key: 'disable',    count: metrics.mtlsDisabled,   color: disableMeta.color,    label: 'DISABLE' },
-    { key: 'unset',      count: metrics.mtlsUnset,      color: unsetMeta.color,      label: 'unset' },
-    { key: 'unknown',    count: mtlsUnknown,            color: NEUTRAL,              label: 'unknown' },
+    { key: 'strict',     count: mesh.mtlsStrict,     color: strictMeta.color,     label: 'STRICT' },
+    { key: 'permissive', count: mesh.mtlsPermissive, color: permissiveMeta.color, label: 'permissive' },
+    { key: 'disable',    count: mesh.mtlsDisabled,   color: disableMeta.color,    label: 'DISABLE' },
+    { key: 'unset',      count: mesh.mtlsUnset,      color: unsetMeta.color,      label: 'unset' },
+    { key: 'unknown',    count: mtlsUnknown,         color: NEUTRAL,              label: 'unknown' },
   ];
 
   return (
@@ -55,10 +58,10 @@ export default function ClusterMeshSummary({ metrics }: { metrics: MeshMetrics |
         <div>
           <div className="tnum fw-bold" style={{ fontSize: 20, lineHeight: 1 }}>{nsPct}%</div>
           <div className="text-secondary fs-12 mt-1">
-            namespaces enrolled ({metrics.nsEnrolled}/{metrics.nsTotal})
-            {metrics.nsPartial > 0 && (
+            namespaces enrolled ({mesh.nsEnrolled}/{metrics.nsTotal})
+            {mesh.nsPartial > 0 && (
               <span className="ms-1" style={{ color: SEVERITY_COLOR.caution }}>
-                · {metrics.nsPartial} partial
+                · {mesh.nsPartial} partial
               </span>
             )}
           </div>
@@ -66,14 +69,14 @@ export default function ClusterMeshSummary({ metrics }: { metrics: MeshMetrics |
         <div>
           <div className="tnum fw-bold" style={{ fontSize: 20, lineHeight: 1 }}>{wlPct}%</div>
           <div className="text-secondary fs-12 mt-1">
-            workloads enrolled ({metrics.workloadsEnrolled}/{metrics.workloadsTotal})
+            workloads enrolled ({mesh.workloadsEnrolled}/{metrics.workloadTotal})
           </div>
         </div>
       </div>
 
       <div>
         <div className="text-secondary fs-12 mb-1">
-          mTLS across {metrics.workloadsEnrolled} enrolled workloads
+          mTLS across {mesh.workloadsEnrolled} enrolled workloads
         </div>
         <div className="d-flex" style={{ height: 10, borderRadius: 4, overflow: 'hidden' }}>
           {segments.map((segment) => {

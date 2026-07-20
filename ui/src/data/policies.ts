@@ -242,18 +242,25 @@ export interface MeshMembership {
   mtls?:     MtlsState;
 }
 
-// Cluster-wide mesh posture snapshot. Populated once per graph build by the
-// istio source and served straight from cache — cheap to poll.
+// Mesh posture counters. Populated once per graph build by the istio source
+// and served nested inside ClusterMetrics — cheap to poll.
 export interface MeshMetrics {
   nsEnrolled:        number;
-  nsTotal:           number;
   nsPartial:         number;
   workloadsEnrolled: number;
-  workloadsTotal:    number;
   mtlsStrict:        number;
   mtlsPermissive:    number;
   mtlsDisabled:      number;
   mtlsUnset:         number;
+  mtlsUnknown:       number;
+}
+
+// Cluster-wide metrics envelope from /api/cluster-metrics. Totals are the
+// denominators (stamped from server cache sizes); meshMetrics nests posture.
+export interface ClusterMetrics {
+  nsTotal:       number;
+  workloadTotal: number;
+  meshMetrics:   MeshMetrics;
 }
 
 // Small presentational descriptor shared by graph overlay, workload table,

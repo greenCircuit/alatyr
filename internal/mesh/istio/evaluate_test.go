@@ -31,6 +31,21 @@ func issueMessages(issues []models.Issue) []string {
 	return out
 }
 
+// culpritNames flattens both-direction culprit refs to "source/name/namespace"
+// strings — attribution asserts go through culprits now, not the message text.
+func culpritNames(issues []models.Issue) []string {
+	var out []string
+	for _, issue := range issues {
+		for _, ref := range issue.IngressCulprits {
+			out = append(out, ref.Source+"/"+ref.Name+"/"+ref.Namespace)
+		}
+		for _, ref := range issue.EgressCulprits {
+			out = append(out, ref.Source+"/"+ref.Name+"/"+ref.Namespace)
+		}
+	}
+	return out
+}
+
 // meshCache returns a cache whose dsts (dst1, dst2) are ambient-enrolled via the
 // namespace label, so dstInAmbientMesh reports them in-mesh. Shared by the suite.
 func meshCache() *models.Cache {
@@ -268,8 +283,8 @@ func TestValidateExternalRules_MultiplePoliciesSameDst(t *testing.T) {
 	if len(errors) != 2 {
 		t.Fatalf("expected 2 errors (one per policy), got %v", errors)
 	}
-	if !hasIssue(issueMessages(errors), "np-a") || !hasIssue(issueMessages(errors), "np-b") {
-		t.Fatalf("each policy name should appear: %v", errors)
+	if !hasIssue(culpritNames(errors), "np-a") || !hasIssue(culpritNames(errors), "np-b") {
+		t.Fatalf("each policy name should appear in culprits: %v", errors)
 	}
 }
 
@@ -288,13 +303,14 @@ func TestValidateExternalRules_MultipleEngines(t *testing.T) {
 	if len(errors) != 2 {
 		t.Fatalf("expected 2 errors (one per engine), got %v", errors)
 	}
-	if !hasIssue(issueMessages(errors), "np-k8s") || !hasIssue(issueMessages(errors), "ap-istio") {
-		t.Fatalf("each engine's policy should appear: %v", errors)
+	if !hasIssue(culpritNames(errors), "np-k8s") || !hasIssue(culpritNames(errors), "ap-istio") {
+		t.Fatalf("each engine's policy should appear in culprits: %v", errors)
 	}
 }
 
-// Error message must carry the contributor's source, name, and namespace verbatim.
-// Guards against argument-order swaps in the Sprintf and missing-field regressions.
+// Culprit ref must carry the contributor's source, name, and namespace verbatim,
+// on the side matching the rule's direction; message only keeps direction + HBONE
+// port. Guards against field swaps and wrong-side culprit stamping.
 func TestValidateExternalRules_ErrorAttribution(t *testing.T) {
 	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
 		policies(allowRuleWithPolicy(models.DirectionEgress, "dst1", []int{8080}, "k8s", "np-attr", "ns-attr")),
@@ -302,10 +318,16 @@ func TestValidateExternalRules_ErrorAttribution(t *testing.T) {
 	if len(errors) != 1 {
 		t.Fatalf("expected 1 error, got %v", errors)
 	}
-	got := errors[0].Message
-	for _, want := range []string{"name: np-attr", "ns: ns-attr", "egress", "15008"} {
-		if !hasIssue([]string{got}, want) {
-			t.Fatalf("error missing %q: %s", want, got)
+	culprits := errors[0].EgressCulprits
+	if len(culprits) != 1 || culprits[0].Source != "k8s" || culprits[0].Name != "np-attr" || culprits[0].Namespace != "ns-attr" {
+		t.Fatalf("egress culprit should carry contributor verbatim: %+v", errors[0])
+	}
+	if len(errors[0].IngressCulprits) != 0 {
+		t.Fatalf("egress rule must not stamp ingress culprits: %+v", errors[0])
+	}
+	for _, want := range []string{"egress", "15008"} {
+		if !hasIssue([]string{errors[0].Message}, want) {
+			t.Fatalf("message missing %q: %s", want, errors[0].Message)
 		}
 	}
 }
