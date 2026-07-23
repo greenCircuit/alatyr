@@ -28,7 +28,7 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
   // Default: severity desc — most urgent first, matching the paging-triage
   // workflow. Click any header to override.
   const [sort, setSort] = useState<SortState<Col>>({ col: 'severity', dir: 'desc' });
-  // Info-class rows (expected layering) live in a collapsed group below the
+  // Partial-access rows (expected layering) live in a collapsed group below the
   // findings — dozens of green rows would pad the table, and the collapse
   // doubles as the one-click mute. Default closed.
   const [showInfo, setShowInfo] = useState(false);
@@ -57,9 +57,11 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
         }
       });
     }
+    // Layering group holds only partial-access rows — other info-tier types
+    // (mesh policy hygiene) are real findings, not expected layering.
     return {
-      findings: list.filter((row) => SEVERITY_RANK[row.severity] > SEVERITY_RANK.info),
-      infoRows: list.filter((row) => SEVERITY_RANK[row.severity] <= SEVERITY_RANK.info),
+      findings: list.filter((row) => row.issue.type !== 'partial access'),
+      infoRows: list.filter((row) => row.issue.type === 'partial access'),
     };
   }, [issues, sort]);
 

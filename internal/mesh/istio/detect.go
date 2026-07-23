@@ -3,7 +3,6 @@ package istio
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"graph/internal/models"
 )
@@ -43,116 +42,214 @@ func (s *source) ResolveMtls(ctx context.Context, workload models.WorkloadNode, 
 	return resolveMtls(workload, nsPAs, rootPAs), nil
 }
 
-// CanReach denies when dst requires STRICT mTLS and src cannot speak mTLS
-// (not enrolled or PA DISABLE). port=0 means workload-level Verdict.
-// TODO(perf): re-resolves both sides — callers that already hold MtlsState
-// pay 2 redundant fetches. Add CanReachFromStates variant.
-func (s *source) CanReach(ctx context.Context, srcWorkload, dstWorkload models.WorkloadNode, srcNsLabels, dstNsLabels map[string]string, port uint32) models.MeshVerdict {
-	srcMtls, srcErr := s.ResolveMtls(ctx, srcWorkload, srcNsLabels)
-	dstMtls, dstErr := s.ResolveMtls(ctx, dstWorkload, dstNsLabels)
-	if srcErr != nil || dstErr != nil || srcMtls == nil || dstMtls == nil {
-		attrs := []slog.Attr{
-			slog.String("phase", "mesh_can_reach"),
-			slog.String("src_id", srcWorkload.ID),
-			slog.String("src_ns", srcWorkload.Namespace),
-			slog.String("dst_id", dstWorkload.ID),
-			slog.String("dst_ns", dstWorkload.Namespace),
+
+// CanReach denies when dst requires STRICT mTLS on the queried port and src
+// cannot speak mTLS. portLevelMtls override wins over the workload verdict;
+// port=0 means no port specified, verdict alone decides.
+func (s *source) CanReach(srcMesh models.MeshMembership, dstMesh models.MeshMembership, port uint32) models.MeshVerdict {
+	// Mtls is nil until BuildMeshMembership stamps it — treat as not-strict
+	// rather than deref.
+	dstMode := models.MeshUnset
+	if dstMesh.InMesh && dstMesh.Mtls != nil {
+		dstMode = dstMesh.Mtls.Verdict
+		if port != 0 {
+			if override, ok := dstMesh.Mtls.PortOverrides[port]; ok {
+				dstMode = override
+			}
 		}
-		if srcErr != nil {
-			attrs = append(attrs, slog.String("src_error", srcErr.Error()))
-		}
-		if dstErr != nil {
-			attrs = append(attrs, slog.String("dst_error", dstErr.Error()))
-		}
-		s.log.LogAttrs(ctx, slog.LevelWarn, "mesh PA resolve failed", attrs...)
-		return models.MeshVerdict{Verdict: "unknown", Reason: "could not resolve PAs"}
 	}
-
-	dstEffective := effectiveMode(dstMtls, port)
-	srcEffective := effectiveMode(srcMtls, 0)
-
-	if dstEffective == models.MeshStrict && srcEffective == models.MeshDisable {
-		v := models.MeshVerdict{
-			Verdict: "deny",
-			Reason:  "dst requires STRICT mTLS; src cannot speak mTLS (not enrolled or PA DISABLE)",
-		}
-		if dstMtls.EffectiveSource.Name != "" {
-			ref := dstMtls.EffectiveSource
-			v.EffectiveSource = &ref
-		}
-		return v
+	dstStrict := dstMode == models.MeshStrict
+	if !dstStrict {
+		return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
+	}
+	// Name empty means the STRICT mode came from a port override, not the
+	// workload-level PA walk (resolvePortOverrides runs its own precedence,
+	// independent of EffectiveSource) — don't stamp a PolicyRef with a blank
+	// name, an empty chip is worse than no chip.
+	var effectiveSource *models.MtlsPolicyApplied
+	if dstMesh.Mtls.EffectiveSource.Name != "" {
+		effectiveSource = &dstMesh.Mtls.EffectiveSource
+	}
+	if !srcMesh.InMesh {
+		return models.MeshVerdict{Verdict: "deny", Reason: "dst requires STRICT mTLS but src is not in mesh", EffectiveSource: effectiveSource}
+	}
+	if srcMesh.Mtls != nil && srcMesh.Mtls.Verdict == models.MeshDisable {
+		return models.MeshVerdict{Verdict: "deny", Reason: "dst requires STRICT mTLS but src mTLS is disabled", EffectiveSource: effectiveSource}
 	}
 	return models.MeshVerdict{Verdict: "allow", Reason: "mesh permits"}
 }
 
-// ValidateExternalRule flags ambient workloads whose other-engine ingress
-// rules restrict ports without allowing the ztunnel HBONE port.
-func ValidateExternalRules(cache * models.Cache, membership *models.MeshMembership, nodePolices map[string]models.NodeInfo) []string {
-	var errors []string
-	if !membership.InMesh || membership.Mode != "ambient" {
-		return errors
+// hboneRuleEntry keeps enough of a flagged rule to reconstruct the Issue after
+// the walk finishes (engine attribution + contributor policy + direction).
+type hboneRuleEntry struct {
+	engine string
+	rule   models.NodeRule
+}
+
+// hboneCoverage tracks whether an engine's ruleset already opens HBONE
+// globally (allow-all peers) per direction. When true for a direction, no
+// per-policy flag is needed on that side.
+type hboneCoverage struct {
+	ingress bool
+	egress  bool
+}
+
+func (c hboneCoverage) covers(direction models.Direction) bool {
+	if direction == models.DirectionIngress {
+		return c.ingress
+	}
+	return c.egress
+}
+
+// detectGlobalHBONEOpen scans an engine's rule set for allow-any-peer allow
+// rules that admit port 15008 (or leave ports unrestricted). One such rule
+// per direction means HBONE is globally reachable within the engine, so
+// per-policy flags on that side would be false positives.
+// Allow-any-peer surfaces as an empty peer id on NodeRule (empty DstID for
+// egress, empty SrcID for ingress) — matches how CoverageAllowAll rules land
+// after the Rule → NodeRule conversion.
+func detectGlobalHBONEOpen(rules []models.NodeRule) hboneCoverage {
+	var coverage hboneCoverage
+	for _, rule := range rules {
+		if !ruleGloballyAdmitsHBONE(rule) {
+			continue
+		}
+		if rule.Direction == models.DirectionIngress {
+			coverage.ingress = true
+		}
+		if rule.Direction == models.DirectionEgress {
+			coverage.egress = true
+		}
+	}
+	return coverage
+}
+
+// ruleGloballyAdmitsHBONE returns true when the rule is an allow-all-peer
+// stanza that admits HBONE — either lists 15008 or leaves ports empty
+// (k8s NetworkPolicy semantics: empty ports = every port).
+func ruleGloballyAdmitsHBONE(rule models.NodeRule) bool {
+	if rule.Action != models.ActionAllow {
+		return false
+	}
+	peer := rule.DstID
+	if rule.Direction == models.DirectionIngress {
+		peer = rule.SrcID
+	}
+	if peer != "" {
+		return false
+	}
+	if len(rule.Ports) == 0 {
+		return true
+	}
+	for _, port := range rule.Ports {
+		if port.Port == ZtunnelHBONEPort {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateExternalRules flags ambient workloads whose other-engine allow rules
+// restrict ports without including the ztunnel HBONE port. Returns one Issue
+// per offending (policy, direction) — dedup key: engine|dst|policy name|ns.
+func ValidateExternalRules(workload models.WorkloadNode, cache *models.Cache, membership *models.MeshMembership, nodePolicies map[string]models.NodeInfo) []models.Issue {
+	if membership == nil || !membership.InMesh || membership.Mode != "ambient" {
+		return nil
 	}
 	// all mismanaged policies will be stored here and will be deleted if correct one are found
-	seenInErr := make(map[string]models.NodeRule)
-	seenOutErr := make(map[string]models.NodeRule)
+	seenInErr := make(map[string]hboneRuleEntry)
+	seenOutErr := make(map[string]hboneRuleEntry)
 
-	for engine, policyEngine := range nodePolices {
+	for engine, policyEngine := range nodePolicies {
+		// k8s NetworkPolicies union within an engine, so an allow-all-peer
+		// stanza opening HBONE covers every other stanza in the same
+		// direction. Skip per-policy flagging when that engine-wide open
+		// exists — otherwise a restricted-peer stanza (e.g. app=ledger-db
+		// on 5432) gets false-flagged even though a sibling stanza already
+		// opens 15008 to any peer.
+		globalHBONE := detectGlobalHBONEOpen(policyEngine.Rules)
 		for _, rule := range policyEngine.Rules {
-			// HBONE (15008) only applies when the other end is a mesh peer.
-			// External CIDR dsts (0.0.0.0/0) and non-ambient workloads never
-			// tunnel, so restricting their ports is correct — don't flag them.
-			dstWorkload, dstNsLabels := cache.Workload(rule.DstID, rule.DstNamespace)
-			if dstWorkload == nil || !participatesInMesh(*dstWorkload, dstNsLabels) {
+			if globalHBONE.covers(rule.Direction) {
 				continue
 			}
-			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, rule.DstID, rule.Contributor.Name, rule.Contributor.Namespace)
-			// need to check only if ports are defined
-				if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
-					missingPort := true
-					for _, port := range rule.Ports {
-						_, ok := seenInErr[ruleKey]
-						if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
-							missingPort = false
-							if ok {
-								delete(seenInErr, ruleKey)
-							}
-						}
-						if missingPort && !ok {
-							seenInErr[ruleKey] = rule
-						}
-					}
-				}
-
-				if rule.Direction == models.DirectionEgress && rule.Action == models.ActionAllow {
-					missingPort := true
-					for _, port := range rule.Ports {
-						_, ok := seenOutErr[ruleKey]
-						if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
-							missingPort = false
-							if ok {
-								delete(seenOutErr, ruleKey)
-							}
-						}
-
-						if missingPort && !ok {
-							seenOutErr[ruleKey] = rule
+			// HBONE (15008) only applies when the other end is a mesh peer.
+			// External CIDR peers (0.0.0.0/0) and non-ambient workloads never
+			// tunnel, so restricting their ports is correct — don't flag them.
+			// k8s ingress rules swap: SrcID holds the peer, DstID the
+			// protected workload itself (see k8spolicy/buildRules.go).
+			peerID, peerNamespace := rule.DstID, rule.DstNamespace
+			if rule.Direction == models.DirectionIngress {
+				peerID, peerNamespace = rule.SrcID, rule.SrcNamespace
+			}
+			peerWorkload, peerNsLabels := cache.Workload(peerID, peerNamespace)
+			if peerWorkload == nil || !participatesInMesh(*peerWorkload, peerNsLabels) {
+				continue
+			}
+			ruleKey := fmt.Sprintf("%s|%s|%s|%s", engine, peerID, rule.Contributor.Name, rule.Contributor.Namespace)
+			if rule.Direction == models.DirectionIngress && rule.Action == models.ActionAllow {
+				missingPort := true
+				for _, port := range rule.Ports {
+					_, ok := seenInErr[ruleKey]
+					if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
+						missingPort = false
+						if ok {
+							delete(seenInErr, ruleKey)
 						}
 					}
+					if missingPort && !ok {
+						seenInErr[ruleKey] = hboneRuleEntry{engine: engine, rule: rule}
+					}
 				}
+			}
 
+			if rule.Direction == models.DirectionEgress && rule.Action == models.ActionAllow {
+				missingPort := true
+				for _, port := range rule.Ports {
+					_, ok := seenOutErr[ruleKey]
+					if port.Port == ZtunnelHBONEPort || len(rule.Ports) == 0 {
+						missingPort = false
+						if ok {
+							delete(seenOutErr, ruleKey)
+						}
+					}
+
+					if missingPort && !ok {
+						seenOutErr[ruleKey] = hboneRuleEntry{engine: engine, rule: rule}
+					}
+				}
 			}
 		}
-
-	// found all errors at this point need to build msgs
-	for _, rule := range seenInErr {
-		errMsg := fmt.Sprintf("Missing ingress rule for policy engine: %s, name: %s, ns: %s need add port %d to ingress rule for istio ambient to work", rule.Contributor.Source, rule.Contributor.Name, rule.Contributor.Namespace, ZtunnelHBONEPort)
-		errors = append(errors, errMsg)
 	}
 
-	for _, rule := range seenOutErr {
-		errMsg := fmt.Sprintf("Missing egress rule for policy engine: %s, name: %s, ns: %s need add port %d to egress rule for istio ambient to work", rule.Contributor.Source, rule.Contributor.Name, rule.Contributor.Namespace, ZtunnelHBONEPort)
-		errors = append(errors, errMsg)
+	var issues []models.Issue
+	for _, entry := range seenInErr {
+		issues = append(issues, hboneIssue(workload, entry, models.DirectionIngress))
 	}
+	for _, entry := range seenOutErr {
+		issues = append(issues, hboneIssue(workload, entry, models.DirectionEgress))
+	}
+	return issues
+}
 
-	return errors
+// hboneIssue materializes one MeshTransportBlocked Issue from a flagged rule.
+// Node = the ambient workload the policy applies to; culprits stamp the
+// direction so the UI's CulpritActions row lights up the correct side.
+func hboneIssue(workload models.WorkloadNode, entry hboneRuleEntry, direction models.Direction) models.Issue {
+	sideLabel := "ingress"
+	if direction == models.DirectionEgress {
+		sideLabel = "egress"
+	}
+	issue := models.Issue{
+		Type:    models.MeshTransportBlocked,
+		Message: fmt.Sprintf("Policy does not allow ztunnel HBONE port %d; ambient %s traffic is blocked", ZtunnelHBONEPort, sideLabel),
+		Engine: entry.engine,
+		Node:   &workload,
+	}
+	culprit := []models.PolicyRef{entry.rule.Contributor}
+	if direction == models.DirectionIngress {
+		issue.IngressCulprits = culprit
+	} else {
+		issue.EgressCulprits = culprit
+	}
+	return issue
 }

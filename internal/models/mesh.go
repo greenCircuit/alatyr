@@ -20,10 +20,19 @@ type MeshMembership struct {
 // misconfigurations SRE can act on.
 type MtlsState struct {
 	Verdict         MeshScope            `json:"verdict"`
-	PortOverrides   map[uint32]MeshScope `json:"portOverrides,omitempty"` 
+	PortOverrides   map[uint32]MeshScope `json:"portOverrides,omitempty"`
 	EffectiveSource MtlsPolicyApplied    `json:"effectiveSource,omitempty"`
 	Sources         []MtlsSource         `json:"sources,omitempty"`
-	Issues          []string			 `json:"issues,omitempty"`
+	Issues          []MtlsIssue		 `json:"issues,omitempty"`
+}
+
+// MtlsIssue is one hygiene finding against a workload's PA posture. Refs names
+// the PeerAuthentication objects the message is about (e.g. the winner + the
+// silently-ignored duplicates) so callers can render clickable culprits
+// instead of re-parsing the prose Message.
+type MtlsIssue struct {
+	Message string      `json:"message"`
+	Refs    []PolicyRef `json:"refs,omitempty"`
 }
 
 // MtlsPolicyApplied identifies a PeerAuthentication by namespace + name.
@@ -61,6 +70,7 @@ const(
 	MeshDisable    MeshScope = "disable"
 	MeshStrict 	   MeshScope = "strict"
 	MeshPermissive MeshScope = "permissive"
+	MeshUnknown    MeshScope = "unknown"
 )
 
 type  MeshSource string
@@ -70,3 +80,21 @@ const(
 	MeshNs        MeshSource = "ns"
 	MeshWorkload  MeshSource = "workload"
 )
+
+// overall metrics of mesh so can display then without doing any filtering
+type MeshMetrics struct {
+	NsEnrolled        int32 `json:"nsEnrolled"`
+    NsPartial         int32 `json:"nsPartial"`
+    WorkloadsEnrolled int32 `json:"workloadsEnrolled"`
+    MtlsStrict        int32 `json:"mtlsStrict"`
+    MtlsPermissive    int32 `json:"mtlsPermissive"`
+    MtlsDisabled      int32 `json:"mtlsDisabled"`
+    MtlsUnset         int32 `json:"mtlsUnset"`
+    MtlsUnknown       int32 `json:"mtlsUnknown"`
+}
+
+type MeshBuildResult struct {
+      Memberships map[string]MeshMembership
+      Metrics     MeshMetrics
+      Issues      []Issue
+}

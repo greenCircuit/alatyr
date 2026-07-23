@@ -118,7 +118,7 @@ func TestPolicyIssues_LayeringBaselineOnlyNamespace(t *testing.T) {
 	cache.NsIndex[srcNs] = srcIndex
 	cache.RebuildWorkloadIndex()
 
-	issues := nsPairIssues(PolicyIssues(context.Background(), cache))
+	issues := nsPairIssues(PolicyIssues(context.Background(), cache, nil))
 	if len(issues) != 1 {
 		t.Fatalf("ns-pair issues: want 1, got %d (%+v)", len(issues), issues)
 	}
@@ -191,7 +191,7 @@ func TestPolicyIssues_LayeringClassification(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cache := layeringCache(tc.k8sRules, tc.istioDenyRules)
-			issues := nsPairIssues(PolicyIssues(context.Background(), cache))
+			issues := nsPairIssues(PolicyIssues(context.Background(), cache, nil))
 			if len(issues) != 1 {
 				t.Fatalf("ns-pair issues: want 1, got %d (%+v)", len(issues), issues)
 			}

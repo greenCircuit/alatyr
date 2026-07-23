@@ -3,8 +3,9 @@
 // no policy at all". Row click drops back to the graph with the workload selected.
 
 import { useMemo, useRef, useState } from 'react';
-import type { WorkloadNode, PolicyEdge, StatusKey, Issue } from '../../data/policies';
-import { SEVERITY_COLOR } from '../../data/policies';
+import type { WorkloadNode, PolicyEdge, StatusKey, Issue, MeshMembership, MtlsScope } from '../../data/policies';
+import { SEVERITY_COLOR, meshBadgeMeta } from '../../data/policies';
+import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
 import { issueTier } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
 import { EngineBadge } from '../../data/engineIcons';
@@ -14,16 +15,28 @@ import type { IssueIndex } from '../../store/issueIndex';
 import { IssuesPopover } from './IssuesPopover';
 import s from '../DetailPanel/DetailPanel.module.css';
 
-type Col = 'name' | 'namespace' | 'type' | 'statuses' | 'policies' | 'issues';
+type Col = 'name' | 'namespace' | 'type' | 'statuses' | 'policies' | 'issues' | 'mesh';
+
+const MESH_SORT_ORDER: Record<string, number> = {
+  strict: 0, permissive: 1, disable: 2, unset: 3, out: 4,
+};
+
+function meshSortKey(membership: MeshMembership | undefined): number {
+  if (!membership || !membership.inMesh) return MESH_SORT_ORDER.out;
+  const verdict = membership.mtls?.verdict ?? 'unset';
+  return MESH_SORT_ORDER[verdict] ?? MESH_SORT_ORDER.unset;
+}
 
 export default function WorkloadsTable({
   nodes,
   edges,
   nodeIssues,
+  meshStatus,
 }: {
   nodes: WorkloadNode[];
   edges: PolicyEdge[];
   nodeIssues: IssueIndex;
+  meshStatus: Record<string, MeshMembership>;
 }) {
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   const setView         = useGraphStore((s) => s.setView);
@@ -60,11 +73,12 @@ export default function WorkloadsTable({
         case 'statuses':  return sign * ((a.node.statuses?.length ?? 0) - (b.node.statuses?.length ?? 0));
         case 'policies':  return sign * (a.policyTotal - b.policyTotal);
         case 'issues':    return sign * (a.issues.length - b.issues.length);
+        case 'mesh':      return sign * (meshSortKey(meshStatus[a.node.id]) - meshSortKey(meshStatus[b.node.id]));
         default:          return 0;
       }
     });
     return list;
-  }, [nodes, policyCountByNode, nodeIssues, sort]);
+  }, [nodes, policyCountByNode, nodeIssues, sort, meshStatus]);
 
   const onSort = (col: Col) => setSort((s) => nextSort(s, col));
 
@@ -91,6 +105,7 @@ export default function WorkloadsTable({
           <SortHeader col="statuses"  label="Status"     sort={sort} onSort={onSort} />
           <SortHeader col="policies"  label="Policies"   sort={sort} onSort={onSort} />
           <SortHeader col="issues"    label="Issues"     sort={sort} onSort={onSort} />
+          <SortHeader col="mesh"      label="Mesh"       sort={sort} onSort={onSort} />
           <th className="text-nowrap">Labels</th>
           <th />
         </tr>
@@ -115,6 +130,7 @@ export default function WorkloadsTable({
             <td onClick={(e) => e.stopPropagation()}>
               <IssueChip issues={issues} />
             </td>
+            <td><MeshCell membership={meshStatus[node.id]} /></td>
             <td><LabelChips labels={node.labels} /></td>
             <td className="text-end">
               <button
@@ -214,6 +230,22 @@ export function IssueChip({ issues }: { issues: Issue[] }) {
         <IssuesPopover anchor={anchor} issues={issues} onClose={() => setAnchor(null)} />
       )}
     </>
+  );
+}
+
+function MeshCell({ membership }: { membership: MeshMembership | undefined }) {
+  const meta = meshBadgeMeta(membership);
+  const scope: MtlsScope | 'unknown' = membership?.inMesh ? (membership.mtls?.verdict ?? 'unset') : 'unknown';
+  return (
+    <div className="d-flex flex-column" title={meta.tooltip}>
+      {meta.providerLabel && (
+        <span className="text-secondary fs-10">{meta.providerLabel}</span>
+      )}
+      <span className="d-inline-flex align-items-center gap-1 fs-11">
+        <MtlsChip scope={scope} variant="dot" />
+        {meta.long}
+      </span>
+    </div>
   );
 }
 

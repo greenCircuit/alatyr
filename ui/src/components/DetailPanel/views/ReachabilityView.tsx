@@ -21,10 +21,12 @@ import type {
 import { SEVERITY_COLOR, formatPort } from '../../../data/policies';
 import s from '../DetailPanel.module.css';
 import { PolicyRefList, RuleGroupList } from '../shared/rows';
-import { RolePill, LabelStrip, EngineBadge, ActionIcon } from '../shared/badges';
+import { RolePill, LabelStrip, EngineBadge, ActionIcon, DirectionBadge } from '../shared/badges';
 import { EndpointCard } from '../shared/edge-composites';
 import { ManifestButton } from '../shared/ManifestModal';
-import { MTLS_VERDICT_COLOR, REASON_META, CHIP_STATE } from '../shared/presentation';
+import { REASON_META, CHIP_STATE } from '../shared/presentation';
+import { MtlsChip } from '../shared/MtlsChip';
+import type { MtlsScope } from '../../../data/policies';
 import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
 // ── Tier 0 ──────────────────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
 // One side's aggregated ports: grey "all ports" badge, per-port badges, or a
 // blocked/none marker. Same badge conventions as the Tier-2 rule rows.
 function SidePortBadges({ side }: { side: SidePorts }) {
-  if (side.blocked) return <span className={`${s.dim} ${s.smallText}`}>blocked</span>;
+  if (side.blocked) return <span className={s.portChipBlocked}>blocked</span>;
   if (side.allPorts) {
     return (
       <span className={s.portChipAny} title="No port restriction — all TCP/UDP allowed">
@@ -162,13 +164,13 @@ function PortsSummary({ result }: { result: ReachabilityResult }) {
         const ingress = aggregateAllowPorts(ev.ingress);
         return (
           <div key={name} className="d-flex align-items-center gap-2 flex-wrap">
-            <span className={s.section}>{name}</span>
+            <EngineBadge engine={name} />
             <RolePill role="SRC" />
-            <span className={s.dim}>egress</span>
+            <DirectionBadge direction="egress" />
             <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={egress} /></span>
             <span className={s.dim}>→</span>
             <RolePill role="DST" />
-            <span className={s.dim}>ingress</span>
+            <DirectionBadge direction="ingress" />
             <span className="d-flex gap-1 flex-wrap"><SidePortBadges side={ingress} /></span>
           </div>
         );
@@ -331,7 +333,19 @@ function EngineCard({ name, ev }: { name: string; ev: EngineVerdict }) {
   );
 }
 
-function MeshSideCard({ source, membership }: { source: string; membership: MeshMembership }) {
+function MeshSideCard({ source, membership }: { source: string; membership: MeshMembership | undefined }) {
+  if (!membership) {
+    return (
+      <div className={`${s.card} ${s.cardWarn}`}>
+        <div className="d-flex justify-content-between align-items-center">
+          <span className={s.section}>mesh · {source}</span>
+          <span className={`${s.miniChip} ${s.miniChipWarn}`} title="Backend did not report mesh membership for this workload">
+            mesh status unknown
+          </span>
+        </div>
+      </div>
+    );
+  }
   const inMesh = membership.inMesh;
   const verdict = membership.mtls?.verdict;
   return (
@@ -343,12 +357,7 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
             {inMesh ? 'in mesh' : 'not in mesh'}
           </span>
           {verdict && (
-            <span
-              className={s.verdictChip}
-              style={{ background: MTLS_VERDICT_COLOR[verdict] ?? '#6c757d' }}
-            >
-              mTLS: {verdict}
-            </span>
+            <MtlsChip scope={verdict as MtlsScope} label={`mTLS: ${verdict}`} />
           )}
         </div>
       </div>
@@ -392,14 +401,14 @@ function SelectingPolicyChip({ policyRef, state }: { policyRef: PolicyRef; state
   );
 }
 
-function WorkloadColumn({ node, role, engines, policiesKey, mesh }: {
+function WorkloadColumn({ node, role, engines, policiesKey, meshSources, mesh }: {
   node:        WorkloadNode;
   role:        'SRC' | 'DST';
   engines:     [string, EngineVerdict][];
   policiesKey: 'srcPolicies' | 'dstPolicies';
+  meshSources: string[];
   mesh?:       Record<string, MeshMembership>;
 }) {
-  const meshEntries = mesh ? Object.entries(mesh) : [];
   return (
     <div className={s.reachCol}>
       <div className={s.reachColHeader}>
@@ -432,8 +441,8 @@ function WorkloadColumn({ node, role, engines, policiesKey, mesh }: {
           </div>
         );
       })}
-      {meshEntries.map(([source, membership]) => (
-        <MeshSideCard key={source} source={source} membership={membership} />
+      {meshSources.map((source) => (
+        <MeshSideCard key={source} source={source} membership={mesh?.[source]} />
       ))}
     </div>
   );
@@ -487,10 +496,11 @@ function ReachabilityGrid({ src, dst, result }: {
   result: ReachabilityResult;
 }) {
   const engines = Object.entries(result.engines);
+  const meshSources = result.mesh ? Object.keys(result.mesh) : [];
   return (
     <div className={s.reachGrid}>
-      <WorkloadColumn node={src} role="SRC" engines={engines} policiesKey="srcPolicies" mesh={result.srcMesh} />
-      <WorkloadColumn node={dst} role="DST" engines={engines} policiesKey="dstPolicies" mesh={result.dstMesh} />
+      <WorkloadColumn node={src} role="SRC" engines={engines} policiesKey="srcPolicies" meshSources={meshSources} mesh={result.srcMesh} />
+      <WorkloadColumn node={dst} role="DST" engines={engines} policiesKey="dstPolicies" meshSources={meshSources} mesh={result.dstMesh} />
       <ResultColumn result={result} engines={engines} />
     </div>
   );

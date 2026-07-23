@@ -78,7 +78,7 @@ func TestPolicyIssues_ConflictFlaggedWithEndpoints(t *testing.T) {
 			false, true),
 	})
 
-	issues := PolicyIssues(context.Background(), cache)
+	issues := PolicyIssues(context.Background(), cache, nil)
 
 	if len(issues) != 1 {
 		t.Fatalf("issues: want 1 conflict, got %d", len(issues))
@@ -101,7 +101,7 @@ func TestPolicyIssues_NoConflictWhenPathAllowed(t *testing.T) {
 		"k8s": engineResult(allowBothDirections(), nil, true, true),
 	})
 
-	issues := PolicyIssues(context.Background(), cache)
+	issues := PolicyIssues(context.Background(), cache, nil)
 
 	if len(issues) != 0 {
 		t.Fatalf("issues: want 0 (path permitted), got %d", len(issues))
@@ -120,7 +120,7 @@ func TestPolicyIssues_DedupesSamePair(t *testing.T) {
 			false, true),
 	})
 
-	issues := PolicyIssues(context.Background(), cache)
+	issues := PolicyIssues(context.Background(), cache, nil)
 
 	if len(issues) != 1 {
 		t.Fatalf("issues: want 1 (deduped by src-dst), got %d", len(issues))

@@ -1,7 +1,5 @@
 package models
 
-
-// WorkloadNode mirrors the UI WorkloadNode interface.
 type WorkloadNode struct {
 	ID        string            `json:"id"`
 	Label     string            `json:"label"`

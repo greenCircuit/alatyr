@@ -5,14 +5,20 @@
 // the endpoint to edit) reuses the panel's endpoint colors. Cause reads first
 // (colored reason badge), then the imperative fix the panel only implies.
 
-import type { Issue, PolicyRef, DirectionReason } from '../../data/policies';
+import type { Issue, PolicyRef, DirectionReason, MeshMembership } from '../../data/policies';
 import { REASON_META, type ReasonTone } from '../DetailPanel/shared/presentation';
 import { EngineBadge, EngineLogo } from '../../data/engineIcons';
 import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
+import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
 import { useManifestStore } from '../../store/manifestStore';
 import s from '../DetailPanel/DetailPanel.module.css';
 
 type Direction = 'egress' | 'ingress';
+
+// Mirrors istio.ZtunnelHBONEPort — the inbound port ztunnel listens on for
+// mesh traffic. A restrictive L3 rule that omits it strips ambient transport
+// even when the rule intends to admit the peer.
+const ZTUNNEL_HBONE_PORT = 15008;
 
 // Which endpoint owns the fix, per direction. Egress blocks leave the source;
 // ingress blocks land on the destination. Role tokens (SRC=blue / DST=amber)
@@ -36,6 +42,20 @@ const REASON_VERB: Partial<Record<DirectionReason, string>> = {
   'default-deny':    'Add an allow rule',
   'locked-no-match': 'Widen the selector to include this peer',
   'explicit-deny':   'Remove the deny',
+};
+
+// Mesh conflict's fix target depends on WHICH side is broken — mirrors the two
+// deny branches CanReach actually walks (src not enrolled vs src mTLS
+// disabled), derived from the src membership we already have rather than
+// parsing the backend's prose reason string.
+const meshFixVerb = (srcMembership?: MeshMembership): string => {
+  if (!srcMembership?.inMesh) {
+    return "Enroll src in the mesh, or relax dst's PeerAuthentication off STRICT";
+  }
+  if (srcMembership.mtls?.verdict === 'disable') {
+    return "Src's PeerAuthentication is DISABLE — change it, or relax dst's off STRICT";
+  }
+  return "Relax dst's PeerAuthentication off STRICT to admit this peer";
 };
 
 const endpointLabel = (issue: Issue, direction: Direction): string => {
@@ -75,8 +95,8 @@ function PolicyChip({ policy, onOpen, showEngine }: {
     <span className="d-inline-flex align-items-center gap-1" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className="chip-label text-truncate max-w-180"
-        style={{ cursor: 'pointer' }}
+        className={`${s.miniChip} ${s.miniChipDim} text-truncate max-w-180`}
+        style={{ cursor: 'pointer', border: 0 }}
         title={`${policy.source} · ${policy.namespace}/${policy.name}`}
         onClick={openPolicyOrManifest}
       >
@@ -90,7 +110,7 @@ function PolicyChip({ policy, onOpen, showEngine }: {
   );
 }
 
-function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines, layering, onOpen }: {
+function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines, layering, meshConflict, srcMembership, dstMembership, transportBlocked, onOpen }: {
   direction: Direction;
   culprits:  PolicyRef[];
   allowed:   PolicyRef[];
@@ -98,6 +118,15 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
   endpoint:  string;
   engines:   string[];
   layering:  boolean;
+  // Mesh conflict has no DirectionReason (mTLS denies aren't a policy-engine
+  // block reason) — both endpoints' membership carries the cause instead, so
+  // the row can show src → dst mesh status instead of a generic reason chip.
+  meshConflict:   boolean;
+  srcMembership?: MeshMembership;
+  dstMembership?: MeshMembership;
+  // Mesh transport blocked also has no DirectionReason — the cause is always
+  // the same (rule omits the HBONE port), so it's a fixed chip, not derived.
+  transportBlocked: boolean;
   onOpen:    (source: string, namespace: string, name: string) => boolean;
 }) {
   const side = DIRECTION_SIDE[direction];
@@ -126,8 +155,11 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
         {dirArrow} {direction}
       </span>
       {/* The filled SRC/DST pill names the endpoint to EDIT — layering rows have
-          nothing to fix, so the pill would misdirect. */}
-      {!layering && (
+          nothing to fix, so the pill would misdirect. Mesh conflict only ever
+          fires ingress (role=DST is implied by the direction word alone), and
+          its endpoint name already sits in the Scope column two cells over —
+          the pill would just repeat both. */}
+      {!layering && !meshConflict && (
         <span className={`${s.rolePill} ${rolePillClass}`}>
           {side.role}{endpoint && ` · ${endpoint}`}
         </span>
@@ -168,6 +200,43 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
             <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
           ))}
         </>
+      ) : meshConflict ? (
+        // Mesh conflict: L3 policy allows the path, Istio's mTLS layer denies
+        // it. Cause reads as src → dst mesh status (same pairing as the
+        // reachability panel's MeshSideCard), then the imperative names
+        // whichever side is actually broken — not in mesh vs mTLS DISABLE
+        // send the operator to different fixes.
+        <>
+          {srcMembership && (
+            srcMembership.inMesh ? (
+              srcMembership.mtls?.verdict && (
+                <MtlsChip scope={srcMembership.mtls.verdict} label={`SRC ${srcMembership.mtls.verdict}`} variant="pill" />
+              )
+            ) : (
+              <span className={`${s.reasonChip} ${REASON_TONE_CLASS.deny}`}>SRC not in mesh</span>
+            )
+          )}
+          <span className="text-secondary">→</span>
+          {dstMembership?.mtls?.verdict && (
+            <MtlsChip scope={dstMembership.mtls.verdict} label={`DST ${dstMembership.mtls.verdict}`} variant="pill" />
+          )}
+          <span className={`${s.smallText} ${s.dim}`}>→ {meshFixVerb(srcMembership)}</span>
+          {culprits.map((culprit) => (
+            <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
+          ))}
+        </>
+      ) : transportBlocked ? (
+        // Mesh transport blocked: this rule restricts ports and doesn't list
+        // HBONE, so ztunnel can't tunnel mesh traffic here even though the
+        // rule intends to admit the peer. Same fix every time — no per-issue
+        // branching needed.
+        <>
+          <span className={`${s.reasonChip} ${REASON_TONE_CLASS.deny}`}>HBONE port {ZTUNNEL_HBONE_PORT} not allowed</span>
+          <span className={`${s.smallText} ${s.dim}`}>→ Add port {ZTUNNEL_HBONE_PORT} to this rule, or drop its port restriction</span>
+          {culprits.map((culprit) => (
+            <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
+          ))}
+        </>
       ) : (
         <>
           {/* Cause — the shared reason chip, token-tinted per tone. */}
@@ -183,22 +252,87 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
   );
 }
 
+// Short label for the chip; the rest of the backend's "<code>: <detail>"
+// message (see peerauth.go's Issue* consts — stable, grep/jq-friendly) moves
+// to the title tooltip instead of sitting inline as a paragraph.
+const MESH_POLICY_LABEL: Record<string, string> = {
+  'duplicate at scope':                         'Duplicate PeerAuthentication',
+  'root selector ignored':                      'Root selector ignored',
+  'all peer authentications are set to Unset':  'All PAs unset',
+  'port level without selector':                'Port rule missing selector',
+};
+
+function splitIssueCode(message: string): { code: string; detail: string } {
+  const separatorIndex = message.indexOf(': ');
+  if (separatorIndex === -1) return { code: message, detail: '' };
+  return { code: message.slice(0, separatorIndex), detail: message.slice(separatorIndex + 2) };
+}
+
+// Mesh policy hygiene (duplicate PAs, root-selector-ignored, all-unset) is
+// node-scoped — there's no src/dst pair, so it skips the whole egress/ingress
+// CulpritGroup machinery and renders a single non-directional row instead.
+function MeshPolicyRow({ issue, onOpen }: {
+  issue:  Issue;
+  onOpen: (source: string, namespace: string, name: string) => boolean;
+}) {
+  const culprits = issue.culprits ?? [];
+  const { code, detail } = splitIssueCode(issue.message);
+  // dupDetail (peerauth.go) puts the winner first, losers after — the only
+  // code where "which one wins" actually matters to the operator.
+  const isDuplicate = code === 'duplicate at scope';
+  const [winner, ...duplicates] = culprits;
+  return (
+    <div className="d-flex flex-column gap-1 mb-2">
+      <div className="d-flex align-items-center flex-wrap gap-1 my-1">
+        <EngineBadge engine="pa" />
+        <span className={`${s.reasonChip} ${s.reasonWarn}`} title={detail || undefined}>
+          {MESH_POLICY_LABEL[code] ?? code}
+        </span>
+        {isDuplicate && winner ? (
+          <>
+            <span className="d-inline-flex align-items-center gap-1">
+              <span className={`${s.miniChip} ${s.miniChipAllow}`}>in use</span>
+              <PolicyChip policy={winner} onOpen={onOpen} />
+            </span>
+            <span className={`${s.smallText} ${s.dim}`}>ignored:</span>
+            {duplicates.map((culprit) => (
+              <span key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} className="d-inline-flex align-items-center gap-1">
+                <span className={`${s.miniChip} ${s.miniChipDim}`}>ignored</span>
+                <PolicyChip policy={culprit} onOpen={onOpen} />
+              </span>
+            ))}
+          </>
+        ) : (
+          culprits.map((culprit) => (
+            <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CulpritActions({ issue, onOpen }: {
   issue:  Issue;
   onOpen: (source: string, namespace: string, name: string) => boolean;
 }) {
+  if (issue.type === 'mesh policy') {
+    return <MeshPolicyRow issue={issue} onOpen={onOpen} />;
+  }
   const egress    = issue.egressCulprits ?? [];
   const ingress   = issue.ingressCulprits ?? [];
   const egressAllowed  = issue.egressAllowed ?? [];
   const ingressAllowed = issue.ingressAllowed ?? [];
   const layering = issue.type === 'partial access';
+  const meshConflict = issue.type === 'mesh conflict';
+  const transportBlocked = issue.type === 'mesh transport blocked';
   // Show a direction when it blocks (culprit/block reason) OR when it's the
   // permitted side of the conflict — the covered side is now confirmation, not
   // noise, so the operator sees both halves of the path in the row.
   const showEgress  = egress.length > 0 || isBlockReason(issue.egressReason) || issue.egressReason === 'permitted';
   const showIngress = ingress.length > 0 || isBlockReason(issue.ingressReason) || issue.ingressReason === 'permitted';
   if (!showEgress && !showIngress) {
-    return <span className={s.dim}>—</span>;
+    return null;
   }
   // Engines behind a merged same-pair row (k8s egress + istio ingress). Prefer
   // the culprits' own source; when a block direction has no policy ref to point
@@ -219,6 +353,10 @@ export function CulpritActions({ issue, onOpen }: {
           endpoint={endpointLabel(issue, 'egress')}
           engines={groupEngines(egress.length > 0 ? egress : egressAllowed)}
           layering={layering}
+          meshConflict={meshConflict}
+          srcMembership={issue.srcMembership}
+          dstMembership={issue.dstMembership}
+          transportBlocked={transportBlocked}
           onOpen={onOpen}
         />
       )}
@@ -231,6 +369,10 @@ export function CulpritActions({ issue, onOpen }: {
           endpoint={endpointLabel(issue, 'ingress')}
           engines={groupEngines(ingress.length > 0 ? ingress : ingressAllowed)}
           layering={layering}
+          meshConflict={meshConflict}
+          srcMembership={issue.srcMembership}
+          dstMembership={issue.dstMembership}
+          transportBlocked={transportBlocked}
           onOpen={onOpen}
         />
       )}

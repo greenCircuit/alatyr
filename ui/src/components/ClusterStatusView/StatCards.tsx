@@ -1,11 +1,10 @@
-// Headline numbers for the cluster status page. Pure props — all counting
-// happens in store/clusterStats.ts so this stays a dumb renderer.
-//
-// V2 layout: two KPI tiles carry severity via left stripe (semantic surfaces
-// per STYLEGUIDE §3). Workloads/Policies/Namespaces render as an inline
-// context strip — derivable from the nav scope and tables below.
+// Headline metric strip — 5-column grid of bordered mini-cards. Card treatment
+// keeps the strip visually consistent with every other section on the page.
+// Danger tone lifts the border + number color so a red-tinted card carries
+// the "on fire" signal without needing a separate banner.
 
-import s from '../DetailPanel/DetailPanel.module.css';
+import { SEVERITY_COLOR } from '../../data/policies';
+import p from './Panel.module.css';
 
 interface StatCardsProps {
   workloads:          number;
@@ -18,16 +17,21 @@ interface StatCardsProps {
   exposedNamespaces:  number;
 }
 
-function KpiCard({ label, value, sub, tone }: {
-  label: string; value: number; sub: string; tone: 'deny' | 'allow';
+function MetricCard({ label, value, sub, danger }: {
+  label: string; value: string | number; sub: string; danger?: boolean;
 }) {
-  const shellClass = tone === 'deny' ? s.semanticDeny : s.semanticAllow;
-  const valueClass = tone === 'deny' ? s.verdictTextDeny : s.verdictTextAllow;
+  const dangerColor = SEVERITY_COLOR.high;
+  const borderStyle = danger
+    ? { border: `1px solid ${dangerColor}` }
+    : undefined;
+  const valueColor  = danger ? dangerColor : '#e9ecef';
   return (
-    <div className={`${shellClass} h-100 d-flex flex-column gap-1`}>
-      <div className={s.eyebrow}>{label}</div>
-      <div className={`${s.hero} tnum ${valueClass}`}>{value}</div>
-      <div className={`${s.dim} ${s.smallText}`}>{sub}</div>
+    <div className={p.card} style={borderStyle}>
+      <div className={`${p.eyebrow} mb-2`}>{label}</div>
+      <div className={`${p.hero} tnum`} style={{ color: valueColor }}>
+        {value}
+      </div>
+      <div className="text-secondary fs-12 mt-2">{sub}</div>
     </div>
   );
 }
@@ -41,34 +45,24 @@ export default function StatCards(props: StatCardsProps) {
   const exposedDanger = props.exposedCount > 0;
 
   return (
-    <div className="d-flex flex-column gap-2">
-      <div className="row g-3">
-        <div className="col-6">
-          <KpiCard
-            label="Issues"
-            value={props.issues}
-            sub={issuesDanger ? `${props.issuesBlocking} blocking` : 'none blocking'}
-            tone={issuesDanger ? 'deny' : 'allow'}
-          />
-        </div>
-        <div className="col-6">
-          <KpiCard
-            label="Exposed & unpoliced"
-            value={props.exposedCount}
-            sub={exposedDanger
-              ? `in ${props.exposedNamespaces} namespace${props.exposedNamespaces === 1 ? '' : 's'}`
-              : 'none'}
-            tone={exposedDanger ? 'deny' : 'allow'}
-          />
-        </div>
-      </div>
-      <div className={`d-flex align-items-baseline gap-3 px-1 pt-1 ${s.body} ${s.dim}`}>
-        <span>Workloads <span className={`${s.section} tnum`}>{props.workloads}</span></span>
-        <span className={s.dim}>·</span>
-        <span>Policies <span className={`${s.section} tnum`}>{props.policies}</span></span>
-        <span className={s.dim}>·</span>
-        <span>Namespaces <span className={`${s.section} tnum`}>{nsLabel}</span></span>
-      </div>
+    <div className={p.grid5}>
+      <MetricCard
+        label="Issues"
+        value={props.issues}
+        sub={issuesDanger ? `${props.issuesBlocking} blocking` : 'none blocking'}
+        danger={issuesDanger}
+      />
+      <MetricCard
+        label="Exposed & unpoliced"
+        value={props.exposedCount}
+        sub={exposedDanger
+          ? `in ${props.exposedNamespaces} namespace${props.exposedNamespaces === 1 ? '' : 's'}`
+          : 'none'}
+        danger={exposedDanger}
+      />
+      <MetricCard label="Workloads"  value={props.workloads} sub="in scope" />
+      <MetricCard label="Policies"   value={props.policies}  sub="in scope" />
+      <MetricCard label="Namespaces" value={nsLabel}         sub="selected of total" />
     </div>
   );
 }

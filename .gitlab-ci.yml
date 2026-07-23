@@ -22,6 +22,8 @@ release-dry-run:
 go-lint:
   stage: test
   image: golangci/golangci-lint:latest
+  before_script:
+    - mkdir -p ui/dist && touch ui/dist/.gitkeep
   script:
     - golangci-lint run ./...
   allow_failure: true
@@ -29,6 +31,8 @@ go-lint:
 go-test:
   stage: test
   image: golang:1.26
+  before_script:
+    - mkdir -p ui/dist && touch ui/dist/.gitkeep
   script:
     - go test ./... -cover
   allow_failure: true

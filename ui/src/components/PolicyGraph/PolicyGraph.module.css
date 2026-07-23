@@ -28,6 +28,47 @@
     transform: translate(-50%, -50%);
 }
 
+/* Mesh coverage chip — verdict short label + verdict stripe. Hangs centered
+   below the node bbox so it doesn't collide with the node label. Filled
+   variant = in mesh (neutral surface, left stripe carries verdict color).
+   Outlined variant = out of mesh (transparent, dashed border) so cluster
+   coverage reads as filled-vs-outlined instead of present-vs-absent. */
+.meshMark {
+    display: inline-flex;
+    align-items: center;
+    height: 14px;
+    padding: 0 5px 0 4px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #e9ecef;
+    background: #1a1e22ee;
+    border-left: 3px solid #495057;
+    box-shadow: 0 0 4px #000c;
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+}
+.meshMark:hover {
+    outline: 1px solid #e9ecef55;
+    outline-offset: 0;
+}
+.meshMark.meshMarkOut {
+    background: transparent;
+    color: #6c757d;
+    border: 1px dashed #495057;
+    padding: 0 5px;
+    text-transform: lowercase;
+    font-weight: 600;
+}
+.meshMark.meshMarkActive {
+    outline: 1.5px solid #fff;
+    outline-offset: 0;
+}
+
 /* Issue marker chip — ⚠ + optional count on a solid tier-colored pill
    (background set inline). Filled + outlined so it pops against both the dark
    canvas and node fills. Centered on its anchor point (node corner / below

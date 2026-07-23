@@ -7,6 +7,27 @@ import (
 	"graph/internal/models"
 )
 
+// isIstioComponent reports whether a workload is an Istio control-plane or
+// gateway pod (istiod, ztunnel, istio-cni, ingress gateway). These carry
+// istio.io/dataplane-mode: none because they are the mesh proxies, not ambient
+// data-plane members — the ambient opt-out must not exclude them from mesh
+// membership. Both the identifying label and the namespace must match: the
+// ingress gateway lives in IngressNamespace, everything else in RootNamespace,
+// so an app in a user namespace reusing a label (app=istiod) is not mistaken
+// for the control plane.
+func isIstioComponent(workload models.WorkloadNode) bool {
+	switch workload.Namespace {
+	case IngressNamespace:
+		return workload.Labels[istioSelector] == gatewayVal
+	case RootNamespace:
+		if workload.Labels[istioSelector] == istiodVal || workload.Labels[istioSelector] == ztunelVal {
+			return true
+		}
+		return workload.Labels[istioCniKey] == istioCniVal
+	}
+	return false
+}
+
 // convert maps a PeerAuthentication to MtlsSource. Scope is derived from
 // where the PA lives + whether it has a selector.
 func convert(pa *istiosec.PeerAuthentication) models.MtlsSource {
@@ -68,15 +89,4 @@ func participatesInMesh(workload models.WorkloadNode, nsLabels map[string]string
 		return true
 	}
 	return inAmbientMesh(workload.Labels, nsLabels)
-}
-
-// effectiveMode returns the per-port override if set, else Verdict.
-// port=0 means no port specified.
-func effectiveMode(state *models.MtlsState, port uint32) models.MeshScope {
-	if port != 0 && state.PortOverrides != nil {
-		if override, ok := state.PortOverrides[port]; ok {
-			return override
-		}
-	}
-	return state.Verdict
 }

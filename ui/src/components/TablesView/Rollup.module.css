@@ -16,11 +16,44 @@
 .chip.active   { background: rgba(255, 255, 255, 0.08); }
 .chip.dimmed   { opacity: 0.45; }
 
-/* Small solid symbol inside a Status rollup chip (STATUS_CFG symbol). */
-.symbol {
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 2px 4px;
-    border-radius: 3px;
+/* Aligned-grid variant — used on the status page inside a card. Long status
+ * keys have different label widths (`ns-ingress-access` vs `air-gapped`),
+ * so a chip-wrap layout makes counts jitter across rows. This lays each
+ * entry into a fixed 3-track row (symbol + label | count) inside a
+ * responsive grid so the count column is tabular and scannable.
+ */
+/* Status-page rollup — flex-wrap grid, 3 items per row. Each row uses the
+ * shared `.chip` styling from this module so status keys and mesh scope
+ * chips look identical to IssueRollup / EngineRollup — one chip language
+ * across the whole page. Layout ONLY here: flex-basis carves 3 columns,
+ * `.chip` (or `.chip + .active/.dimmed`) styles the button surface.
+ */
+.gridRollup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+}
+
+.gridSlot {
+    flex: 0 0 calc(33.333% - 4px);
+    min-width: 0;
+    display: flex;
+}
+
+@media (max-width: 1024px) {
+    .gridSlot {
+        flex-basis: calc(50% - 3px);
+    }
+}
+
+@media (max-width: 640px) {
+    .gridSlot {
+        flex-basis: 100%;
+    }
+}
+
+.gridSlot > * {
+    flex: 1 1 auto;
+    justify-content: flex-start;
 }

@@ -42,10 +42,6 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
     .map((key) => ({ key, count: counts.get(key) ?? 0 }))
     .filter((e) => e.count > 0);
 
-  const wrapperClass = bare
-    ? 'd-flex align-items-center flex-wrap gap-2 fs-12'
-    : 'd-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12';
-
   if (entries.length === 0) {
     return (
       <div className={bare ? 'text-secondary fs-12' : 'px-3 py-2 border-bottom border-secondary text-secondary fs-12'}>
@@ -54,13 +50,43 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
     );
   }
 
+  // Bare (inside a status-page card) = shared bordered chip pattern (same as
+  // IssueRollup / EngineRollup) wrapped in flex slots for 3 items per row.
+  // Keeps ONE chip language across the whole page — colored border, small
+  // symbol block, label, `.chip-count` numeric.
+  if (bare) {
+    return (
+      <div className={r.gridRollup}>
+        {entries.map(({ key, count }) => {
+          const cfg = STATUS_CFG[key];
+          const bg = SEVERITY_COLOR[cfg.severity];
+          const active = selectedStatuses.has(key);
+          const dimmed = selectedStatuses.size > 0 && !active;
+          return (
+            <div key={key} className={r.gridSlot}>
+              <button
+                type="button"
+                className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
+                onClick={() => { toggleStatus(key); onToggled?.(key); }}
+                title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
+                style={{ border: `1px solid ${bg}` }}
+              >
+                <span aria-hidden="true" style={{ color: bg }}>●</span>
+                <span className="text-truncate">{key}</span>
+                <span className="chip-count ms-1">{count}</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Non-bare (above the Workloads table) — keep the chip strip; filter row
+  // stays a compact horizontal wrap.
   return (
-    <div className={wrapperClass}>
-      {!bare && (
-        <span className="text-secondary fs-11 text-uppercase tracking-wide">
-          Status
-        </span>
-      )}
+    <div className="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom border-secondary fs-12">
+      <span className="text-secondary fs-11 text-uppercase tracking-wide">Status</span>
       {entries.map(({ key, count }) => {
         const cfg = STATUS_CFG[key];
         const bg = SEVERITY_COLOR[cfg.severity];
@@ -75,9 +101,7 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
             title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${bg}` }}
           >
-            <span className={r.symbol} style={{ background: bg }}>
-              {cfg.symbol}
-            </span>
+            <span aria-hidden="true" style={{ color: bg }}>●</span>
             <span>{key}</span>
             <span className="chip-count ms-1">{count}</span>
           </button>

@@ -4,11 +4,11 @@
 // dropdown panel with all/none links + checkbox list) so they live together.
 
 import { useRef, useState } from 'react';
-import { useGraphStore } from '../../../store/graphStore';
+import { useGraphStore, type MeshFilterValue } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { useOutsideClick } from './useOutsideClick';
-import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from './constants';
+import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, MESH_FILTER_LABEL, MESH_FILTER_GROUPS } from './constants';
 import { countIssuesByType } from '../../../store/issueIndex';
 import styles from '../FilterPanel.module.css';
 
@@ -379,6 +379,69 @@ export function IssueTypeDropdown() {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MeshDropdown() {
+  const { selectedMeshFilters, toggleMeshFilter } = useGraphStore();
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  const count = selectedMeshFilters.size;
+  const label = count === 0
+    ? 'Mesh: any'
+    : count === 1
+      ? MESH_FILTER_LABEL[[...selectedMeshFilters][0]]
+      : `${count} mesh filters`;
+
+  return (
+    <div className="position-relative" ref={ref}>
+      <button
+        className={`btn btn-sm ${count > 0 ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {label}
+      </button>
+
+      {open && (
+        <div className="dropdown-shell dropdown-panel dropdown-panel-md">
+          <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
+            <button
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
+              onClick={() => Array.from(selectedMeshFilters).forEach(toggleMeshFilter)}
+              disabled={count === 0}
+            >
+              clear
+            </button>
+          </div>
+
+          {MESH_FILTER_GROUPS.map((group) => (
+            <div key={group.title} className="mb-2">
+              <div className="text-secondary text-uppercase mb-1 fs-10 tracking-wide">
+                {group.title}
+              </div>
+              {group.values.map((value: MeshFilterValue) => (
+                <div key={value} className="form-check mb-1">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id={`mesh-dd-${value}`}
+                    checked={selectedMeshFilters.has(value)}
+                    onChange={() => toggleMeshFilter(value)}
+                  />
+                  <label className="form-check-label text-light fs-13" htmlFor={`mesh-dd-${value}`}>
+                    {MESH_FILTER_LABEL[value]}
+                  </label>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>

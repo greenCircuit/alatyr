@@ -44,6 +44,21 @@ export const SEVERITY_COLOR: Record<Severity, string> = {
   secure:   '#2f9e44',  // green
 };
 
+// mTLS verdict palette — separate axis from SEVERITY_COLOR. The Istio install
+// default is PERMISSIVE; painting the whole dashboard amber for it would
+// misrepresent a healthy default install as a warning. Mirrors the CSS tokens
+// --color-mtls-* in style/colors.css.
+export type MtlsScope = 'strict' | 'permissive' | 'disable' | 'unset';
+// Permissive is amber, not blue: on the graph it is the state an operator
+// scans for (silently accepts plaintext). Must read as caution, not blend
+// with strict-green nor with the info-blue used elsewhere.
+export const MTLS_COLOR: Record<MtlsScope, string> = {
+  strict:     '#2f9e44',
+  permissive: '#f08c00',
+  disable:    '#c92a2a',
+  unset:      '#6c757d',
+};
+
 // Single source of truth for status badge presentation. Used by:
 //   - PolicyGraph (tiny on-node badges)
 //   - DetailPanel (larger panel badges, with text label)
@@ -214,12 +229,17 @@ export interface MtlsSource {
   portModes?:    Record<string, MeshScope>;
 }
 
+export interface MtlsIssue {
+  message: string;
+  refs?:   PolicyRef[];
+}
+
 export interface MtlsState {
   verdict:          MeshScope;
   portOverrides?:   Record<string, MeshScope>;
   effectiveSource?: PARef; // absent or empty ns/name = default applied
   sources?:         MtlsSource[];
-  issues?:          string[];
+  issues?:          MtlsIssue[];
 }
 
 export interface MeshMembership {
@@ -230,13 +250,89 @@ export interface MeshMembership {
   mtls?:     MtlsState;
 }
 
+// Mesh posture counters. Populated once per graph build by the istio source
+// and served nested inside ClusterMetrics — cheap to poll.
+export interface MeshMetrics {
+  nsEnrolled:        number;
+  nsPartial:         number;
+  workloadsEnrolled: number;
+  mtlsStrict:        number;
+  mtlsPermissive:    number;
+  mtlsDisabled:      number;
+  mtlsUnset:         number;
+  mtlsUnknown:       number;
+}
+
+// Cluster-wide metrics envelope from /api/cluster-metrics. Totals are the
+// denominators (stamped from server cache sizes); meshMetrics nests posture.
+export interface ClusterMetrics {
+  nsTotal:       number;
+  workloadTotal: number;
+  meshMetrics:   MeshMetrics;
+}
+
+// Small presentational descriptor shared by graph overlay, workload table,
+// and status-page rollup so all three surfaces speak the same colors +
+// short labels for a workload's mesh state. `variant` distinguishes filled
+// in-mesh chips from the outlined out-of-mesh chip so the two greys (unset
+// vs not-enrolled) do not collapse into a single "muted" gestalt.
+export interface MeshBadgeMeta {
+  short:         string; // tight chip label — verdict only, no provider prefix
+  long:          string; // mtls verdict phrase, e.g. "mTLS STRICT"
+  providerLabel: string; // "istio · ambient" (or "" when out of mesh)
+  color:         string; // stripe/dot color
+  tooltip:       string;
+  variant:       'in' | 'out'; // filled (in mesh) vs outlined (not enrolled)
+}
+
+// providerLabel joins the dataplane facts the operator scans in a hover: which
+// provider owns this workload, which dataplane mode is in play, and (future)
+// whether a waypoint is bound so L7 policy actually runs. Kept as a `·`-joined
+// list so a new segment slots in without changing callers.
+function buildProviderLabel(membership: MeshMembership): string {
+  const parts: string[] = [];
+  if (membership.provider) parts.push(membership.provider);
+  if (membership.mode)     parts.push(membership.mode);
+  if (membership.waypoint) parts.push('waypoint');
+  return parts.join(' · ');
+}
+
+export function meshBadgeMeta(membership: MeshMembership | undefined): MeshBadgeMeta {
+  if (!membership || !membership.inMesh) {
+    return {
+      short:         'no-mesh',
+      long:          'Out of mesh',
+      providerLabel: '',
+      color:         '#495057',
+      tooltip:       'Not enrolled in the mesh dataplane',
+      variant:       'out',
+    };
+  }
+  const providerLabel = buildProviderLabel(membership);
+  const verdict       = membership.mtls?.verdict ?? 'unset';
+  const tooltipPrefix = providerLabel ? `${providerLabel} — ` : '';
+  switch (verdict) {
+    case 'strict':
+      return { short: 'mTLS',   long: 'mTLS STRICT',     providerLabel, color: MTLS_COLOR.strict,     tooltip: `${tooltipPrefix}mTLS strictly required for peer traffic`, variant: 'in' };
+    case 'permissive':
+      return { short: 'PERM',   long: 'mTLS PERMISSIVE', providerLabel, color: MTLS_COLOR.permissive, tooltip: `${tooltipPrefix}mTLS accepted but plaintext also allowed`, variant: 'in' };
+    case 'disable':
+      return { short: 'PLAIN',  long: 'mTLS DISABLE',    providerLabel, color: MTLS_COLOR.disable,    tooltip: `${tooltipPrefix}mTLS disabled — plaintext only`, variant: 'in' };
+    case 'unset':
+    default:
+      return { short: 'mesh?',  long: 'mTLS UNSET',      providerLabel, color: MTLS_COLOR.unset,      tooltip: `${tooltipPrefix}No PA in scope; inherits mesh default (PERMISSIVE)`, variant: 'in' };
+  }
+}
+
 // /api/node-info response. neighbors key = engine name (k8s/istio); Mesh key =
 // mesh source name (currently only "istio"). Issues = cross-cutting interop
 // findings (e.g. ambient pod missing ztunnel allowance).
 export interface NodeDetail {
   neighbors: Record<string, NodeNeighbors>;
-  mesh?:     Record<string, MeshMembership>;
-  issues?:   string[];
+  // Single membership from cache (store.GetWorkloadMesh), not a per-source map:
+  // one mesh source is wired today and BuildMeshMembership already resolves the
+  // effective verdict (incl. root/ingress system namespaces).
+  mesh?:     MeshMembership;
 }
 
 // IssueType mirrors models.IssueType — the cross-cutting conflict classes
@@ -244,6 +340,7 @@ export interface NodeDetail {
 export type IssueType =
   | 'no dns'
   | 'mesh policy'
+  | 'mesh transport blocked'
   | 'policy conflict'
   | 'partial access'
   | 'mesh conflict'
@@ -278,6 +375,13 @@ export interface Issue {
   src?:    WorkloadNode;
   dst?:    WorkloadNode;
   node?:   WorkloadNode;
+  // Mesh conflict only: resolved membership for both endpoints, so the row can
+  // show the mTLS mode that caused the deny without re-deriving it client-side.
+  srcMembership?: MeshMembership;
+  dstMembership?: MeshMembership;
+  // Node-scoped findings with no ingress/egress direction (mesh policy hygiene:
+  // duplicate PeerAuthentications, root-selector-ignored, etc).
+  culprits?: PolicyRef[];
 }
 
 // Flatten an issue's per-direction culprits into one deduped list, tagging each

@@ -3,7 +3,7 @@
 // are the color/verdict mappings the badges, mesh cards, and reachability
 // columns all read from.
 
-import { SEVERITY_COLOR } from '../../../data/policies';
+import { SEVERITY_COLOR, MTLS_COLOR } from '../../../data/policies';
 import type { DirectionReason } from '../../../data/policies';
 import type { ChipState } from './reachability';
 
@@ -39,12 +39,9 @@ export const DIR_COLOR: Record<string, { tint: string; arrow: string }> = {
 
 // Color-codes mTLS verdict so the badge reads at a glance. Shared by the
 // detail-panel mesh card and the reachability MeshSideCard.
-export const MTLS_VERDICT_COLOR: Record<string, string> = {
-  strict:     SEVERITY_COLOR.secure,
-  permissive: SEVERITY_COLOR.caution,
-  disable:    SEVERITY_COLOR.high,
-  unset:      '#6c757d',
-};
+// Re-exports MTLS_COLOR under the legacy record-shape key so downstream
+// callers keep working during the axis consolidation.
+export const MTLS_VERDICT_COLOR: Record<string, string> = { ...MTLS_COLOR };
 
 // verdictColor maps reachability verdicts to the project palette. Read by the
 // status badges, the edge reachability banner, and the reachability columns.

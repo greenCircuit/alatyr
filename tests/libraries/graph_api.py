@@ -92,8 +92,14 @@ def find_edge(
 
 
 def mesh_membership(detail: dict, source: str = "istio") -> dict | None:
-    """Membership entry for one mesh source from a /api/node-info NodeDetail."""
-    return detail.get("mesh", {}).get(source)
+    """Membership from /api/node-info NodeDetail. MeshMembership is a flat
+    struct (single provider); `source` filters by `provider` field."""
+    mesh = detail.get("mesh")
+    if not mesh:
+        return None
+    if source and mesh.get("provider") != source:
+        return None
+    return mesh
 
 
 def mtls_state(detail: dict, source: str = "istio") -> dict | None:
@@ -103,14 +109,25 @@ def mtls_state(detail: dict, source: str = "istio") -> dict | None:
 
 
 def mtls_issues(detail: dict, source: str = "istio") -> list[str]:
-    """PA-config issues from MtlsState (root selector ignored, duplicate, etc)."""
+    """PA-config issue messages from MtlsState (root selector ignored, duplicate, etc)."""
     state = mtls_state(detail, source)
-    return list(state.get("issues", [])) if state else []
+    if not state:
+        return []
+    return [entry.get("message", "") for entry in state.get("issues", [])]
 
 
-def interop_issues(detail: dict) -> list[str]:
-    """Top-level cross-cutting issues (e.g. NP missing the ztunnel HBONE port)."""
-    return list(detail.get("issues", []))
+def interop_issues(all_issues: list[dict], node_id: str) -> list[str]:
+    """Filter /api/issues to ambient-HBONE (`mesh transport blocked`) findings
+    scoped to one workload; returns the issue messages."""
+    matches: list[str] = []
+    for issue in all_issues:
+        if issue.get("type") != "mesh transport blocked":
+            continue
+        node = issue.get("node")
+        if not node or node.get("id") != node_id:
+            continue
+        matches.append(issue.get("message", ""))
+    return matches
 
 
 def assert_contains_all(actual: list[Any], expected: list[Any], label: str = "values") -> None:

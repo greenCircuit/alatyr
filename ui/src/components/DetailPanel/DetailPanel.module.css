@@ -626,6 +626,39 @@ details[open] > .disclosureSummary::before { transform: rotate(90deg); }
   font-size: 11px;
   font-style: italic;
 }
+.portChipBlocked {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-deny) 18%, transparent);
+  color: var(--color-deny);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+/* ── Issue group — header + body inside .semanticWarn. Always expanded; the
+   header just names the finding type + count so mixed-type panels read at a
+   glance without a chevron to click. */
+.issueGroup { border-top: 1px solid #ffffff10; padding-top: 8px; }
+.issueGroup:first-child { border-top: 0; padding-top: 0; }
+.issueGroupSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.issueGroupCount {
+  display: inline-flex;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #ffffff14;
+  color: #d5dbe1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 18px;
+  justify-content: center;
+}
+.issueGroupBody { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 
 /* ── Finding kind chip — neutral mono taxonomy chip on findings. Severity
    signals through a colored ● dot BEFORE the chip, not by tinting the chip.
@@ -717,6 +750,7 @@ details[open] > .disclosureSummary::before { transform: rotate(90deg); }
 }
 .miniChipAllow { background: color-mix(in srgb, var(--color-allow) 22%, transparent); color: #b7f2c9; }
 .miniChipDim   { background: #ffffff10; color: #9aa3ad; }
+.miniChipWarn  { background: color-mix(in srgb, var(--color-warn) 22%, transparent); color: var(--color-warn); }
 
 /* ── Peer chip — distinct-peer summary above per-policy cards. Lighter than
    labelChip: shows a peer identity, not a k=v pair. */
