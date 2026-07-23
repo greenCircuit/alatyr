@@ -4,10 +4,12 @@
 // a status-filter affordance (clicking a badge toggles selectedStatuses).
 
 import { useGraphStore } from '../../../store/graphStore';
-import type { StatusKey } from '../../../data/policies';
-import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
+import type { MeshFilterValue } from '../../../store/filters';
+import type { StatusKey, MtlsScope } from '../../../data/policies';
+import { STATUS_CFG, SEVERITY_COLOR, MTLS_COLOR } from '../../../data/policies';
 import { COV } from './coverage';
 import s from './Legend.module.css';
+import g from '../PolicyGraph.module.css';
 
 export interface BadgeNode { id: string; statuses: StatusKey[] }
 
@@ -31,8 +33,26 @@ function Dot({ color, label }: { color: string; label: string }) {
   );
 }
 
+// Mesh vocabulary for the legend. Order mirrors the graph chip precedence:
+// filled in-mesh states (strict → permissive → disable → unset) followed by
+// the outlined out-of-mesh chip. Copy is one-line operator-speak, verdict
+// name up front so it doubles as the filter chip label.
+const MESH_LEGEND: {
+  filter:  MeshFilterValue;
+  short:   string;
+  scope?:  MtlsScope;         // set for filled variants
+  outline?: boolean;           // out-of-mesh
+  desc:    string;
+}[] = [
+  { filter: 'mtls-strict',     short: 'mTLS',    scope: 'strict',     desc: 'strict — mTLS required for peer traffic' },
+  { filter: 'mtls-permissive', short: 'PERM',    scope: 'permissive', desc: 'permissive — mTLS accepted, plaintext also allowed' },
+  { filter: 'mtls-disable',    short: 'PLAIN',   scope: 'disable',    desc: 'disable — plaintext only' },
+  { filter: 'mtls-unset',      short: 'mesh?',   scope: 'unset',      desc: 'unset — no PA in scope, inherits mesh default' },
+  { filter: 'out-of-mesh',     short: 'no-mesh', outline: true,       desc: 'not enrolled in the mesh dataplane' },
+];
+
 export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { selectedStatuses, toggleStatus } = useGraphStore();
+  const { selectedStatuses, toggleStatus, selectedMeshFilters, toggleMeshFilter } = useGraphStore();
 
   return (
     <div className={`position-absolute d-flex align-items-end ${s.legendAnchor}`}>
@@ -65,7 +85,7 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
             <span className={s.lineLabel}>╌╌ namespace</span>
           </div>
           <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
-            Badges
+            Status badges
           </div>
           {(Object.entries(STATUS_CFG) as [StatusKey, typeof STATUS_CFG[StatusKey]][]).map(([key, cfg]) => {
             const active = selectedStatuses.has(key);
@@ -87,6 +107,34 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
                   {cfg.symbol}
                 </span>
                 <span className="fs-9">{label}</span>
+              </span>
+            );
+          })}
+
+          <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
+            Mesh (mTLS)
+          </div>
+          {MESH_LEGEND.map((row) => {
+            const active = selectedMeshFilters.has(row.filter);
+            const dimmed = selectedMeshFilters.size > 0 && !active;
+            const outClass    = row.outline ? g.meshMarkOut    : '';
+            const activeClass = active      ? g.meshMarkActive : '';
+            const stripe      = row.scope ? { borderLeftColor: MTLS_COLOR[row.scope] } : undefined;
+            return (
+              <span
+                key={row.filter}
+                className="d-flex align-items-center gap-1 cursor-pointer transition-opacity"
+                title={row.desc}
+                onClick={() => toggleMeshFilter(row.filter)}
+                style={{ opacity: dimmed ? 0.4 : 1 }}
+              >
+                <span
+                  className={`${g.meshMark} ${outClass} ${activeClass} ${s.meshLegendChip}`}
+                  style={stripe}
+                >
+                  {row.short}
+                </span>
+                <span className="fs-9">{row.desc}</span>
               </span>
             );
           })}

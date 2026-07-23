@@ -1,5 +1,6 @@
 package models
 
+
 // Cache holds per-namespace state reused across graph builds.
 // NsIndex skips the k8s pod/cronjob fetch on cache hit; EvaluationResults
 // skips per-engine policy evaluation. Populated by store, read by graph.
@@ -10,6 +11,9 @@ type Cache struct {
 	// to its WorkloadNode without a namespace hint. Derived from NsIndex —
 	// callers that mutate NsIndex must call RebuildWorkloadIndex afterwards.
 	WorkloadByID      map[string]WorkloadNode
+	MeshMembership	  map[string]MeshMembership
+	MeshMetrics       MeshMetrics
+	MeshIssues        []Issue
 }
 
 // RebuildWorkloadIndex regenerates WorkloadByID from NsIndex so consumers get

@@ -17,6 +17,7 @@ import {
   ActionDropdown,
   DirectionDropdown,
   IssueTypeDropdown,
+  MeshDropdown,
 } from './parts/filter-dropdowns';
 
 export default function FilterPanel() {
@@ -101,6 +102,7 @@ export default function FilterPanel() {
         <PolicySourceDropdown />
         <ActionDropdown />
         <DirectionDropdown />
+        <MeshDropdown />
       </div>
     </div>
   );

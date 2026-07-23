@@ -176,18 +176,13 @@ func (prober *reachabilityProber) probe(ctx context.Context, srcID, srcNs, dstID
 	if cached, ok := prober.memo[memoKey]; ok {
 		return cached
 	}
-	result := IsNodesReachable(ctx, prober.data, prober.meshSources, srcID, srcNs, dstID, dstNs)
+	result := PoliciesCanReach(ctx, prober.data, srcID, srcNs, dstID, dstNs)
 	prober.memo[memoKey] = result
 	return result
 }
 
-// IsNodesReachable evaluates src→dst across every policy engine + every mesh
-// source in one pass. Both pod-ID and ns-node-ID participate as matchers so
-// pod↔pod, pod↔ns, ns↔pod, and ns↔ns peer rules are caught without separate
-// calls. Locks come from PolicyStatuses; deny matches subtract per-direction.
-// Mesh pass runs after the engine loop and adds transport-layer (mTLS)
-// reachability — block when dst requires STRICT but src cannot speak mTLS.
-func IsNodesReachable(ctx context.Context, data *models.Cache, meshSources []mesh.MeshSource, srcNodeId, srcNodeNs, destNodeId, destNodeNs string) ReachabilityResult {
+// IsNodesReachable evaluates src→dst across every policy engine
+func PoliciesCanReach(ctx context.Context, data *models.Cache, srcNodeId, srcNodeNs, destNodeId, destNodeNs string) ReachabilityResult {
 	// NsIndex entries are missing for external nodes (ns=="") and any ns not
 	// fetched yet; NSNode is *WorkloadNode so the zero NSIndex has a nil pointer.
 	// Tolerate both — empty matcher just never matches.
@@ -245,59 +240,47 @@ func IsNodesReachable(ctx context.Context, data *models.Cache, meshSources []mes
 		result.Engines[engineName] = engineVerdict
 	}
 
-	// Mesh pass — transport-layer check (mTLS) + per-side state for the UI.
-	// Skip if either endpoint is not a known workload (e.g. external nodes)
-	// — mesh has no opinion on off-cluster peers.
-	if len(meshSources) > 0 {
-		srcWorkload, srcOk := idIndex[srcNodeId]
-		dstWorkload, dstOk := idIndex[destNodeId]
-		if srcOk && dstOk {
-			srcNsLabels := nsLabels(data, srcNodeNs)
-			dstNsLabels := nsLabels(data, destNodeNs)
-			result.Mesh = map[string]models.MeshVerdict{}
-			result.SrcMesh = map[string]*models.MeshMembership{}
-			result.DstMesh = map[string]*models.MeshMembership{}
-			for _, src := range meshSources {
-				// TODO(perf): N+1 ResolveMtls — outer ResolveMtls(src/dst) below
-				// plus CanReach internally re-resolves both. 4 calls per click
-				// when 2 would do. Fix by adding CanReachFromStates(srcState,
-				// dstState, port) and resolving once here.
-				// Per-side membership + mTLS, so the UI can show why mesh denied.
-				if m := src.Membership(srcWorkload, srcNsLabels); m != nil {
-					if m.InMesh {
-						if mtls, err := src.ResolveMtls(ctx, srcWorkload, srcNsLabels); err == nil {
-							m.Mtls = mtls
-						}
-					}
-					result.SrcMesh[src.Name()] = m
-				}
-				if m := src.Membership(dstWorkload, dstNsLabels); m != nil {
-					if m.InMesh {
-						if mtls, err := src.ResolveMtls(ctx, dstWorkload, dstNsLabels); err == nil {
-							m.Mtls = mtls
-						}
-					}
-					result.DstMesh[src.Name()] = m
-				}
-
-				v := src.CanReach(ctx, srcWorkload, dstWorkload, srcNsLabels, dstNsLabels, 0)
-				result.Mesh[src.Name()] = v
-				if v.Verdict == "deny" {
-					if blockedBy == "" {
-						blockedBy = "mesh:" + src.Name()
-					} else {
-						blockedBy = blockedBy + ", mesh:" + src.Name()
-					}
-				}
-			}
-		}
-	}
-
+	// Verdict here is the policy-layer answer. Mesh (transport) verdicts are
+	// separate — callers combine via MeshReachabilityUsingNodes.
 	if blockedBy != "" {
 		result.Verdict = "deny"
 		result.Reason = "blocked by: " + blockedBy
 	} else {
-		result.Reason = "all engines + mesh permit"
+		result.Reason = "all engines permit"
 	}
 	return result
+}
+
+
+// IsEndpointsReachable is the endpoint-facing answer: policy-layer verdict
+// fused with the mesh transport verdict. Mesh runs only for workload
+// endpoints — membership is per-workload, and the zero membership would
+// false-positive a namespace node as "not in mesh".
+func IsEndpointsReachable(ctx context.Context, data *models.Cache, meshSource mesh.MeshSource, srcNodeId, srcNodeNs, destNodeId, destNodeNs string) ReachabilityResult {
+	result := PoliciesCanReach(ctx, data, srcNodeId, srcNodeNs, destNodeId, destNodeNs)
+	if meshSource == nil {
+		return result
+	}
+	srcNode, srcOk := data.WorkloadByID[srcNodeId]
+	dstNode, dstOk := data.WorkloadByID[destNodeId]
+	if !srcOk || !dstOk || srcNode.Type == models.NodeTypeNamespace || dstNode.Type == models.NodeTypeNamespace {
+		return result
+	}
+	meshReach := MeshReachabilityUsingNodes(data, meshSource, srcNode, dstNode)
+	result.Mesh = map[string]models.MeshVerdict{meshSource.Name(): meshReach}
+	if meshReach.Verdict == "deny" {
+		result.Verdict = "deny"
+		result.Reason = "blocked by mesh: " + meshReach.Reason
+	}
+	return result
+}
+
+// MeshReachabilityUsingNodes resolves both memberships from cache and returns
+// the mesh source's transport-layer verdict. Missing cache entries decode as
+// the zero MeshMembership (InMesh=false) — exactly the plaintext-src input
+// CanReach needs. port=0 = any port (workload-level verdict).
+func MeshReachabilityUsingNodes(data *models.Cache, meshSource mesh.MeshSource, srcNode models.WorkloadNode, dstNode models.WorkloadNode) models.MeshVerdict {
+	srcMesh := data.MeshMembership[srcNode.ID]
+	dstMesh := data.MeshMembership[dstNode.ID]
+	return meshSource.CanReach(srcMesh, dstMesh, 0)
 }

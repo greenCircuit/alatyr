@@ -18,7 +18,6 @@ function K8sLogo({ color, size }: LogoProps) {
     <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
       <polygon points={vertices} fill={color} />
       <g stroke="#fff" strokeWidth={0.7} fill="none">
-        <circle cx={8} cy={8} r={2.1} />
         {points.map(([x, y], i) => (
           <line key={i} x1={8} y1={8} x2={8 + (x - 8) * 0.62} y2={8 + (y - 8) * 0.62} />
         ))}
@@ -53,7 +52,8 @@ function FallbackLogo({ color, size, letter }: LogoProps & { letter: string }) {
 export function EngineLogo({ engine, size = 14 }: { engine: string; size?: number }) {
   const { color } = engineMeta(engine);
   if (engine === 'k8s') return <K8sLogo color={color} size={size} />;
-  if (engine === 'istio') return <IstioLogo color={color} size={size} />;
+  // pa (PeerAuthentication) is an Istio CRD, not a separate engine — same sail.
+  if (engine === 'istio' || engine === 'pa') return <IstioLogo color={color} size={size} />;
   return <FallbackLogo color={color} size={size} letter={engine.charAt(0).toUpperCase()} />;
 }
 
@@ -61,7 +61,7 @@ export function EngineLogo({ engine, size = 14 }: { engine: string; size?: numbe
 // Mockup shape: dot + tinted-bg carry engine identity; no border, no white pill.
 // `suffix` appends after the name (e.g. ": 3" for the workloads count rollup).
 export function EngineBadge({ engine, size = 12, suffix }: { engine: string; size?: number; suffix?: ReactNode }) {
-  const { label, color } = engineMeta(engine);
+  const { label, color, short } = engineMeta(engine);
   return (
     <span
       className={styles.engineChip}
@@ -69,7 +69,7 @@ export function EngineBadge({ engine, size = 12, suffix }: { engine: string; siz
       style={{ ['--engine-color' as never]: color }}
     >
       <span className={styles.engineDot} />
-      <EngineLogo engine={engine} size={size} /> {engine}{suffix}
+      <EngineLogo engine={engine} size={size} /> {short ?? engine}{suffix}
     </span>
   );
 }

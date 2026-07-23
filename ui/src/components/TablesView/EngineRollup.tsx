@@ -74,7 +74,7 @@ export default function EngineRollup({ edges, bare = false }: EngineRollupProps)
             title={`${label} — click to ${active ? 'hide' : 'show only'} ${engine}`}
             style={{ border: `1px solid ${color}` }}
           >
-            <EngineLogo engine={engine} size={12} />
+            <EngineLogo engine={engine} size={10} />
             <span>{engine}</span>
             <span className="chip-count ms-1">{count}</span>
           </button>

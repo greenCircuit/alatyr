@@ -61,3 +61,9 @@
 .statusBadge.active {
     outline: 1.5px solid #fff;
 }
+
+/* Legend variant of the on-node mesh chip: neutralize the translate() used
+   to center the chip under its Cytoscape node so it lays out inline here. */
+.meshLegendChip {
+    transform: none;
+}

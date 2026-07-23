@@ -388,7 +388,7 @@ func TestIsNodesReachable_DirectionReasons(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			cache := buildCache("k8s", testCase.rules...)
-			got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
+			got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
 
 			if got.Verdict != testCase.wantVerdict {
 				t.Errorf("verdict: want %q, got %q (reason=%q)", testCase.wantVerdict, got.Verdict, got.Reason)
@@ -419,7 +419,7 @@ func TestIsNodesReachable_CulpritsDedupToPolicy(t *testing.T) {
 	secondRule.Contributor.RuleIndex = 1
 
 	cache := buildCache("k8s", firstRule, secondRule)
-	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
 
 	egress := got.Engines["k8s"].Egress
 	if egress.Reason != ReasonLockedNoMatch {
@@ -442,7 +442,7 @@ func TestIsNodesReachable_AllowOnOneEngineDeniedOnAnotherBlocks(t *testing.T) {
 	cache.EvaluationResults["istio"] = models.EvaluationResult{
 		NodeRules: buildNodeRules([]models.Rule{ingressCatchAllDeny()}),
 	}
-	got := IsNodesReachable(context.Background(), cache, nil, srcID, srcNs, dstID, dstNs)
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
 
 	if got.Verdict != "deny" {
 		t.Fatalf("verdict: want deny (istio blocks), got %q", got.Verdict)

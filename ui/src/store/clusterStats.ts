@@ -221,6 +221,25 @@ export function exposedUnpolicedNodes(nodes: WorkloadNode[], edges: PolicyEdge[]
     && !workload.has(node.id));
 }
 
+// Worst internet-exposure severity across a node set — 'internet-full' (both
+// directions) ranks 'critical', ingress/egress-only rank 'high', matching the
+// same STATUS_CFG severities StatusBadges renders everywhere else. Callers
+// use this instead of a hardcoded danger-red so the callout/stat-card color
+// agrees with the per-node badges an operator sees when they click through.
+export function worstExposureSeverity(nodes: WorkloadNode[]): Severity | undefined {
+  const rank = new Map(SEVERITY_TIERS.map((tier, position) => [tier, position]));
+  let worst: Severity | undefined;
+  for (const node of nodes) {
+    for (const key of node.statuses ?? []) {
+      if (!INTERNET_STATUSES.includes(key)) continue;
+      const severity = STATUS_CFG[key]?.severity;
+      if (!severity) continue;
+      if (!worst || rank.get(severity)! < rank.get(worst)!) worst = severity;
+    }
+  }
+  return worst;
+}
+
 // Defense-in-depth signal — workload covered by only one engine when multiple
 // engines are available. In ambient-mesh setups, an Istio-only AuthorizationPolicy
 // with no backing NetworkPolicy still leaves the pod fully open at L3 if the

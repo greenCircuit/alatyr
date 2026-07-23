@@ -131,29 +131,39 @@ def test_cant_talk_outside_mesh(get_graph, get_reachability):
     dst = find_node(graph, predicate_label="backend", predicate_namespace=NS_MESH)
 
     result = get_reachability(src["id"], NS_A, dst["id"], NS_MESH)
-    assert result["mesh"]["istio"]["verdict"] == "deny"
+    mesh_verdict = result["mesh"]["istio"]
+    assert mesh_verdict["verdict"] == "deny"
     assert result["verdict"] == "deny"
+    # New in this branch: reason string + effectiveSource pointer for UI drill-down.
+    assert mesh_verdict.get("reason"), mesh_verdict
+    effective = mesh_verdict.get("effectiveSource") or {}
+    # ns_strict applies a selectorless PA in NS_MESH; oldest-wins → that PA is the source.
+    assert effective.get("namespace") == NS_MESH, mesh_verdict
+    assert effective.get("name"), mesh_verdict
 
 
 # ── interop issues: NP/AuthZ on ambient pod that omits the ztunnel HBONE port ──
 
-def test_capture_ingress_error(get_graph, get_node_info):
-    # Ingress NP selects frontend, allows FROM backend on 8080 only. The k8s engine
-    # rewrites SrcID=peer(backend), DstID=selected(frontend), so the issue surfaces
-    # on backend's node-info (it is the rule's source).
+def test_capture_ingress_error(get_graph, get_issues):
+    # Ingress NP selects frontend, allows FROM backend on 8080 only. k8s engine
+    # rewrites SrcID=peer(backend), DstID=selected(frontend). GetNodeData filters
+    # by SrcID, so backend's per-workload scan surfaces the rule — the resulting
+    # hboneIssue attaches Node=backend.
     cluster.k8s.apply(NS_MESH, _restrict_port_np("ingress-no-hbone", "frontend", "backend", "Ingress", 8080))
-    detail = _detail(get_graph, get_node_info, label="backend")
-    issues = interop_issues(detail)
-    assert _has_issue(issues, "Missing ingress rule"), issues
+    graph = get_graph(NS_MESH)
+    backend = find_node(graph, predicate_label="backend", predicate_namespace=NS_MESH)
+    issues = interop_issues(get_issues(), backend["id"])
+    assert _has_issue(issues, "ambient ingress traffic is blocked"), issues
     assert _has_issue(issues, "15008"), issues
 
 
-def test_capture_egress_error(get_graph, get_node_info):
+def test_capture_egress_error(get_graph, get_issues):
     # Egress NP on backend to frontend on 8080 only → backend egress is missing HBONE.
     cluster.k8s.apply(NS_MESH, _restrict_port_np("egress-no-hbone", "backend", "frontend", "Egress", 8080))
-    detail = _detail(get_graph, get_node_info, label="backend")
-    issues = interop_issues(detail)
-    assert _has_issue(issues, "Missing egress rule"), issues
+    graph = get_graph(NS_MESH)
+    backend = find_node(graph, predicate_label="backend", predicate_namespace=NS_MESH)
+    issues = interop_issues(get_issues(), backend["id"])
+    assert _has_issue(issues, "ambient egress traffic is blocked"), issues
     assert _has_issue(issues, "15008"), issues
 
 
@@ -178,4 +188,29 @@ def test_pa_issues(scenario, issue_code, get_graph, get_node_info):
     mesh_scenarios.apply(scenario)
     detail = _detail(get_graph, get_node_info)
     assert _has_issue(mtls_issues(detail), issue_code), mtls_issues(detail)
+
+
+# ── membership shape: unenrolled + namespace-type nodes ───────────────────────
+
+def test_unenrolled_workload_reports_not_in_mesh(get_graph, get_node_info):
+    # NS_A has no ambient label → workloads must report inMesh=false + no Mtls.
+    detail = _detail(get_graph, get_node_info, label="backend", namespace=NS_A)
+    membership = detail.get("mesh") or {}
+    assert membership.get("inMesh") is False, membership
+    # Mtls should not resolve for unenrolled workloads.
+    assert not membership.get("mtls"), membership
+
+
+def test_namespace_node_inherits_ns_ambient_enrollment(get_graph, get_node_info):
+    # Namespace-type node (ns-<name>) in an ambient-labelled ns reports the
+    # namespace's own mesh posture — inMesh=true, mode=ambient. Guards against
+    # regressions that would flip the ns node to un-enrolled and break the
+    # cluster status rollup counters.
+    get_graph(NS_MESH)
+    ns_id = f"ns-{NS_MESH}"
+    detail = get_node_info(ns_id, NS_MESH)
+    membership = detail.get("mesh") or {}
+    assert membership.get("inMesh") is True, membership
+    assert membership.get("provider") == "istio", membership
+    assert membership.get("mode") == "ambient", membership
     

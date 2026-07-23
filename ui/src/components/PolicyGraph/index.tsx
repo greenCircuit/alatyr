@@ -12,7 +12,9 @@ import cola from 'cytoscape-cola';
 // @ts-ignore
 import fcose from 'cytoscape-fcose';
 import { useGraphStore } from '../../store/graphStore';
-import type { WorkloadNode, PolicyEdge, StatusKey } from '../../data/policies';
+import type { MeshFilterValue } from '../../store/filters';
+import type { WorkloadNode, PolicyEdge, StatusKey, MeshBadgeMeta, MeshMembership } from '../../data/policies';
+import { meshBadgeMeta } from '../../data/policies';
 import { buildElements, buildAggregatedElements } from './parts/elements';
 import { edgeEngines } from './parts/bundling';
 import { buildIssueMarks, pairKey, type IssueMark } from './parts/issueMarkers';
@@ -23,6 +25,7 @@ import { SEVERITY_COLOR } from '../../data/policies';
 import s from './PolicyGraph.module.css';
 
 interface EdgeIcon { id: string; engines: string[] }
+interface MeshMark { id: string; meta: MeshBadgeMeta }
 // One rendered issue marker: element id + resolved mark. Node markers pin to
 // the node's top-right corner, edge markers hang below the edge midpoint.
 interface ElementIssueMark extends IssueMark { id: string }
@@ -34,6 +37,20 @@ const TIER_STYLE: Record<IssueMark['tier'], { background: string; color: string 
   warning:  { background: SEVERITY_COLOR.warning, color: '#1a1d20' },
 };
 
+// Map a workload's membership to the mesh filter tag the chip click should
+// toggle. Out-of-mesh → 'out-of-mesh'; in-mesh chips carry the verdict tag
+// so click-to-filter matches the label the operator just clicked.
+function meshFilterFor(membership: MeshMembership | undefined): MeshFilterValue {
+  if (!membership || !membership.inMesh) return 'out-of-mesh';
+  switch (membership.mtls?.verdict ?? 'unset') {
+    case 'strict':     return 'mtls-strict';
+    case 'permissive': return 'mtls-permissive';
+    case 'disable':    return 'mtls-disable';
+    case 'unset':
+    default:           return 'mtls-unset';
+  }
+}
+
 cytoscape.use(dagre);
 cytoscape.use(cola);
 cytoscape.use(fcose);
@@ -44,11 +61,13 @@ export default function PolicyGraph() {
   const badgeLayerRef = useRef<HTMLDivElement>(null);
   const [badgeNodes, setBadgeNodes] = useState<BadgeNode[]>([]);
   const [edgeIcons, setEdgeIcons]   = useState<EdgeIcon[]>([]);
+  const [meshMarks, setMeshMarks]   = useState<MeshMark[]>([]);
   const [nodeIssueMarks, setNodeIssueMarks] = useState<ElementIssueMark[]>([]);
   const [edgeIssueMarks, setEdgeIssueMarks] = useState<ElementIssueMark[]>([]);
   const [legendOpen, setLegendOpen] = useState(true);
   const badgeDivRefs        = useRef<Map<string, HTMLDivElement>>(new Map());
   const edgeIconDivRefs     = useRef<Map<string, HTMLDivElement>>(new Map());
+  const meshMarkDivRefs     = useRef<Map<string, HTMLDivElement>>(new Map());
   const nodeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
   const edgeIssueDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -85,6 +104,21 @@ export default function PolicyGraph() {
       // which Cytoscape draws centered on the midpoint.
       div.style.left = `${mid.x}px`;
       div.style.top  = `${mid.y - 16}px`;
+    });
+  }, []);
+
+  // Mesh chip: centered under the node bbox so the verdict label reads as a
+  // caption without stealing the corners (status badges own top-left, issue
+  // marks own top-right) or overlapping the node's own text label.
+  const syncMeshMarkPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    meshMarkDivRefs.current.forEach((div, id) => {
+      const cyNode = cy.getElementById(id);
+      if (cyNode.empty()) return;
+      const bb = cyNode.boundingBox({});
+      div.style.left = `${(bb.x1 + bb.x2) / 2}px`;
+      div.style.top  = `${bb.y2 + 4}px`;
     });
   }, []);
 
@@ -125,10 +159,11 @@ export default function PolicyGraph() {
     allNodes, allEdges,
     filteredNodes, filteredEdges, selectedNamespaces,
     selectedNodeTypes, searchQuery, showNamespaceEdges, showConnectedNamespaces,
-    aggregateByNamespace, showEngineIcons,
+    aggregateByNamespace, showEngineIcons, showMeshOverlay,
     issues,
     selectedStatuses,
     selectedPolicySources, selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus, toggleMeshFilter,
     selectedNode,
     setSelectedNode, setSelectedEdges,
     loading, error,
@@ -153,6 +188,27 @@ export default function PolicyGraph() {
 
   // Position icons after they render
   useEffect(() => { syncEdgeIconPositions(); }, [edgeIcons, syncEdgeIconPositions]);
+
+  // Rebuild mesh chips when the overlay toggle flips, meshStatus map updates,
+  // or the graph relayouts (badgeNodes acts as the "layout done" cue). Every
+  // workload/namespace gets a chip; out-of-mesh renders as an outlined
+  // "no-mesh" variant so cluster coverage reads as filled-vs-outlined instead
+  // of present-vs-absent (silent-lie: an omitted chip is indistinguishable
+  // from "we don't know" or "overlay off").
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !showMeshOverlay) { setMeshMarks([]); return; }
+    const marks: MeshMark[] = [];
+    cy.nodes('[ntype = "workload"], [ntype = "namespace"], [ntype = "namespace-agg"]').forEach((cyNode) => {
+      const id = cyNode.id();
+      marks.push({ id, meta: meshBadgeMeta(meshStatus[id]) });
+    });
+    setMeshMarks(marks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMeshOverlay, meshStatus, badgeNodes]);
+
+  // Position mesh marks after they render
+  useEffect(() => { syncMeshMarkPositions(); }, [meshMarks, syncMeshMarkPositions]);
 
   // Resolve issue marks against the rendered elements whenever issues arrive or
   // the graph is rebuilt (badgeNodes doubles as the "layout done" cue). A pair
@@ -202,6 +258,7 @@ export default function PolicyGraph() {
       edgeIconDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       nodeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       edgeIssueDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
+      meshMarkDivRefs.current.forEach((div) => { div.style.opacity = '1'; });
       return;
     }
     const node     = selectedNodeRef.current;
@@ -243,6 +300,9 @@ export default function PolicyGraph() {
     edgeIssueDivRefs.current.forEach((div, id) => {
       div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
     });
+    meshMarkDivRefs.current.forEach((div, id) => {
+      div.style.opacity = focusedIds === null || focusedIds.has(id) ? '1' : '0.12';
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -257,7 +317,7 @@ export default function PolicyGraph() {
 
   // Re-apply dim state to overlays when the badge or engine-icon list changes
   // (after layout adds new badges, or the engine-icon toggle flips)
-  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, nodeIssueMarks, edgeIssueMarks, applyDimming]);
+  useEffect(() => { applyDimming(); }, [badgeNodes, edgeIcons, meshMarks, nodeIssueMarks, edgeIssueMarks, applyDimming]);
 
 
   // Mount once: create Cytoscape instance and wire event handlers
@@ -280,7 +340,7 @@ export default function PolicyGraph() {
     let dragRaf: number | null = null;
     cy.on('drag', 'node', () => {
       if (dragRaf !== null) return;
-      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); syncIssueMarkPositions(); });
+      dragRaf = requestAnimationFrame(() => { dragRaf = null; syncBadgePositions(); syncEdgeIconPositions(); syncMeshMarkPositions(); syncIssueMarkPositions(); });
     });
 
     // Workload / namespace node click – open detail panel for whichever node was tapped.
@@ -400,7 +460,7 @@ export default function PolicyGraph() {
   // showEngineIcons intentionally excluded: it's a pure overlay toggle (no
   // element/label change), so it must not trigger a relayout that reshuffles
   // the graph. The edge-icon overlay reacts to it separately below.
-  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming]);
+  }, [allNodes, allEdges, selectedNamespaces, selectedNodeTypes, selectedPolicySources, selectedActions, selectedDirections, searchQuery, showNamespaceEdges, showConnectedNamespaces, aggregateByNamespace, layoutAlgorithm, applyDimming, selectedMeshFilters, meshStatus]);
 
   return (
     <div className={`position-relative overflow-hidden ${s.canvas}`}>
@@ -479,6 +539,33 @@ export default function PolicyGraph() {
               {count > 1 && <span>{count}</span>}
             </div>
           ))}
+
+          {/* Mesh coverage chip, one per workload/namespace when the Mesh
+              overlay toggle is on. Filled = in mesh (short label + verdict
+              stripe), outlined = out of mesh. Clicking the chip toggles the
+              matching mesh filter so the overlay doubles as a workflow, not
+              just decoration. */}
+          {meshMarks.map(({ id, meta }) => {
+            const filterValue = meshFilterFor(meshStatus[id]);
+            const active      = selectedMeshFilters.has(filterValue);
+            const outClass    = meta.variant === 'out' ? s.meshMarkOut     : '';
+            const activeClass = active                  ? s.meshMarkActive : '';
+            return (
+              <div
+                key={`mm-${id}`}
+                ref={(el) => {
+                  if (el) meshMarkDivRefs.current.set(id, el);
+                  else    meshMarkDivRefs.current.delete(id);
+                }}
+                className={`position-absolute ${s.meshMark} ${outClass} ${activeClass}`}
+                style={meta.variant === 'in' ? { borderLeftColor: meta.color } : undefined}
+                title={`${meta.long}${meta.providerLabel ? ` — ${meta.providerLabel}` : ''}. Click to filter.`}
+                onClick={(evt) => { evt.stopPropagation(); toggleMeshFilter(filterValue); }}
+              >
+                {meta.short}
+              </div>
+            );
+          })}
         </div>
       </div>
 

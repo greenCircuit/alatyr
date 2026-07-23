@@ -49,6 +49,15 @@ func hasIssue(issues []string, code string) bool {
 	return false
 }
 
+func findMtlsIssue(issues []models.MtlsIssue, code string) (models.MtlsIssue, bool) {
+	for _, issue := range issues {
+		if strings.Contains(issue.Message, code) {
+			return issue, true
+		}
+	}
+	return models.MtlsIssue{}, false
+}
+
 // ns-scoped STRICT PA → workload verdict STRICT, effective source points at it.
 func TestResolveMtls_NsScopeStrict(t *testing.T) {
 	nsPAs := []*istiosec.PeerAuthentication{
@@ -93,8 +102,12 @@ func TestResolveMtls_AllUnsetFallsBackToPermissive(t *testing.T) {
 	if state.Verdict != models.MeshPermissive {
 		t.Fatalf("verdict = %q, want permissive fallback", state.Verdict)
 	}
-	if !hasIssue(state.Issues, IssueAllUnset) {
+	issue, ok := findMtlsIssue(state.Issues, IssueAllUnset)
+	if !ok {
 		t.Fatalf("missing all-unset issue: %v", state.Issues)
+	}
+	if len(issue.Refs) != 1 || issue.Refs[0] != (models.PolicyRef{Source: "pa", Namespace: "ns-a", Name: "ns-unset"}) {
+		t.Errorf("all-unset refs: want [pa ns-a/ns-unset], got %+v", issue.Refs)
 	}
 }
 
@@ -109,8 +122,18 @@ func TestResolveMtls_DuplicateAtNsScope(t *testing.T) {
 	if state.Verdict != models.MeshStrict {
 		t.Fatalf("verdict = %q, want strict (older PA wins)", state.Verdict)
 	}
-	if !hasIssue(state.Issues, IssueDuplicateAtScope) {
+	issue, ok := findMtlsIssue(state.Issues, IssueDuplicateAtScope)
+	if !ok {
 		t.Fatalf("missing duplicate-at-scope issue: %v", state.Issues)
+	}
+	// Winner (oldest, ns-older) first, then the silently-ignored duplicate —
+	// CulpritActions.tsx relies on this order to label "in use" vs "ignored".
+	wantRefs := []models.PolicyRef{
+		{Source: "pa", Namespace: "ns-a", Name: "ns-older"},
+		{Source: "pa", Namespace: "ns-a", Name: "ns-newer"},
+	}
+	if len(issue.Refs) != 2 || issue.Refs[0] != wantRefs[0] || issue.Refs[1] != wantRefs[1] {
+		t.Errorf("duplicate-at-scope refs: want %+v, got %+v", wantRefs, issue.Refs)
 	}
 }
 
@@ -122,11 +145,33 @@ func TestResolveMtls_RootSelectorIgnored(t *testing.T) {
 	}
 	state := resolveMtls(backendWorkload(), nil, rootPAs)
 
-	if !hasIssue(state.Issues, IssueRootSelectorIgnored) {
+	issue, ok := findMtlsIssue(state.Issues, IssueRootSelectorIgnored)
+	if !ok {
 		t.Fatalf("missing root-selector-ignored issue: %v", state.Issues)
+	}
+	if len(issue.Refs) != 1 || issue.Refs[0] != (models.PolicyRef{Source: "pa", Namespace: RootNamespace, Name: "root-sel"}) {
+		t.Errorf("root-selector-ignored refs: want [pa %s/root-sel], got %+v", RootNamespace, issue.Refs)
 	}
 	if state.Verdict != models.MeshPermissive {
 		t.Fatalf("verdict = %q, want permissive (root selector ignored, nothing applies)", state.Verdict)
+	}
+}
+
+// ns-scoped PA with port-level rules but no selector applies to every workload
+// in the namespace — flagged so the author adds a selector or splits the rule.
+func TestResolveMtls_PortWithoutSelector(t *testing.T) {
+	pa := makePA("ns-port-rule", "ns-a", istioapi.PeerAuthentication_MutualTLS_UNSET, nil, time.Unix(100, 0))
+	pa.Spec.PortLevelMtls = map[uint32]*istioapi.PeerAuthentication_MutualTLS{
+		8080: {Mode: istioapi.PeerAuthentication_MutualTLS_STRICT},
+	}
+	state := resolveMtls(backendWorkload(), []*istiosec.PeerAuthentication{pa}, nil)
+
+	issue, ok := findMtlsIssue(state.Issues, IssuePortWithoutSelector)
+	if !ok {
+		t.Fatalf("missing port-without-selector issue: %v", state.Issues)
+	}
+	if len(issue.Refs) != 1 || issue.Refs[0] != (models.PolicyRef{Source: "pa", Namespace: "ns-a", Name: "ns-port-rule"}) {
+		t.Errorf("port-without-selector refs: want [pa ns-a/ns-port-rule], got %+v", issue.Refs)
 	}
 }
 

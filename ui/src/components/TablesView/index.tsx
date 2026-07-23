@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react';
 import { useGraphStore } from '../../store/graphStore';
-import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges } from '../../store/filters';
+import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges, nodeMatchesMeshFilter } from '../../store/filters';
 import WorkloadsTable from './WorkloadsTable';
 import PoliciesTable from './PoliciesTable';
 import IssuesTable from './IssuesTable';
@@ -38,16 +38,20 @@ export default function TablesView() {
   const showNamespaceEdges      = useGraphStore((s) => s.showNamespaceEdges);
   const showConnectedNamespaces = useGraphStore((s) => s.showConnectedNamespaces);
   const searchQuery             = useGraphStore((s) => s.searchQuery);
+  const selectedMeshFilters     = useGraphStore((s) => s.selectedMeshFilters);
+  const meshStatus              = useGraphStore((s) => s.meshStatus);
 
   const filterState = useMemo(() => ({
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   }), [
     allNodes, allEdges,
     selectedNamespaces, selectedNodeTypes, selectedPolicySources,
     selectedActions, selectedDirections,
+    selectedMeshFilters, meshStatus,
     showNamespaceEdges, showConnectedNamespaces, searchQuery,
   ]);
 
@@ -65,10 +69,13 @@ export default function TablesView() {
       if (n.type !== 'namespace') return false;
       if (!selectedNamespaces.has(n.label)) return false;
       if (q !== '' && !n.label.toLowerCase().includes(q)) return false;
+      // Namespace nodes carry their own mesh membership — apply the same mesh
+      // filter so "in mesh" / mtls selections don't leak out-of-mesh ns rows.
+      if (!nodeMatchesMeshFilter(n, meshStatus, selectedMeshFilters)) return false;
       return true;
     });
     return [...nsRows, ...nodes];
-  }, [allNodes, nodes, selectedNamespaces, searchQuery]);
+  }, [allNodes, nodes, selectedNamespaces, searchQuery, meshStatus, selectedMeshFilters]);
 
   // Status filter applies to the table view (hide non-matching rows) but
   // NOT to the rollup itself — chips need to stay visible so the user can
@@ -147,7 +154,7 @@ export default function TablesView() {
       {tab === 'policies' && <EngineRollup edges={edgesPreEngine} />}
       {tab === 'issues' && <IssueRollup issues={issues} />}
       <div className="flex-grow-1 overflow-auto">
-        {tab === 'workloads' && <WorkloadsTable nodes={tableNodes} edges={edges} nodeIssues={nodeIssuesAll} />}
+        {tab === 'workloads' && <WorkloadsTable nodes={tableNodes} edges={edges} nodeIssues={nodeIssuesAll} meshStatus={meshStatus} />}
         {tab === 'policies'  && <PoliciesTable edges={tableEdges} policyIssues={policyIssuesAll} />}
         {tab === 'issues'    && <IssuesTable issues={tableIssues} />}
       </div>

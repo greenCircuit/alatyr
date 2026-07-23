@@ -37,12 +37,21 @@ const (
 	// waypoint Gateway. Value is the waypoint name (or "<ns>/<name>" for
 	// cross-ns). Special value WaypointNone opts out at the label's scope.
 	WaypointLabelKey = "istio.io/use-waypoint"
-
 	WaypointSkipValue = "none"
 
 	RootNamespace = "istio-system"
-	IngressNamespace = "istio ingress"
+	IngressNamespace = "istio-ingress"
 	ZtunnelHBONEPort = 15008
+
+	// istio components labels
+	istioSelector = "app"  // key for finding all istio resources
+	gatewayVal = "istio-ingress"
+	istiodVal = "istiod"
+	ztunelVal = "ztunnel"
+
+	// istio cni selectors
+	istioCniKey = "k8s-app"
+	istioCniVal = "istio-cni"
 )
 
 

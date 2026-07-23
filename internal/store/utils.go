@@ -29,12 +29,3 @@ func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models
 	return view
 }
 
-// nsLabels returns the ns object's k8s labels from cached NSIndex, or nil
-// when the ns isn't in cache (e.g. external).
-func nsLabels(data *models.Cache, ns string) map[string]string {
-	idx, ok := data.NsIndex[ns]
-	if !ok || idx.NSNode == nil {
-		return nil
-	}
-	return idx.NSNode.Labels
-}

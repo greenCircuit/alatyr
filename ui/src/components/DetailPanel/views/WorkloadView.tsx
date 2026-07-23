@@ -10,7 +10,8 @@ import { NeighborList } from '../shared/rows';
 import { distinctPeerCount } from '../shared/groupNeighborsByPolicy';
 import { StatusBadges } from '../shared/status';
 import { MeshCard } from '../shared/mesh';
-import { NodeIssues } from '../shared/issues';
+import { NodeIssues, useNodeIssueCount } from '../shared/issues';
+import { WarnIcon, CheckIcon } from '../shared/StatusIcon';
 
 // Worst-severity fold over status keys — drives the hero verdict callout
 // tint. Mockup principle: hero is one-per-panel, may use full tint.
@@ -35,17 +36,18 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
   onPin:           (node: WorkloadNode) => void;
 }) {
   const worst = worstSeverity(node.statuses ?? []);
-  const findingCount = (nodeInfo?.issues?.length ?? 0);
+  const findingCount = useNodeIssueCount(node.id);
   // Hero verdict — one-line answer above the evidence. Class-based tone so
   // color lives in tokens, not inline styles.
   const heroDeny = worst === 'critical' || worst === 'high';
   const heroWarn = worst === 'warning' || findingCount > 0;
   const calloutClass = heroDeny ? s.verdictDeny : heroWarn ? s.verdictWarn : s.verdictAllow;
   const heroTextClass = heroDeny ? s.verdictTextDeny : heroWarn ? s.verdictTextWarn : s.verdictTextAllow;
-  const verdictText = heroDeny ? '⚠ At risk'
-                     : findingCount > 0 ? `⚠ ${findingCount} finding${findingCount === 1 ? '' : 's'}`
-                     : worst === 'warning' ? '⚠ Warnings'
-                     : '✓ Healthy';
+  const verdictIcon = heroDeny || heroWarn ? <WarnIcon /> : <CheckIcon />;
+  const verdictText = heroDeny ? 'At risk'
+                     : findingCount > 0 ? `${findingCount} finding${findingCount === 1 ? '' : 's'}`
+                     : worst === 'warning' ? 'Warnings'
+                     : 'Healthy';
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -76,39 +78,25 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
       {/* Verdict hero — one-line answer + status pills as evidence. Full-tint
           bg legal here (STYLEGUIDE §3, hero one-per-panel). */}
       <div className={`${s.verdictCallout} ${calloutClass}`}>
-        <div className={`${s.verdictText} ${heroTextClass}`}>{verdictText}</div>
+        <div className={`${s.verdictText} ${heroTextClass} d-inline-flex align-items-center gap-2`}>{verdictIcon}{verdictText}</div>
         <StatusBadges keys={node.statuses ?? []} />
       </div>
 
       {/* Mesh — SA identity + mTLS mode + revision + PA chain. First thing
           checked when an Istio pod isn't reaching the mesh. Placed above the
           per-engine section so operator sees it on scroll open. */}
-      {nodeInfo?.mesh && Object.keys(nodeInfo.mesh).length > 0 && (
+      {nodeInfo?.mesh && (
         <div>
           <div className={`${s.eyebrow} mb-1`}>Mesh</div>
           <div className="d-flex flex-column gap-2">
-            {Object.entries(nodeInfo.mesh).map(([source, m]) => (
-              <MeshCard key={source} source={source} membership={m} />
-            ))}
+            <MeshCard source={nodeInfo.mesh.provider || 'istio'} membership={nodeInfo.mesh} />
           </div>
         </div>
       )}
 
-      {/* Workload-scoped issues from nodeInfo — semantic warn shell w/ list. */}
-      {nodeInfo?.issues && nodeInfo.issues.length > 0 && (
-        <div className={s.semanticWarn}>
-          <div className={s.section}>
-            {nodeInfo.issues.length} issue{nodeInfo.issues.length > 1 ? 's' : ''} detected
-          </div>
-          <ul className={`ps-3 mb-0 ${s.body}`}>
-            {nodeInfo.issues.map((issue, i) => <li key={i}>{issue}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* Cluster findings touching this node (conflicts, lockouts) — same
-          issues the drawer/table list, scoped here so operator sees them
-          without leaving the panel. */}
+      {/* Cluster findings touching this node (conflicts, lockouts, ambient
+          transport gaps, PA hygiene) — same issues the drawer/table list,
+          scoped here so operator sees them without leaving the panel. */}
       <NodeIssues nodeId={node.id} />
 
       {(() => {

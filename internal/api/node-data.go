@@ -4,20 +4,16 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	meshistio "graph/internal/mesh/istio"
 	"graph/internal/models"
 	"graph/internal/store"
 )
 
-// NodeDetail bundles policy-engine + mesh-source results + interop issues
-// for one workload. Returned by /api/node-info on node click. Issues are
-// cross-cutting misconfig findings that don't belong inside any single
-// policy or mesh entry (e.g. ambient pod with NP missing ztunnel allowance).
+// NodeDetail bundles policy-engine + mesh-source results for one workload.
+// Returned by /api/node-info on node click. Cross-cutting misconfig findings
+// (ambient HBONE gaps, PA hygiene) live in /api/issues, not here.
 type NodeDetail struct {
 	PolicyNeighbors map[string]store.NodeNeighbors    `json:"neighbors"`
-	Mesh            map[string]*models.MeshMembership `json:"mesh,omitempty"`
-	Issues          []string                          `json:"issues,omitempty"`
-	
+	Mesh            models.MeshMembership `json:"mesh,omitempty"`
 }
 
 // return all rules + mesh state touching given node; lazy-populate cache for
@@ -33,22 +29,12 @@ func (s *Server) getNodeInfo(c echo.Context) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	meshSources := s.store.MeshSources()
-	memberships := store.GetWorkloadMesh(c.Request().Context(), s.cache, meshSources, nodeId, ns)
+	memberships := store.GetWorkloadMesh(s.cache,nodeId)
 	nodeNeighbors := store.BuildNodeNeighbor(s.cache, nodeId)
-	var meshIssues []string
-	// check for istio issues if part of istio ambient mode
-	policies := store.GetNodeData(s.cache, nodeId, ns)
-	_, ok := memberships[meshistio.SourceName]
-	if ok {
-		istioAmbientIssues := meshistio.ValidateExternalRules(s.cache, memberships[meshistio.SourceName], policies)
-		meshIssues = append(meshIssues, istioAmbientIssues...)
-	}
 
 	detail := NodeDetail{
 		PolicyNeighbors: nodeNeighbors,
 		Mesh:            memberships,
-		Issues:          meshIssues,
 	}
 	return c.JSON(http.StatusOK, detail)
 }
@@ -67,7 +53,7 @@ func (s *Server) getReachability(c echo.Context) error {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	result := store.IsNodesReachable(c.Request().Context(), s.cache, s.store.MeshSources(), srcId, srcNs, dstId, dstNs)
+	result := store.IsEndpointsReachable(c.Request().Context(), s.cache, s.store.MeshSource(), srcId, srcNs, dstId, dstNs)
 	return c.JSON(http.StatusOK, result)
 }
 
@@ -76,6 +62,6 @@ func (s *Server) getReachability(c echo.Context) error {
 func (s *Server) getIssues(c echo.Context) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	issues := store.GetIssues(c.Request().Context(), s.cache)
+	issues := store.GetIssues(c.Request().Context(), s.cache, s.store.MeshSource())
 	return c.JSON(http.StatusOK, issues)
 }

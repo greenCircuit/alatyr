@@ -185,6 +185,27 @@ def get_issues(api) -> Callable[[], list[dict]]:
 
 
 @pytest.fixture
+def get_mesh_status(api) -> Callable[[], dict]:
+    """Hit /api/mesh-status. Returns {nodes: {nodeId: MeshMembership}}.
+    Reads from the cache /api/graph populates."""
+    def _get() -> dict:
+        response = api.get(f"{BACKEND_URL}/api/mesh-status")
+        response.raise_for_status()
+        return response.json()
+    return _get
+
+
+@pytest.fixture
+def get_cluster_metrics(api) -> Callable[[], dict]:
+    """Hit /api/cluster-metrics. Returns ClusterMetrics{NsTotal, WorkloadTotal, MeshMetrics}."""
+    def _get() -> dict:
+        response = api.get(f"{BACKEND_URL}/api/cluster-metrics")
+        response.raise_for_status()
+        return response.json()
+    return _get
+
+
+@pytest.fixture
 def get_manifest(api) -> Callable[..., requests.Response]:
     """Hit /api/manifest for one policy object. Returns the raw Response so
     callers can assert on status (200 vs 400) — manifest fetches straight from

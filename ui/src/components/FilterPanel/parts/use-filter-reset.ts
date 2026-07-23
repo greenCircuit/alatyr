@@ -17,6 +17,7 @@ export function useFilterReset(): { activeCount: number; resetAll: () => void } 
     selectedActions, toggleAction,
     selectedDirections, toggleDirection,
     selectedIssueTypes, toggleIssueType,
+    selectedMeshFilters, toggleMeshFilter,
   } = useGraphStore();
 
   const resets: (() => void)[] = [];
@@ -46,6 +47,9 @@ export function useFilterReset(): { activeCount: number; resetAll: () => void } 
   }
   if (selectedIssueTypes.size > 0) {
     resets.push(() => Array.from(selectedIssueTypes).forEach(toggleIssueType));
+  }
+  if (selectedMeshFilters.size > 0) {
+    resets.push(() => Array.from(selectedMeshFilters).forEach(toggleMeshFilter));
   }
 
   return {
