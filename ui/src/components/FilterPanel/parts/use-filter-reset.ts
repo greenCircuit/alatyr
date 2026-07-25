@@ -4,14 +4,16 @@
 // disabled state.
 //
 // Default per filter:
-//   Namespace / PolicySource / Action / Direction — all selected
-//   Status / IssueType                            — empty selection
+//   Namespace / NodeType / PolicySource / Action / Direction — all selected
+//   Status / IssueType                                        — empty selection
 
 import { useGraphStore } from '../../../store/graphStore';
+import { ALL_NODE_TYPES } from './constants';
 
 export function useFilterReset(): { activeCount: number; resetAll: () => void } {
   const {
     availableNamespaces, selectedNamespaces, toggleNamespace,
+    selectedNodeTypes, toggleNodeType,
     selectedStatuses, toggleStatus,
     availablePolicySources, selectedPolicySources, togglePolicySource,
     selectedActions, toggleAction,
@@ -25,6 +27,11 @@ export function useFilterReset(): { activeCount: number; resetAll: () => void } 
   if (selectedNamespaces.size < availableNamespaces.length) {
     resets.push(() => availableNamespaces.forEach((ns) => {
       if (!selectedNamespaces.has(ns)) toggleNamespace(ns);
+    }));
+  }
+  if (selectedNodeTypes.size < ALL_NODE_TYPES.length) {
+    resets.push(() => ALL_NODE_TYPES.forEach((t) => {
+      if (!selectedNodeTypes.has(t)) toggleNodeType(t);
     }));
   }
   if (selectedStatuses.size > 0) {

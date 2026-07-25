@@ -26,8 +26,8 @@ export function fetchClusterState(): Promise<ClusterState> {
   });
 }
 
-export function fetchNodeInfo(nodeId: string, namespace: string): Promise<NodeDetail> {
-  const params = new URLSearchParams({ nodeId, namespace });
+export function fetchNodeInfo(nodeId: string): Promise<NodeDetail> {
+  const params = new URLSearchParams({ nodeId });
   return fetch(`/api/node-info?${params.toString()}`).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<NodeDetail>;

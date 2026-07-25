@@ -19,10 +19,9 @@ type NodeDetail struct {
 // return all rules + mesh state touching given node; lazy-populate cache for
 // ns if missing
 func (s *Server) getNodeInfo(c echo.Context) error {
-	ns := c.QueryParam("namespace")
 	nodeId := c.QueryParam("nodeId")
 
-	if ns == "" || nodeId == "" {
+	if nodeId == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing params"})
 	}
 

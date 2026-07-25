@@ -11,12 +11,19 @@ import (
 // Engine names come from cache.EvaluationResults keys (== PolicySource.Name()).
 func BuildGraph(cache *models.Cache, namespaces []string) Graph {
 	var allNodes []models.WorkloadNode
+	seenNodeIDs := map[string]bool{}
 	for _, ns := range namespaces {
 		nsIndex, ok := cache.NsIndex[ns]
 		if !ok {
 			continue
 		}
-		allNodes = append(allNodes, nsIndex.Workloads...)
+		for _, node := range nsIndex.Workloads {
+			if seenNodeIDs[node.ID] {
+				continue
+			}
+			seenNodeIDs[node.ID] = true
+			allNodes = append(allNodes, node)
+		}
 	}
 
 	var allRules []models.Rule
@@ -34,6 +41,15 @@ func BuildGraph(cache *models.Cache, namespaces []string) Graph {
 				statusBySourcePerNode[nodeID] = map[string]models.PolicyStatus{}
 			}
 			statusBySourcePerNode[nodeID][engineName] = status
+		}
+		// Engine-synthesized nodes (e.g. CIDR peers). Deduped by ID so the
+		// same CIDR referenced from multiple ns / engines collapses to one node.
+		for nodeID, node := range result.Nodes {
+			if seenNodeIDs[nodeID] {
+				continue
+			}
+			seenNodeIDs[nodeID] = true
+			allNodes = append(allNodes, node)
 		}
 	}
 

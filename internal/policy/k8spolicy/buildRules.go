@@ -2,22 +2,31 @@ package k8spolicy
 
 import (
 	"graph/internal/models"
+	"graph/internal/policy"
 	"graph/internal/utils"
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
-// buildAllowRulesByNs expands every NetworkPolicy into pod-level allow rules,
+// buildAllowRulesByNs expands every NetworkPolicy into pod-level rules,
 // grouped by the policy's namespace so per-ns cache invalidation can replace
-// one ns's rules without touching others.
-func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) (map[string][]models.Rule, map[string]models.NodeRules) {
+// one ns's rules without touching others. Third return is CIDR peer nodes
+// synthesized inline by expandPeerRules, deduped by ID across all policies.
+func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) (map[string][]models.Rule, map[string]models.NodeRules, map[string]models.WorkloadNode) {
 	policyMap := map[string]*models.NodeRules{}  // have pointer so don't reconstruct map every time update it
 	result := map[string][]models.Rule{}
+	cidrNodes := map[string]models.WorkloadNode{}
 	for ns, policies := range policiesByNS {
 		var nsRules []models.Rule
 		for _, networkPolicy := range policies {
 			srcNodes := getSourceNodes(networkPolicy, index)
-			egressRules := expandEgressRules(networkPolicy, index)
-			ingressRules := expandIngressRules(networkPolicy, index)
+			egressRules, egressCIDRs := expandEgressRules(networkPolicy, index)
+			ingressRules, ingressCIDRs := expandIngressRules(networkPolicy, index)
+			for id, node := range egressCIDRs {
+				cidrNodes[id] = node
+			}
+			for id, node := range ingressCIDRs {
+				cidrNodes[id] = node
+			}
 
 			for _, srcNode := range srcNodes {
 				for _, rule := range egressRules {
@@ -69,7 +78,7 @@ func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[strin
 		nonPointerPolicyMap[nodeID] = *nodeRules
 	}
 
-	return result, nonPointerPolicyMap 
+	return result, nonPointerPolicyMap, cidrNodes
 }
 
 func getSourceNodes(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []*models.WorkloadNode {
@@ -108,8 +117,9 @@ func ingressLocked(networkPolicy *networkingv1.NetworkPolicy) bool {
 	return false
 }
 
-func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) ([]models.Rule, map[string]models.WorkloadNode) {
 	var out []models.Rule
+	cidrNodes := map[string]models.WorkloadNode{}
 
 	// No egress rules: deny-all when egress is locked, otherwise the policy
 	// doesn't govern egress at all — recorded as unenforced so it still shows.
@@ -122,7 +132,7 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 			Direction:   models.DirectionEgress,
 			Coverage:    coverage,
 			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
-		})
+		}), cidrNodes
 	}
 
 	for ruleIndex, rule := range networkPolicy.Spec.Egress {
@@ -142,7 +152,10 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 		}
 
 		for _, peer := range rule.To {
-			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)
+			matchRules, peerCIDRs := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)
+			for id, node := range peerCIDRs {
+				cidrNodes[id] = node
+			}
 			for _, rule := range matchRules {
 				rule.SrcSelector.LabelSelector = networkPolicy.Spec.PodSelector.MatchLabels
 				if peer.PodSelector != nil {
@@ -156,11 +169,12 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 			}
 		}
 	}
-	return out
+	return out, cidrNodes
 }
 
-func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) []models.Rule {
+func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[string]models.NSIndex) ([]models.Rule, map[string]models.WorkloadNode) {
 	var out []models.Rule
+	cidrNodes := map[string]models.WorkloadNode{}
 
 	// No ingress rules: deny-all when ingress is locked (always, unless
 	// PolicyTypes explicitly lists only Egress), otherwise unenforced.
@@ -173,7 +187,7 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 			Direction:   models.DirectionIngress,
 			Coverage:    coverage,
 			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
-		})
+		}), cidrNodes
 	}
 
 	for ruleIndex, rule := range networkPolicy.Spec.Ingress {
@@ -193,7 +207,10 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 		}
 
 		for _, peer := range rule.From {
-			matchRules := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)
+			matchRules, peerCIDRs := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)
+			for id, node := range peerCIDRs {
+				cidrNodes[id] = node
+			}
 			for _, rule := range matchRules {
 				if peer.PodSelector != nil {
 					rule.SrcSelector.LabelSelector = peer.PodSelector.MatchLabels
@@ -206,20 +223,27 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 			}
 		}
 	}
-	return out
+	return out, cidrNodes
 }
 
 
-// expandPeerRules produces one rule per (peer-match).
+// expandPeerRules produces one rule per (peer-match) and, when the peer is an
+// ipBlock, the synthetic WorkloadNode(s) the rules point at. IDs for CIDR
+// peers are prefixed with "cidr:" so the graph layer's node set stays
+// authoritative for peer type (no PeerKind sidecar).
+// IPBlock.Except entries emit separate ActionDeny rules with Coverage=CoverageExcept
+// so the frontend can render them as carve-outs of the parent allow rather
+// than confuse them with Istio DENY policies.
 // Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
-func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) []models.Rule {
+func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) ([]models.Rule, map[string]models.WorkloadNode) {
 	var dstIDs []string
-
-	coverage := models.CoverageRestricted       
+	var exceptDstIDs []string
+	cidrNodes := map[string]models.WorkloadNode{}
+	coverage := models.CoverageRestricted
 	// namespace only set correct coverage enum
 	if peer.PodSelector == nil && peer.NamespaceSelector != nil {
 		if isCatchAll(peer.NamespaceSelector.MatchLabels, len(peer.NamespaceSelector.MatchExpressions)) {
-			return nil
+			return nil, nil
 		}
 		for _, nsIndex := range index {
 			if nsIndex.NSNode == nil || !utils.LabelsMatch(peer.NamespaceSelector.MatchLabels, nsIndex.NSNode.Labels) {
@@ -269,7 +293,24 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 
 	// IP block — external traffic
 	if peer.IPBlock != nil {
-		dstIDs = append(dstIDs, peer.IPBlock.CIDR)
+		cidrID := models.CIDRIDPrefix + peer.IPBlock.CIDR
+		dstIDs = append(dstIDs, cidrID)
+		cidrNodes[cidrID] = models.WorkloadNode{
+			ID:       cidrID,
+			Label:    peer.IPBlock.CIDR,
+			Type:     models.NodeTypeCIDR,
+			CidrType: policy.CidrType(peer.IPBlock.CIDR),
+		}
+		for _, exceptCIDR := range peer.IPBlock.Except {
+			exceptID := models.CIDRIDPrefix + exceptCIDR
+			exceptDstIDs = append(exceptDstIDs, exceptID)
+			cidrNodes[exceptID] = models.WorkloadNode{
+				ID:       exceptID,
+				Label:    exceptCIDR,
+				Type:     models.NodeTypeCIDR,
+				CidrType: policy.CidrType(exceptCIDR),
+			}
+		}
 	}
 
 	// metadata about policy
@@ -280,15 +321,15 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		RuleIndex: ruleIndex,
 	}
 
-	out := make([]models.Rule, 0, len(dstIDs))
+	out := make([]models.Rule, 0, len(dstIDs)+len(exceptDstIDs))
 	for _, dstID := range dstIDs {
 		rule := models.Rule{
-			DstID:        dstID,
-			Ports:        ports,
-			Direction:    direction,
-			Contributor:  contributor,
-			Coverage:     coverage,
-			AllL7: 		  true,
+			DstID:       dstID,
+			Ports:       ports,
+			Direction:   direction,
+			Contributor: contributor,
+			Coverage:    coverage,
+			AllL7:       true,
 		}
 
 		if len(ports) == 0 {
@@ -298,5 +339,23 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 		out = append(out, rule)
 	}
 
-	return out
+	// Except → separate deny rules, same contributor (still an allow policy),
+	// Coverage=CoverageExcept marks them as carve-outs (distinct from Istio DENY).
+	for _, exceptID := range exceptDstIDs {
+		rule := models.Rule{
+			DstID:       exceptID,
+			Ports:       ports,
+			Direction:   direction,
+			Contributor: contributor,
+			Coverage:    models.CoverageExcept,
+			Action:      models.ActionDeny,
+			AllL7:       true,
+		}
+		if len(ports) == 0 {
+			rule.AllPorts = true
+		}
+		out = append(out, rule)
+	}
+
+	return out, cidrNodes
 }

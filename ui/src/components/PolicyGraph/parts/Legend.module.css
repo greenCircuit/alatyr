@@ -63,7 +63,13 @@
 }
 
 /* Legend variant of the on-node mesh chip: neutralize the translate() used
-   to center the chip under its Cytoscape node so it lays out inline here. */
+   to center the chip under its Cytoscape node so it lays out inline here.
+   Fixed width + centered code so every row's description text starts at the
+   same x — the outlined out-of-mesh chip and the varying short codes would
+   otherwise indent each description differently. */
 .meshLegendChip {
     transform: none;
+    box-sizing: border-box;
+    min-width: 48px;
+    justify-content: center;
 }

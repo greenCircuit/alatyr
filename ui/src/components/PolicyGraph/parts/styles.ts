@@ -4,6 +4,7 @@
 // touching component code.
 
 import { EDGE_STYLES } from '../../../style/edgeStyles';
+import { GRAPH_TOKENS } from '../../../style/graphTokens';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STYLE: any[] = [
@@ -97,6 +98,24 @@ export const STYLE: any[] = [
   {
     selector: 'node[wtype = "cronjob"]',
     style: { 'shape': 'hexagon' },
+  },
+  // CIDR peer node: synthetic node for a k8s NetworkPolicy ipBlock. Barrel
+  // shape reads as a network segment / pipe — nothing else in the graph
+  // uses it, so silhouette alone is enough to tell it from a workload at
+  // any zoom. Dashed blue border reinforces "external range, not a pod."
+  {
+    selector: 'node[wtype = "cidr"]',
+    style: {
+      'shape':            'barrel',
+      'background-color': GRAPH_TOKENS.cidrFill,
+      'border-color':     GRAPH_TOKENS.cidr,
+      'border-style':     'dashed',
+      'border-width':     2,
+      'color':            GRAPH_TOKENS.cidrInk,
+      'font-weight':      'bold',
+      'width':            'label',
+      'padding':          14,
+    },
   },
   ...EDGE_STYLES,
   {

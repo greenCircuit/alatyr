@@ -3,9 +3,10 @@
 # ingress and egress. No mesh, no cross-namespace arrows — each workload talks
 # only to a private CIDR block, which renders as its own node.
 #
-#   10.0.0.0/8      ⇄ vpn-gw        lan-full    (in + out to the corp network)
-#   192.168.0.0/16  ─▶ ldap-proxy   lan-ingress (directory reached from the LAN)
-#   backup-agent    ─▶ 172.16.0.0/12  lan-egress (ships backups off to private DC)
+#   10.0.0.0/8      ⇄ vpn-gw               lan-full     (in + out to the corp network)
+#   192.168.0.0/16  ─▶ ldap-proxy          lan-ingress  (directory reached from the LAN)
+#   backup-agent    ─▶ 172.16.0.0/12       lan-egress   (ships backups off to private DC)
+#   telemetry-shipper ─▶ 0.0.0.0/0  except pod+svc CIDR internet-egress with cluster loopback carved out
 ---
 apiVersion: v1
 kind: Namespace
@@ -74,6 +75,25 @@ spec:
       containers:
         - name: backup-agent
           image: registry.example.com/netops/backup-agent:3.2.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-shipper
+  namespace: private-net
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetry-shipper
+  template:
+    metadata:
+      labels:
+        app: telemetry-shipper
+    spec:
+      containers:
+        - name: telemetry-shipper
+          image: registry.example.com/netops/telemetry-shipper:3.2.0
 ---
 # vpn-gw: terminates tunnels from the corporate network and dials back into it.
 # Ingress + egress both to the private 10.0.0.0/8 range. -> lan-full
@@ -146,6 +166,41 @@ spec:
     - to:
         - ipBlock:
             cidr: 172.16.0.0/12
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# telemetry-shipper: defense-in-depth pattern. Egress ALL of the internet
+# (0.0.0.0/0) but explicitly carve out the cluster pod + service CIDRs — the
+# workload must never loop back into the mesh. Exercises ipBlock.except:
+# expandPeerRules emits one ActionAllow rule for the covering CIDR plus two
+# ActionDeny rules (Coverage=CoverageExcept) for the pod/svc carve-outs. In
+# reachability, IsCIDRClusterAccessRule promotes both the allow and the excepts,
+# so any src pod → telemetry-shipper (and telemetry-shipper → any dst pod)
+# resolves to ReasonExplicitDeny even though 0.0.0.0/0 covers everything.
+#
+# CIDRs match defaultConfig.yaml (pod 10.42.0.0/24, svc 10.43.0.0/24) so the
+# fixture works out of the box under DEMO_MODE=true. -> internet-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: telemetry-shipper-netpol
+  namespace: private-net
+spec:
+  podSelector:
+    matchLabels:
+      app: telemetry-shipper
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/24
+              - 10.43.0.0/24
       ports:
         - protocol: TCP
           port: 443

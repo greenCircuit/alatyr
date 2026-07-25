@@ -28,6 +28,17 @@
     --color-info:    #4dabf7;
     --color-unknown: #6c757d;
 
+    /* CIDR peer node stroke — slate-cyan, deliberately off the direction/edge
+       palette so barrel node doesn't fuse with adjacent egress arrow. */
+    --color-cidr:        #7aa2c8;
+    --color-cidr-ink:    #cde4ff;
+
+    /* Except carve-out edge — aligned to caution (yellow-gold), visually
+       distinct from DST amber (#ffb54e) so operator maps amber-dotted to
+       "carve-out" (semantic), not "DST-adjacent" (spatial). */
+    --color-except:      #fab005;
+    --color-except-ink:  #ffe08a;
+
     /* mTLS axis — deliberately NOT re-using severity tokens. The Istio
        install default is PERMISSIVE; tinting the whole dashboard amber for
        it would falsely flag every healthy default install as a warning.

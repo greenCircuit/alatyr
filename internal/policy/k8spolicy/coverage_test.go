@@ -146,7 +146,8 @@ func TestExpandEgressRules_Coverage(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertRuleKeys(t, expandEgressRules(tc.policy, index), tc.want)
+			rules, _ := expandEgressRules(tc.policy, index)
+			assertRuleKeys(t, rules, tc.want)
 		})
 	}
 }
@@ -195,7 +196,8 @@ func TestExpandIngressRules_Coverage(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertRuleKeys(t, expandIngressRules(tc.policy, index), tc.want)
+			rules, _ := expandIngressRules(tc.policy, index)
+			assertRuleKeys(t, rules, tc.want)
 		})
 	}
 }
@@ -212,13 +214,13 @@ func tcpPort(port int32) []networkingv1.NetworkPolicyPort {
 func TestCoverageMarkers_ContributorAndPorts(t *testing.T) {
 	index := buildTestIndex(defaultTestNodesWithNS())
 
-	denyAll := expandEgressRules(coveragePolicy(frontendSel, egressType, nil, nil), index)
+	denyAll, _ := expandEgressRules(coveragePolicy(frontendSel, egressType, nil, nil), index)
 	if len(denyAll) != 1 || denyAll[0].Contributor.Name != "np" {
 		t.Fatalf("deny-all marker must attribute to policy 'np', got %+v", denyAll)
 	}
 
 	// allow-all with NO ports = all ports → AllPorts must be flagged.
-	egressAll := expandEgressRules(
+	egressAll, _ := expandEgressRules(
 		coveragePolicy(frontendSel, egressType, []networkingv1.NetworkPolicyEgressRule{{}}, nil), index)
 	if len(egressAll) != 1 || egressAll[0].Contributor.Name != "np" {
 		t.Fatalf("allow-all egress: want 1 attributed rule, got %+v", egressAll)
@@ -229,7 +231,7 @@ func TestCoverageMarkers_ContributorAndPorts(t *testing.T) {
 
 	// allow-all egress WITH a port = all destinations on 443 only. The port
 	// must survive and AllPorts must be false.
-	egressPort := expandEgressRules(
+	egressPort, _ := expandEgressRules(
 		coveragePolicy(frontendSel, egressType,
 			[]networkingv1.NetworkPolicyEgressRule{{Ports: tcpPort(443)}}, nil), index)
 	if len(egressPort) != 1 {
@@ -243,7 +245,7 @@ func TestCoverageMarkers_ContributorAndPorts(t *testing.T) {
 	}
 
 	// same on the ingress side.
-	ingressPort := expandIngressRules(
+	ingressPort, _ := expandIngressRules(
 		coveragePolicy(backendSel, ingressType, nil,
 			[]networkingv1.NetworkPolicyIngressRule{{Ports: tcpPort(443)}}), index)
 	if len(ingressPort) != 1 {

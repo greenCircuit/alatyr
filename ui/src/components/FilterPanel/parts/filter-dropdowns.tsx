@@ -8,7 +8,7 @@ import { useGraphStore, type MeshFilterValue } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { useOutsideClick } from './useOutsideClick';
-import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, MESH_FILTER_LABEL, MESH_FILTER_GROUPS } from './constants';
+import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, MESH_FILTER_LABEL, MESH_FILTER_GROUPS, ALL_NODE_TYPES, NODE_TYPE_LABEL } from './constants';
 import { countIssuesByType } from '../../../store/issueIndex';
 import styles from '../FilterPanel.module.css';
 
@@ -223,6 +223,68 @@ export function PolicySourceDropdown() {
               />
               <label className="form-check-label text-light fs-13" htmlFor={`src-dd-${src}`}>
                 {src}
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function NodeTypeDropdown() {
+  const { selectedNodeTypes, toggleNodeType } = useGraphStore();
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  const total = ALL_NODE_TYPES.length;
+  const count = selectedNodeTypes.size;
+  const label = count === total
+    ? 'All node types'
+    : count === 0
+      ? 'No node types'
+      : `${count} / ${total} node types`;
+
+  return (
+    <div className="position-relative" ref={ref}>
+      <button
+        className={`btn btn-sm ${count < total ? 'btn-outline-warning' : 'btn-outline-secondary'} dropdown-toggle`}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {label}
+      </button>
+
+      {open && (
+        <div className="dropdown-shell dropdown-panel dropdown-panel-md">
+          <div className="d-flex gap-2 mb-2 pb-1 border-bottom border-secondary">
+            <button
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
+              onClick={() => ALL_NODE_TYPES.forEach((t) => { if (!selectedNodeTypes.has(t)) toggleNodeType(t); })}
+            >
+              all
+            </button>
+            <button
+              className="btn btn-link btn-sm p-0 text-secondary fs-11"
+              onClick={() => ALL_NODE_TYPES.forEach((t) => { if (selectedNodeTypes.has(t)) toggleNodeType(t); })}
+            >
+              none
+            </button>
+          </div>
+
+          {ALL_NODE_TYPES.map((type) => (
+            <div key={type} className="form-check mb-1">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id={`nodetype-dd-${type}`}
+                checked={selectedNodeTypes.has(type)}
+                onChange={() => toggleNodeType(type)}
+              />
+              <label className="form-check-label text-light fs-13" htmlFor={`nodetype-dd-${type}`}>
+                {NODE_TYPE_LABEL[type] ?? type}
               </label>
             </div>
           ))}

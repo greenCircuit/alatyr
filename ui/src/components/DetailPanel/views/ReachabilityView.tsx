@@ -29,6 +29,12 @@ import { MtlsChip } from '../shared/MtlsChip';
 import type { MtlsScope } from '../../../data/policies';
 import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
+// Mesh is an in-cluster transport concern (mTLS between workloads). A CIDR node
+// is a synthetic ipBlock peer with no pod identity, so mesh status is
+// meaningless for it — suppress mesh UI whenever either endpoint is CIDR.
+const meshAppliesTo = (src: WorkloadNode, dst: WorkloadNode) =>
+  src.type !== 'cidr' && dst.type !== 'cidr';
+
 // ── Tier 0 ──────────────────────────────────────────────────────────────────
 
 // Per-subsystem chip — engine chip + colored ✓/✗ action icon. Reuses the
@@ -37,7 +43,7 @@ import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type
 function SubsystemChip({ label, status }: { label: string; status: string }) {
   const action = status === 'allow' ? 'allow' : status === 'deny' ? 'deny' : undefined;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span className={s.subsystemChip}>
       <EngineBadge engine={label} />
       {action ? <ActionIcon action={action} /> : <span className={`${s.smallText} ${s.dim}`}>{status}</span>}
     </span>
@@ -94,7 +100,7 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
   const calloutTone = deny ? s.verdictDeny : allow ? s.verdictAllow : s.verdictWarn;
   const textTone    = deny ? s.verdictTextDeny : allow ? s.verdictTextAllow : s.verdictTextWarn;
   const engines = Object.entries(result.engines);
-  const meshes  = result.mesh ? Object.entries(result.mesh) : [];
+  const meshes  = result.mesh && meshAppliesTo(src, dst) ? Object.entries(result.mesh) : [];
   return (
     <div className={`${s.verdictCallout} ${calloutTone}`}>
       <div className="d-flex align-items-baseline gap-2 flex-wrap">
@@ -120,7 +126,7 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
           ))}
         </div>
       )}
-      <div className={deny ? `${s.body} ${textTone}` : `${s.dim} ${s.smallText}`} style={deny ? { fontWeight: 600 } : undefined}>
+      <div className={deny ? `${s.body} ${textTone} ${s.reasonEmph}` : `${s.dim} ${s.smallText}`}>
         {result.reason}
       </div>
     </div>
@@ -220,7 +226,7 @@ function BlockerRow({ blocker, src, dst }: { blocker: Blocker; src: WorkloadNode
           delete target alongside the culprit. */}
       {blocker.denyRules.length > 0 && (
         <div className="mt-2">
-          <div className={`${s.smallText}`} style={{ color: 'var(--color-deny)' }}>Deny rules — delete to allow</div>
+          <div className={`${s.smallText} ${s.eyebrowDeny}`}>Deny rules — delete to allow</div>
           <RuleGroupList rules={blocker.denyRules} />
         </div>
       )}
@@ -252,7 +258,7 @@ function DirectionBlock({ label, dir, direction }: {
   dir:       DirectionVerdict;
   direction: 'egress' | 'ingress';
 }) {
-  const tintVar = direction === 'egress' ? 'var(--color-role-src)' : 'var(--color-role-dst)';
+  const sectionTintClass = direction === 'egress' ? s.egressSection : s.ingressSection;
   const arrow   = direction === 'egress' ? '↑' : '↓';
   const meta     = REASON_META[dir.reason];
   const allow    = dir.allowMatches ?? [];
@@ -274,7 +280,7 @@ function DirectionBlock({ label, dir, direction }: {
   return (
     <div className={`${shellClass} d-flex flex-column gap-1`}>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-1">
-        <span className={s.section} style={{ color: tintVar }}>{arrow} {label}</span>
+        <span className={`${s.section} ${sectionTintClass}`}>{arrow} {label}</span>
         <span className={`${s.reasonChip} ${isDenyReason ? s.reasonDeny : dir.reason === 'permitted' ? s.reasonAllow : s.reasonWarn}`}>
           {meta.label}
         </span>
@@ -417,7 +423,7 @@ function WorkloadColumn({ node, role, engines, policiesKey, meshSources, mesh }:
           <span className={`${s.section} text-break`}>{node.label}</span>
         </div>
         <div className={`${s.dim} ${s.smallText}`}>
-          {node.namespace || '—'} · {node.type}
+          {node.namespace ? `${node.namespace} · ${node.type}` : node.type}
         </div>
       </div>
       <div className="mb-3">
@@ -472,11 +478,12 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
   );
 }
 
-function ResultColumn({ result, engines }: {
+function ResultColumn({ result, engines, showMesh }: {
   result:  ReachabilityResult;
   engines: [string, EngineVerdict][];
+  showMesh: boolean;
 }) {
-  const meshEntries = result.mesh ? Object.entries(result.mesh) : [];
+  const meshEntries = result.mesh && showMesh ? Object.entries(result.mesh) : [];
   return (
     <div className={s.reachCol}>
       <div className={s.reachColHeader}>verdict detail</div>
@@ -496,12 +503,13 @@ function ReachabilityGrid({ src, dst, result }: {
   result: ReachabilityResult;
 }) {
   const engines = Object.entries(result.engines);
-  const meshSources = result.mesh ? Object.keys(result.mesh) : [];
+  const showMesh = meshAppliesTo(src, dst);
+  const meshSources = result.mesh && showMesh ? Object.keys(result.mesh) : [];
   return (
     <div className={s.reachGrid}>
       <WorkloadColumn node={src} role="SRC" engines={engines} policiesKey="srcPolicies" meshSources={meshSources} mesh={result.srcMesh} />
       <WorkloadColumn node={dst} role="DST" engines={engines} policiesKey="dstPolicies" meshSources={meshSources} mesh={result.dstMesh} />
-      <ResultColumn result={result} engines={engines} />
+      <ResultColumn result={result} engines={engines} showMesh={showMesh} />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import type { MeshFilterValue } from '../../../store/filters';
 import type { StatusKey, MtlsScope } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR, MTLS_COLOR } from '../../../data/policies';
 import { COV } from './coverage';
+import { GRAPH_TOKENS } from '../../../style/graphTokens';
 import s from './Legend.module.css';
 import g from '../PolicyGraph.module.css';
 
@@ -79,6 +80,7 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
           <Dot color="#4dabf7" label="egress (allow)" />
           <Dot color="#f783ac" label="ingress (allow)" />
           <Dot color="#a9e34b" label="both (allow)" />
+          <Dot color={GRAPH_TOKENS.except} label="except (allow with carve-out)" />
           <Dot color="#e03131" label="deny" />
           <div className="d-flex gap-2 mt-1">
             <span className={s.lineLabel}>── workload</span>

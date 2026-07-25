@@ -78,6 +78,17 @@ export const LAYOUTS = [
 
 export const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
 
+// Togglable node types the backend actually emits. Excludes `namespace` —
+// compound container, not filterable. Service/headless/external are defined
+// in models/node.go but never produced yet.
+export const ALL_NODE_TYPES = ['deployment', 'cronjob', 'cidr'] as const;
+
+export const NODE_TYPE_LABEL: Record<string, string> = {
+  deployment: 'Deployment',
+  cronjob:    'CronJob',
+  cidr:       'CIDR',
+};
+
 export const DIRECTION_LABEL: Record<string, string> = { ingress: 'Ingress', egress: 'Egress' };
 
 export const MESH_FILTER_LABEL: Record<MeshFilterValue, string> = {

@@ -65,7 +65,7 @@ func buildAllowTuples(index map[string]models.NSIndex, policies []networkingv1.N
 		}
 		policiesByNS[namespace] = append(policiesByNS[namespace], networkPolicy)
 	}
-	rulesByNs, _ := buildAllowRulesByNs(index, policiesByNS)
+	rulesByNs, _, _ := buildAllowRulesByNs(index, policiesByNS)
 	var flat []models.Rule
 	for _, rules := range rulesByNs {
 		flat = append(flat, rules...)
@@ -190,7 +190,7 @@ func TestGetTargetEgressTuples_Match(t *testing.T) {
 		map[string]string{"app": "frontend"},
 		map[string]string{"app": "backend"},
 	)
-	tuples := expandEgressRules(&networkPolicy, buildTestIndex(nodes))
+	tuples, _ := expandEgressRules(&networkPolicy, buildTestIndex(nodes))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 egress tuple, got %d", len(tuples))
 	}
@@ -211,7 +211,7 @@ func TestGetTargetEgressTuples_NilPodSelector(t *testing.T) {
 			},
 		},
 	}
-	tuples := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("nil PodSelector should produce no tuples, got %d", len(tuples))
 	}
@@ -223,7 +223,7 @@ func TestGetTargetEgressTuples_NoRules(t *testing.T) {
 	}
 	// Bare policy: no PolicyTypes → egress not locked. Recorded as unenforced
 	// (visible in the table) rather than dropped, but never deny-all.
-	tuples := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandEgressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 egress marker, got %d", len(tuples))
 	}
@@ -240,7 +240,7 @@ func TestGetTargetIngressTuples_Match(t *testing.T) {
 		map[string]string{"app": "backend"},
 		map[string]string{"app": "frontend"},
 	)
-	tuples := expandIngressRules(&networkPolicy, buildTestIndex(nodes))
+	tuples, _ := expandIngressRules(&networkPolicy, buildTestIndex(nodes))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 ingress tuple, got %d", len(tuples))
 	}
@@ -261,7 +261,7 @@ func TestGetTargetIngressTuples_NilPodSelector(t *testing.T) {
 			},
 		},
 	}
-	tuples := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 0 {
 		t.Errorf("nil PodSelector should produce no tuples, got %d", len(tuples))
 	}
@@ -272,7 +272,7 @@ func TestGetTargetIngressTuples_NoRules(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 	}
 	// Bare policy: empty PolicyTypes implies Ingress lock → deny-all ingress.
-	tuples := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandIngressRules(&networkPolicy, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 ingress marker, got %d", len(tuples))
 	}
@@ -287,7 +287,7 @@ func TestGenerateTuples_NSOnly_CatchAll(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		NamespaceSelector: &metav1.LabelSelector{}, // empty = catch-all → skip
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if tuples != nil {
 		t.Errorf("catch-all namespace selector should return nil, got %v", tuples)
 	}
@@ -299,7 +299,7 @@ func TestGenerateTuples_NSOnly_Match(t *testing.T) {
 			MatchLabels: map[string]string{"kubernetes.io/metadata.name": "default"},
 		},
 	}
-	tuples := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
@@ -314,7 +314,7 @@ func TestGenerateTuples_NSOnly_NoMatch(t *testing.T) {
 			MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"},
 		},
 	}
-	tuples := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 0 {
 		t.Errorf("non-matching namespace selector should produce no tuples, got %d", len(tuples))
 	}
@@ -326,7 +326,7 @@ func TestGenerateTuples_PodOnly_CatchAll(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		PodSelector: &metav1.LabelSelector{}, // empty = catch-all → collapse to NS node
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple to NS node, got %d", len(tuples))
 	}
@@ -348,7 +348,7 @@ func TestGenerateTuples_BothSelectors_SpecificNSSpecificPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"}},
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
@@ -368,7 +368,7 @@ func TestGenerateTuples_BothSelectors_CatchAllNSSpecificPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 		NamespaceSelector: &metav1.LabelSelector{}, // catch-all NS
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 2 {
 		t.Fatalf("expected 1 tuple per NS with matching pod (2 total), got %d", len(tuples))
 	}
@@ -385,7 +385,7 @@ func TestGenerateTuples_BothSelectors_SpecificNSCatchAllPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{}, // catch-all pod → use NS node
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"}},
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 NS-level tuple, got %d", len(tuples))
 	}
@@ -400,12 +400,174 @@ func TestGenerateTuples_IPBlock(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"},
 	}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	tuples, cidrNodes := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
-	if tuples[0].DstID != "10.0.0.0/8" {
-		t.Errorf("want CIDR as target, got %s", tuples[0].DstID)
+	if tuples[0].DstID != "cidr:10.0.0.0/8" {
+		t.Errorf("want prefixed CIDR as target, got %s", tuples[0].DstID)
+	}
+	if tuples[0].Action != models.ActionAllow {
+		t.Errorf("want Allow, got %v", tuples[0].Action)
+	}
+	node, ok := cidrNodes["cidr:10.0.0.0/8"]
+	if !ok {
+		t.Fatalf("expected synthetic CIDR node for cidr:10.0.0.0/8, got %v", cidrNodes)
+	}
+	if node.Type != models.NodeTypeCIDR {
+		t.Errorf("want NodeTypeCIDR, got %s", node.Type)
+	}
+	if node.Label != "10.0.0.0/8" {
+		t.Errorf("want raw CIDR as Label, got %s", node.Label)
+	}
+}
+
+func TestGenerateTuples_IPBlock_Except_EmitsDenyRules(t *testing.T) {
+	peer := networkingv1.NetworkPolicyPeer{
+		IPBlock: &networkingv1.IPBlock{
+			CIDR:   "10.0.0.0/8",
+			Except: []string{"10.1.0.0/16", "10.2.0.0/16"},
+		},
+	}
+	tuples, cidrNodes := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	if len(tuples) != 3 {
+		t.Fatalf("want 1 allow + 2 deny (3 total), got %d: %+v", len(tuples), tuples)
+	}
+	var allow, deny []models.Rule
+	for _, tuple := range tuples {
+		if tuple.Action == models.ActionAllow {
+			allow = append(allow, tuple)
+		} else {
+			deny = append(deny, tuple)
+		}
+	}
+	if len(allow) != 1 || allow[0].DstID != "cidr:10.0.0.0/8" {
+		t.Errorf("want 1 allow to cidr:10.0.0.0/8, got %+v", allow)
+	}
+	if len(deny) != 2 {
+		t.Fatalf("want 2 deny rules, got %d", len(deny))
+	}
+	denyIDs := map[string]bool{deny[0].DstID: true, deny[1].DstID: true}
+	if !denyIDs["cidr:10.1.0.0/16"] || !denyIDs["cidr:10.2.0.0/16"] {
+		t.Errorf("deny targets mismatch: %+v", denyIDs)
+	}
+	for _, tuple := range deny {
+		if tuple.Coverage != models.CoverageExcept {
+			t.Errorf("except deny must carry CoverageExcept, got %q", tuple.Coverage)
+		}
+		if tuple.Contributor.Name != "pol" {
+			t.Errorf("except deny lost contributor: %+v", tuple.Contributor)
+		}
+	}
+	for _, id := range []string{"cidr:10.0.0.0/8", "cidr:10.1.0.0/16", "cidr:10.2.0.0/16"} {
+		if _, ok := cidrNodes[id]; !ok {
+			t.Errorf("missing synthetic node for %s", id)
+		}
+	}
+}
+
+func TestGenerateTuples_IPBlock_Except_SelfNullifying(t *testing.T) {
+	// Pathological but legal: except covers the entire allowed CIDR.
+	peer := networkingv1.NetworkPolicyPeer{
+		IPBlock: &networkingv1.IPBlock{
+			CIDR:   "10.0.0.0/8",
+			Except: []string{"10.0.0.0/8"},
+		},
+	}
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	if len(tuples) != 2 {
+		t.Fatalf("want 1 allow + 1 deny on same CIDR, got %d", len(tuples))
+	}
+	var sawAllow, sawDeny bool
+	for _, tuple := range tuples {
+		if tuple.DstID != "cidr:10.0.0.0/8" {
+			t.Errorf("want same CIDR on both, got %s", tuple.DstID)
+		}
+		if tuple.Action == models.ActionAllow {
+			sawAllow = true
+		}
+		if tuple.Action == models.ActionDeny && tuple.Coverage == models.CoverageExcept {
+			sawDeny = true
+		}
+	}
+	if !sawAllow || !sawDeny {
+		t.Errorf("want both an allow and an except-deny on the same CIDR, got allow=%v deny=%v", sawAllow, sawDeny)
+	}
+}
+
+func TestBuildAllowRulesByNs_CIDRNodesSurfaced(t *testing.T) {
+	networkPolicy := networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "np", Namespace: "default"},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "frontend"}},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{To: []networkingv1.NetworkPolicyPeer{
+					{IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"169.254.169.254/32"}}},
+				}},
+			},
+		},
+	}
+	policiesByNS := map[string][]*networkingv1.NetworkPolicy{"default": {&networkPolicy}}
+	_, _, cidrNodes := buildAllowRulesByNs(buildTestIndex(defaultTestNodes()), policiesByNS)
+	for _, id := range []string{"cidr:0.0.0.0/0", "cidr:169.254.169.254/32"} {
+		node, ok := cidrNodes[id]
+		if !ok {
+			t.Errorf("missing node for %s", id)
+			continue
+		}
+		if node.Type != models.NodeTypeCIDR {
+			t.Errorf("%s: want NodeTypeCIDR, got %s", id, node.Type)
+		}
+	}
+}
+
+func TestBuildAllowRulesByNs_CIDRNodesDedupedAcrossPolicies(t *testing.T) {
+	// Two policies referencing the same CIDR must produce one node, not two.
+	makePolicy := func(name string) *networkingv1.NetworkPolicy {
+		return &networkingv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "frontend"}},
+				Egress: []networkingv1.NetworkPolicyEgressRule{
+					{To: []networkingv1.NetworkPolicyPeer{
+						{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
+					}},
+				},
+			},
+		}
+	}
+	policiesByNS := map[string][]*networkingv1.NetworkPolicy{
+		"default": {makePolicy("pol-a"), makePolicy("pol-b")},
+	}
+	_, _, cidrNodes := buildAllowRulesByNs(buildTestIndex(defaultTestNodes()), policiesByNS)
+	if len(cidrNodes) != 1 {
+		t.Errorf("want single deduped CIDR node, got %d: %+v", len(cidrNodes), cidrNodes)
+	}
+}
+
+func TestGenerateTuples_IngressIPBlock_SrcIDPrefixedAfterSwap(t *testing.T) {
+	// Ingress path: buildAllowRulesByNs swaps SrcID/DstID. CIDR peer must land
+	// in SrcID with the cidr: prefix intact.
+	networkPolicy := networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "np", Namespace: "default"},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{From: []networkingv1.NetworkPolicyPeer{
+					{IPBlock: &networkingv1.IPBlock{CIDR: "192.168.1.0/24"}},
+				}},
+			},
+		},
+	}
+	tuples := buildAllowTuples(buildTestIndex(defaultTestNodes()), []networkingv1.NetworkPolicy{networkPolicy})
+	var found bool
+	for _, tuple := range tuples {
+		if tuple.Direction == models.DirectionIngress && tuple.SrcID == "cidr:192.168.1.0/24" && tuple.DstID == nodeBackend.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("want ingress rule with SrcID=cidr:192.168.1.0/24 → DstID=%s; got %+v", nodeBackend.ID, tuples)
 	}
 }
 
@@ -477,7 +639,7 @@ func TestGenerateTuples_PortsPropagated(t *testing.T) {
 		PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 	}
 	ports := []models.Port{{Port: 8080, Protocol: "TCP"}}
-	tuples := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, ports, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, ports, buildTestIndex(defaultTestNodes()))
 	if len(tuples) == 0 {
 		t.Fatal("expected at least 1 tuple")
 	}

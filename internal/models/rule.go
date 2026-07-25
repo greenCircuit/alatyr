@@ -32,7 +32,8 @@ const (
 	CoverageRestricted	 Coverage = "restricted"
 	CoverageUnenforced	 Coverage = "unenforced"
 	CoverageAudit   	 Coverage = "audit"
-) 
+	CoverageExcept       Coverage = "except"       // carve-out inside an allow (k8s ipBlock.except); render distinct from standalone deny
+)
 
 // PolicyRef points back to a specific policy (and rule within it) that
 // contributed to a Rule. Rendered in the detail panel.

@@ -6,6 +6,8 @@
 // (matches against edge data fields) with the style block applied when it
 // hits. Selectors below are evaluated in order; later entries override.
 
+import { GRAPH_TOKENS } from './graphTokens';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface EdgeStyle { selector: string; style: Record<string, any> }
 
@@ -94,6 +96,24 @@ export const EDGE_STYLES: EdgeStyle[] = [
       'color':              '#ff8787',
       'line-style':         'dashed',
       'width':              3,
+    },
+  },
+  // Except carve-out: a Deny rule generated from an ipBlock.Except entry on
+  // a k8s NetworkPolicy allow. Semantically "allow this range EXCEPT this
+  // hole" — not a standalone deny. Amber (not red) + dotted (not dashed)
+  // distinguishes it from Istio DENY so the operator can tell "your allow
+  // has a hole" apart from "another policy explicitly denies you."
+  {
+    selector: 'edge[coverage = "except"]',
+    style: {
+      'line-color':         GRAPH_TOKENS.except,
+      'target-arrow-color': GRAPH_TOKENS.except,
+      'target-arrow-shape': 'triangle-cross',
+      'arrow-scale':        1.4,
+      'color':              GRAPH_TOKENS.exceptInk,
+      'line-style':         'dashed',
+      'line-dash-pattern':  [2, 6],
+      'width':              2.5,
     },
   },
 ];

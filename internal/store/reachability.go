@@ -3,9 +3,46 @@ package store
 import (
 	"context"
 	"fmt"
+
 	"graph/internal/mesh"
 	"graph/internal/models"
+	"graph/internal/policy"
 )
+
+// isClusterCoveringCidr reports whether nodeID is a synthetic CIDR node whose
+// range spans the whole cluster pod/svc space (or 0.0.0.0/0) — CidrType is
+// stamped once at node construction (k8spolicy buildRules.go) so reachability
+// doesn't re-parse the CIDR string on every rule it checks.
+func isClusterCoveringCidr(nodeID string, idIndex map[string]models.WorkloadNode) bool {
+	node, ok := idIndex[nodeID]
+	if !ok || node.Type != models.NodeTypeCIDR {
+		return false
+	}
+	return node.CidrType != models.CIDRLan
+}
+
+// cidrCarveOutCoversDst reports whether an ipBlock except carve-out
+// (DstID/SrcID="cidr:<range>", Coverage=CoverageExcept) actually removes the
+// queried peer from the covering allow. A carve-out only bites when the peer
+// falls inside the except range — otherwise the broader allow still permits it.
+//
+// Two cases, split by peer kind:
+//   - peer is a CIDR node (external/WAN): real subnet containment. An internal
+//     /16 does NOT contain 0.0.0.0/0, so the WAN node stays reachable — this is
+//     the seam the blanket isClusterCoveringCidr check got wrong.
+//   - peer is an internal workload: its runtime IP lives in the cluster pod/svc
+//     space, so any carve-out covering the cluster CIDR removes it.
+func cidrCarveOutCoversDst(exceptID, peerID string, idIndex map[string]models.WorkloadNode) bool {
+	exceptNode, ok := idIndex[exceptID]
+	if !ok || exceptNode.Type != models.NodeTypeCIDR {
+		return false
+	}
+	if peerNode, ok := idIndex[peerID]; ok && peerNode.Type == models.NodeTypeCIDR {
+		return policy.CidrContains(exceptNode.Label, peerNode.Label)
+	}
+	return exceptNode.CidrType != models.CIDRLan
+}
+
 
 // collectToSide sorts the src's egress rules (its pod bucket + ns-node bucket)
 // into the DirectionVerdict slices by whether each rule targets the dst peer,
@@ -26,7 +63,10 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 				verdict.DenyAllMatches = append(verdict.DenyAllMatches, toNodeRule(rule, idIndex))
 			// Coverage check, not DstID == "" — unenforced/deny-all markers also
 			// carry empty DstID, and only allow-all means "matches any peer".
-			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageAllowAll:
+			// cidrCoveringInternal catches ipBlock peers whose CIDR contains the
+			// cluster pod/svc CIDR (e.g. 0.0.0.0/0): DstID never equals the
+			// workload ID but the rule semantically permits any internal pod.
+			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageAllowAll || isClusterCoveringCidr(rule.DstID, idIndex):
 				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
 				if rule.AllPorts {
 					allowAllPorts = true
@@ -46,7 +86,10 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 			}
 		}
 		for _, rule := range nodeRules.Egress.Deny {
-			if rule.DstID == dstNodeId || rule.DstID == dstNsNodeId  || rule.Coverage == models.CoverageDenyAll {
+			// Except carve-outs (Coverage=CoverageExcept) land here with a CIDR
+			// DstID — cidrCarveOutCoversDst promotes them to explicit deny only
+			// when the except CIDR actually contains the queried dst.
+			if rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrCarveOutCoversDst(rule.DstID, dstNodeId, idIndex) {
 				verdict.DenyMatches = append(verdict.DenyMatches, toNodeRule(rule, idIndex))
 			}
 		}
@@ -77,7 +120,9 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 				verdict.DenyAllMatches = append(verdict.DenyAllMatches, toNodeRule(rule, idIndex))
 			// Coverage check, not SrcID == "" — unenforced/deny-all markers also
 			// carry empty SrcID, and only allow-all means "matches any peer".
-			case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageAllowAll:
+			// cidrCoveringInternal mirrors the egress path: ingress from an
+			// ipBlock CIDR that covers the pod/svc CIDR admits any internal src.
+			case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageAllowAll || isClusterCoveringCidr(rule.SrcID, idIndex):
 				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
 				if rule.AllPorts {
 					allowAllPorts = true
@@ -97,7 +142,7 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 			}
 		}
 		for _, rule := range nodeRules.Ingress.Deny {
-			if rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageDenyAll {
+			if rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrCarveOutCoversDst(rule.SrcID, srcNodeId, idIndex) {
 				verdict.DenyMatches = append(verdict.DenyMatches, toNodeRule(rule, idIndex))
 			}
 		}
