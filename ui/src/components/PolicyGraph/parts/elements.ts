@@ -88,6 +88,7 @@ export function buildElements(
         hasNS:     b.hasNS,
         direction: b.direction,
         action:    b.action,
+        coverage:  b.coverage,
         nsToChild,
       },
     });
@@ -161,16 +162,18 @@ export function buildAggregatedElements(
     if (src === tgt) continue;
     if (!validIds.has(src) || !validIds.has(tgt)) continue;
     const action = e.action ?? 0;
-    const key = `${src}\0${tgt}\0${action}`;
+    const covKey = e.coverage === 'except' ? 'except' : '';
+    const key = `${src}\0${tgt}\0${action}\0${covKey}`;
     if (!aggMap.has(key)) aggMap.set(key, { src, tgt, action, policies: [] });
     aggMap.get(key)!.policies.push(e);
   }
 
   for (const { src, tgt, action, policies } of aggMap.values()) {
     const count = policies.length;
+    const coverage = policies.every((p) => p.coverage === 'except') ? 'except' : undefined;
     els.push({
       data: {
-        id:        `agg-${src}-${tgt}-${action}`,
+        id:        `agg-${src}-${tgt}-${action}${coverage ? '-except' : ''}`,
         source:    src,
         target:    tgt,
         label:     count === 1 ? edgeLabel(policies[0]) : bundleLabel(policies),
@@ -178,6 +181,7 @@ export function buildAggregatedElements(
         hasNS:     policies.some((p) => p.level === 'namespace'),
         direction: aggregateDirection(policies),
         action,
+        coverage,
       },
     });
   }

@@ -3,9 +3,12 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
+	"graph/internal/config"
 	"graph/internal/models"
+	"graph/internal/policy"
 )
 
 // Focused tests on IsNodesReachable against the reason-enum model. "Locked" /
@@ -32,15 +35,40 @@ const (
 func buildCache(engine string, rules ...models.Rule) *models.Cache {
 	srcNsNode := &models.WorkloadNode{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace}
 	dstNsNode := &models.WorkloadNode{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace}
-	return &models.Cache{
+	cache := &models.Cache{
 		NsIndex: map[string]models.NSIndex{
 			srcNs: {NSNode: srcNsNode},
 			dstNs: {NSNode: dstNsNode},
 		},
 		EvaluationResults: map[string]models.EvaluationResult{
-			engine: {NodeRules: buildNodeRules(rules)},
+			engine: {NodeRules: buildNodeRules(rules), Nodes: cidrNodesFromRules(rules)},
 		},
 	}
+	cache.RebuildWorkloadIndex()
+	return cache
+}
+
+// cidrNodesFromRules mirrors what k8spolicy.buildRules stamps onto
+// EvaluationResult.Nodes for every "cidr:" peer a rule references — reachability
+// now reads CidrType off the cached node instead of reparsing the CIDR string,
+// so fixtures must register the node the same way the engine does.
+func cidrNodesFromRules(rules []models.Rule) map[string]models.WorkloadNode {
+	nodes := map[string]models.WorkloadNode{}
+	for _, rule := range rules {
+		for _, id := range []string{rule.SrcID, rule.DstID} {
+			if !strings.HasPrefix(id, models.CIDRIDPrefix) {
+				continue
+			}
+			cidr := strings.TrimPrefix(id, models.CIDRIDPrefix)
+			nodes[id] = models.WorkloadNode{
+				ID:       id,
+				Label:    cidr,
+				Type:     models.NodeTypeCIDR,
+				CidrType: policy.CidrType(cidr),
+			}
+		}
+	}
+	return nodes
 }
 
 // buildNodeRules mirrors the engines' per-node index: egress keys by SrcID,
@@ -154,6 +182,40 @@ func withPorts(rule models.Rule, ports ...models.Port) models.Rule {
 
 func tcpPort(number int) models.Port { return models.Port{Port: number, Protocol: "TCP"} }
 func udpPort(number int) models.Port { return models.Port{Port: number, Protocol: "UDP"} }
+
+// egressToCIDR mirrors egressTo but stamps the synthetic CIDR-peer DstID that
+// k8spolicy.expandPeerRules emits for ipBlock peers (`"cidr:" + <cidr>`). The
+// rule stays Coverage=CoverageRestricted just like real ipBlock rules — the
+// engine does not stamp CoverageAllowAll even when the CIDR is 0.0.0.0/0.
+func egressToCIDR(cidr string) models.Rule {
+	return models.Rule{
+		SrcID: srcID, DstID: "cidr:" + cidr,
+		Direction: models.DirectionEgress, Action: models.ActionAllow,
+		Coverage: models.CoverageRestricted, AllPorts: true,
+		Contributor: models.PolicyRef{Source: "k8s", Name: "egress-cidr", Namespace: srcNs},
+	}
+}
+
+func ingressFromCIDR(cidr string) models.Rule {
+	return models.Rule{
+		SrcID: "cidr:" + cidr, DstID: dstID,
+		Direction: models.DirectionIngress, Action: models.ActionAllow,
+		Coverage: models.CoverageRestricted, AllPorts: true,
+		Contributor: models.PolicyRef{Source: "k8s", Name: "ingress-cidr", Namespace: dstNs},
+	}
+}
+
+// installCIDRConfig pins pod + service CIDRs for CIDR-classification tests and
+// restores the prior config on teardown so package-level state does not leak.
+func installCIDRConfig(t *testing.T) {
+	t.Helper()
+	prev := config.Get()
+	config.Set(config.Config{
+		PodCIDR: "10.244.0.0/16",
+		SvcCIDR: "10.96.0.0/12",
+	})
+	t.Cleanup(func() { config.Set(prev) })
+}
 
 // ingressCatchAllDeny is how Istio emits action:DENY rules:[{}] — a blanket
 // deny of every source. Unlike ingressDenyAll (k8s lock, Action defaults to
@@ -452,5 +514,249 @@ func TestIsNodesReachable_AllowOnOneEngineDeniedOnAnotherBlocks(t *testing.T) {
 	}
 	if got.Engines["istio"].Status != "deny" {
 		t.Errorf("istio engine: want deny, got %q", got.Engines["istio"].Status)
+	}
+}
+
+// TestIsNodesReachable_CIDRPeerCoversInternalWorkload documents the bug where
+// collectToSide / collectFromSide compare rule.DstID / rule.SrcID via string
+// equality against a workload node ID and never consult whether an ipBlock
+// peer CIDR would actually cover the counterpart pod's IP space. k8s
+// NetworkPolicy semantics match ipBlocks against real pod IPs at runtime, so
+// an egress allow to 0.0.0.0/0 or to the cluster pod CIDR permits traffic to
+// every internal pod — reachability must reflect that.
+//
+// The engine emits these rules with DstID="cidr:<cidr>" and
+// Coverage=CoverageRestricted (buildRules.go expandPeerRules); reachability
+// currently sinks them into OtherAllowMatches → ReasonLockedNoMatch → deny.
+// The three "does not cover" cases lock in the correct near-miss behavior so
+// the fix does not over-broaden to arbitrary external CIDRs.
+func TestIsNodesReachable_CIDRPeerCoversInternalWorkload(t *testing.T) {
+	installCIDRConfig(t)
+
+	cases := []struct {
+		name        string
+		rules       []models.Rule
+		wantVerdict string
+		wantStatus  string
+		wantEgress  DirectionReason
+		wantIngress DirectionReason
+	}{
+		{
+			// 0.0.0.0/0 as an egress peer matches every IP, including internal
+			// pod IPs. Current bug: DstID="cidr:0.0.0.0/0" != dstID and Coverage
+			// is CoverageRestricted (not CoverageAllowAll), so the rule falls
+			// into OtherAllowMatches and the verdict is deny.
+			name:        "egress 0.0.0.0/0 covers any internal dst pod",
+			rules:       []models.Rule{egressToCIDR("0.0.0.0/0")},
+			wantVerdict: "allow", wantStatus: "allow",
+			wantEgress: ReasonPermitted, wantIngress: ReasonNoOpinion,
+		},
+		{
+			// Cluster pod CIDR covers every pod IP. Common pattern: allow
+			// egress to the pod CIDR to permit intra-cluster east-west.
+			name:        "egress pod CIDR covers internal dst pod",
+			rules:       []models.Rule{egressToCIDR("10.244.0.0/16")},
+			wantVerdict: "allow", wantStatus: "allow",
+			wantEgress: ReasonPermitted, wantIngress: ReasonNoOpinion,
+		},
+		{
+			// Service CIDR — clients hit a ClusterIP which is in the svc range.
+			// Egress-side check on the destination workload treats coverage of
+			// the svc CIDR the same as covering the workload it fronts.
+			name:        "egress svc CIDR covers internal dst pod",
+			rules:       []models.Rule{egressToCIDR("10.96.0.0/12")},
+			wantVerdict: "allow", wantStatus: "allow",
+			wantEgress: ReasonPermitted, wantIngress: ReasonNoOpinion,
+		},
+		{
+			// Public external CIDR that does not overlap pod / svc CIDR. Rule
+			// is a genuine near-miss for an internal pod destination — verdict
+			// stays deny with locked-no-match. This is already the current
+			// behavior; the case is here so a fix does not overshoot.
+			name:        "egress unrelated external CIDR does not cover internal dst pod",
+			rules:       []models.Rule{egressToCIDR("203.0.113.0/24")},
+			wantVerdict: "deny", wantStatus: "deny",
+			wantEgress: ReasonLockedNoMatch, wantIngress: ReasonNoOpinion,
+		},
+		{
+			// Mirror on ingress: from ipBlock 0.0.0.0/0 admits any source, so
+			// an internal src pod must count. Same bug on collectFromSide.
+			name:        "ingress 0.0.0.0/0 admits any internal src pod",
+			rules:       []models.Rule{ingressFromCIDR("0.0.0.0/0")},
+			wantVerdict: "allow", wantStatus: "allow",
+			wantEgress: ReasonNoOpinion, wantIngress: ReasonPermitted,
+		},
+		{
+			name:        "ingress pod CIDR admits internal src pod",
+			rules:       []models.Rule{ingressFromCIDR("10.244.0.0/16")},
+			wantVerdict: "allow", wantStatus: "allow",
+			wantEgress: ReasonNoOpinion, wantIngress: ReasonPermitted,
+		},
+		{
+			name:        "ingress unrelated external CIDR does not admit internal src pod",
+			rules:       []models.Rule{ingressFromCIDR("203.0.113.0/24")},
+			wantVerdict: "deny", wantStatus: "deny",
+			wantEgress: ReasonNoOpinion, wantIngress: ReasonLockedNoMatch,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cache := buildCache("k8s", testCase.rules...)
+			got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+
+			if got.Verdict != testCase.wantVerdict {
+				t.Errorf("verdict: want %q, got %q (reason=%q)", testCase.wantVerdict, got.Verdict, got.Reason)
+			}
+			engine := got.Engines["k8s"]
+			if engine.Status != testCase.wantStatus {
+				t.Errorf("status: want %q, got %q", testCase.wantStatus, engine.Status)
+			}
+			if engine.Egress.Reason != testCase.wantEgress {
+				t.Errorf("egress reason: want %q, got %q", testCase.wantEgress, engine.Egress.Reason)
+			}
+			if engine.Ingress.Reason != testCase.wantIngress {
+				t.Errorf("ingress reason: want %q, got %q", testCase.wantIngress, engine.Ingress.Reason)
+			}
+		})
+	}
+}
+
+// TestIsNodesReachable_CIDRExceptCarveOutOverridesCovering documents the
+// second-order bug: an egress allow to 0.0.0.0/0 with an ipBlock.except
+// covering the pod CIDR must NOT reach an internal pod. k8spolicy emits the
+// except carve-out as an ActionDeny rule with Coverage=CoverageExcept and
+// DstID="cidr:<exceptCIDR>". Current reachability only puts a rule in the
+// deny bucket when DstID matches the queried peer or Coverage=DenyAll, so
+// the except carve-out is silently dropped and the covering allow wins even
+// though the operator explicitly excluded internal traffic.
+func TestIsNodesReachable_CIDRExceptCarveOutOverridesCovering(t *testing.T) {
+	installCIDRConfig(t)
+
+	policy := models.PolicyRef{Source: "k8s", Name: "egress-external-only", Namespace: srcNs}
+	allow := egressToCIDR("0.0.0.0/0")
+	allow.Contributor = policy
+	except := models.Rule{
+		SrcID: srcID, DstID: "cidr:10.244.0.0/16",
+		Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageExcept, AllPorts: true,
+		Contributor: policy,
+	}
+
+	cache := buildCache("k8s", allow, except, ingressFrom(srcID))
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+
+	if got.Verdict != "deny" {
+		t.Errorf("verdict: want deny (except carves out pod CIDR), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	egress := got.Engines["k8s"].Egress
+	if egress.Reason != ReasonExplicitDeny {
+		t.Errorf("egress reason: want %q (except denies internal traffic), got %q", ReasonExplicitDeny, egress.Reason)
+	}
+}
+
+// TestIsNodesReachable_AllowInternetExceptPodAndSvcCIDR mirrors the common
+// "egress-to-internet-only" pattern: allow 0.0.0.0/0 with ipBlock.except
+// entries for both the pod CIDR and the service CIDR. Reachability between
+// two internal pods must resolve to deny — the covering allow is fully
+// carved out for internal traffic by the two except rules. The engine emits
+// each except as ActionDeny + Coverage=CoverageExcept + DstID="cidr:<except>"
+// (buildRules.go expandPeerRules), and isClusterCoveringCidr must promote
+// both except rules into DenyMatches so decideDirectionVerdict picks
+// ReasonExplicitDeny over the ReasonPermitted from the covering allow.
+func TestIsNodesReachable_AllowInternetExceptPodAndSvcCIDR(t *testing.T) {
+	installCIDRConfig(t)
+
+	policy := models.PolicyRef{Source: "k8s", Name: "egress-external-only", Namespace: srcNs}
+	allow := egressToCIDR("0.0.0.0/0")
+	allow.Contributor = policy
+	exceptPod := models.Rule{
+		SrcID: srcID, DstID: "cidr:10.244.0.0/16",
+		Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageExcept, AllPorts: true,
+		Contributor: policy,
+	}
+	exceptSvc := models.Rule{
+		SrcID: srcID, DstID: "cidr:10.96.0.0/12",
+		Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageExcept, AllPorts: true,
+		Contributor: policy,
+	}
+
+	cache := buildCache("k8s", allow, exceptPod, exceptSvc, ingressFrom(srcID))
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+
+	if got.Verdict != "deny" {
+		t.Errorf("verdict: want deny (except carves out pod+svc CIDR), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	engine := got.Engines["k8s"]
+	if engine.Egress.Reason != ReasonExplicitDeny {
+		t.Errorf("egress reason: want %q, got %q", ReasonExplicitDeny, engine.Egress.Reason)
+	}
+	if len(engine.Egress.DenyMatches) != 2 {
+		t.Errorf("egress deny matches: want 2 (pod + svc except), got %d", len(engine.Egress.DenyMatches))
+	}
+}
+
+// TestIsNodesReachable_EgressToWanNodeNotBlockedByInternalExcept pins the
+// reported kas→0.0.0.0/0 case: the queried DST is the WAN CIDR node itself,
+// not an internal pod. The egress policy allows 0.0.0.0/0 except the pod and
+// svc CIDRs. Those except carve-outs only remove internal sub-ranges — they do
+// NOT contain the 0.0.0.0/0 node, so reaching the WAN node must stay allowed.
+//
+// Bug: collectToSide's deny loop promotes any except rule via
+// isClusterCoveringCidr(rule.DstID) — a dst-independent check. It fires for the
+// pod/svc except CIDRs regardless of what dst is queried, so the WAN dst gets a
+// spurious ReasonExplicitDeny even though no except range covers it.
+func TestIsNodesReachable_EgressToWanNodeNotBlockedByInternalExcept(t *testing.T) {
+	installCIDRConfig(t)
+
+	wanDstID := models.CIDRIDPrefix + "0.0.0.0/0"
+	policy := models.PolicyRef{Source: "k8s", Name: "kas-external-access", Namespace: srcNs}
+	allow := egressToCIDR("0.0.0.0/0")
+	allow.Contributor = policy
+	exceptPod := models.Rule{
+		SrcID: srcID, DstID: models.CIDRIDPrefix + "10.244.0.0/16",
+		Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageExcept, AllPorts: true,
+		Contributor: policy,
+	}
+	exceptSvc := models.Rule{
+		SrcID: srcID, DstID: models.CIDRIDPrefix + "10.96.0.0/12",
+		Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageExcept, AllPorts: true,
+		Contributor: policy,
+	}
+
+	cache := buildCache("k8s", allow, exceptPod, exceptSvc)
+	// DST is the external WAN node (ns=="") — not an internal pod.
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, wanDstID, "")
+
+	if got.Verdict != "allow" {
+		t.Errorf("verdict: want allow (internal except does not cover WAN node), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	engine := got.Engines["k8s"]
+	if engine.Egress.Reason != ReasonPermitted {
+		t.Errorf("egress reason: want %q (allow to 0.0.0.0/0 matches WAN dst), got %q", ReasonPermitted, engine.Egress.Reason)
+	}
+	if len(engine.Egress.DenyMatches) != 0 {
+		t.Errorf("egress deny matches: want 0 (except ranges do not contain WAN node), got %d", len(engine.Egress.DenyMatches))
+	}
+}
+
+// TestIsNodesReachable_AllowBroaderThanPodCIDR verifies that an egress allow
+// with a peer that engulfs the pod CIDR (e.g. 10.0.0.0/8 covering pod
+// 10.244.0.0/16) is treated as covering internal pods. String equality would
+// miss this — the fix uses subnet containment.
+func TestIsNodesReachable_AllowBroaderThanPodCIDR(t *testing.T) {
+	installCIDRConfig(t)
+
+	cache := buildCache("k8s", egressToCIDR("10.0.0.0/8"), ingressFrom(srcID))
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+
+	if got.Verdict != "allow" {
+		t.Errorf("verdict: want allow (10.0.0.0/8 ⊃ pod 10.244.0.0/16), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	if reason := got.Engines["k8s"].Egress.Reason; reason != ReasonPermitted {
+		t.Errorf("egress reason: want %q, got %q", ReasonPermitted, reason)
 	}
 }

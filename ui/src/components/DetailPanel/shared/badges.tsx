@@ -91,7 +91,7 @@ export function LabelStrip({
   const [open, setOpen] = useState(startsOpen);
   const [showSystem, setShowSystem] = useState(false);
   if (entries.length === 0) {
-    return <span className={`${s.smallText} ${s.dim}`}>no labels</span>;
+    return null;
   }
   const selectorStr = selector.map(([k, v]) => `${k}=${v}`).join(',');
   const copyAll = () => navigator.clipboard?.writeText(selectorStr);

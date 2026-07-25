@@ -28,6 +28,37 @@ function worstSeverity(keys: readonly string[]): Severity {
   return worst;
 }
 
+// Display text for the backend-computed CIDR classification (models.CidrType)
+// — factual read of the range itself, not a policy verdict. Kept in sync with
+// the enum in internal/models/node.go; unknown/missing values fall back to a
+// generic label rather than guessing.
+const CIDR_TYPE_LABEL: Record<NonNullable<WorkloadNode['cidrType']>, string> = {
+  'wan CIDR': 'Any address (0.0.0.0/0 catch-all)',
+  'pod CIDR': 'Covers entire cluster pod range',
+  'scv CIDR': 'Covers entire cluster service range',
+  'lan CIDR': 'External / LAN range',
+};
+function cidrTypeLabel(cidrType: WorkloadNode['cidrType']): string {
+  return (cidrType && CIDR_TYPE_LABEL[cidrType]) || 'Unclassified range';
+}
+
+// Distinct referencing policies + except carve-out count across every engine's
+// neighbor rules pointing at this CIDR node.
+function cidrReferences(nodeInfo: NodeDetail | null): { policies: number; excepts: number } {
+  const policyKeys = new Set<string>();
+  let excepts = 0;
+  for (const neighbors of Object.values(nodeInfo?.neighbors ?? {})) {
+    for (const ref of [...(neighbors.In ?? []), ...(neighbors.Out ?? [])]) {
+      const contributor = ref.Rule.contributor;
+      if (contributor) {
+        policyKeys.add(`${contributor.source}/${contributor.namespace}/${contributor.name}`);
+      }
+      if (ref.Rule.coverage === 'except') excepts++;
+    }
+  }
+  return { policies: policyKeys.size, excepts };
+}
+
 export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }: {
   node:            WorkloadNode;
   nodeInfo:        NodeDetail | null;
@@ -35,8 +66,14 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
   canPin:          boolean;
   onPin:           (node: WorkloadNode) => void;
 }) {
-  const worst = worstSeverity(node.statuses ?? []);
   const findingCount = useNodeIssueCount(node.id);
+  // CIDR peers are synthetic ipBlock nodes — no health verdict or mesh identity.
+  // Swap the identity tier + skip the hero, but keep the per-engine evidence so
+  // operators still see which policies reference this range.
+  const isCidr = node.type === 'cidr';
+  const cidrRefs = isCidr ? cidrReferences(nodeInfo) : null;
+
+  const worst = worstSeverity(node.statuses ?? []);
   // Hero verdict — one-line answer above the evidence. Class-based tone so
   // color lives in tokens, not inline styles.
   const heroDeny = worst === 'critical' || worst === 'high';
@@ -55,37 +92,67 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
           inline. Selector-currency labels sit next to name because operator's
           "why does this policy match?" workflow starts on labels. System
           labels fold behind LabelStrip's built-in disclosure. */}
-      <div className={s.tier1}>
-        <div className="d-flex justify-content-between align-items-start gap-2">
-          <div className="d-flex flex-column" style={{ minWidth: 0 }}>
-            <div className={`${s.section} text-break`}>{node.label}</div>
-            <div className={`${s.dim} ${s.body}`}>
-              {node.namespace || '—'} · {node.type}
+      {isCidr && cidrRefs ? (
+        <div className={s.tier1}>
+          <div className="d-flex justify-content-between align-items-start gap-2">
+            <div className={`d-flex flex-column ${s.flexTextMin}`}>
+              <div className={`${s.section} ${s.mono} text-break`}>{node.label}</div>
+              <div className={`${s.dim} ${s.body}`}>{cidrTypeLabel(node.cidrType)}</div>
             </div>
+            {canPin && (
+              <button
+                className={`${s.primaryButton} flex-shrink-0`}
+                onClick={() => onPin(node)}
+              >
+                Pin as source
+              </button>
+            )}
           </div>
-          {canPin && (
-            <button
-              className={`${s.primaryButton} flex-shrink-0`}
-              onClick={() => onPin(node)}
-            >
-              Pin as source
-            </button>
+          <div className={`${s.body} ${s.cidrRefSpacing}`}>
+            Referenced by {cidrRefs.policies} {cidrRefs.policies === 1 ? 'policy' : 'policies'}
+          </div>
+          {cidrRefs.excepts > 0 && (
+            <div className={`${s.dim} ${s.smallText}`}>
+              {cidrRefs.excepts} except carve-out{cidrRefs.excepts === 1 ? '' : 's'}
+            </div>
           )}
         </div>
-        <LabelStrip labels={node.labels} />
-      </div>
+      ) : (
+        <div className={s.tier1}>
+          <div className="d-flex justify-content-between align-items-start gap-2">
+            <div className={`d-flex flex-column ${s.flexTextMin}`}>
+              <div className={`${s.section} text-break`}>{node.label}</div>
+              <div className={`${s.dim} ${s.body}`}>
+                {node.namespace ? `${node.namespace} · ${node.type}` : node.type}
+              </div>
+            </div>
+            {canPin && (
+              <button
+                className={`${s.primaryButton} flex-shrink-0`}
+                onClick={() => onPin(node)}
+              >
+                Pin as source
+              </button>
+            )}
+          </div>
+          <LabelStrip labels={node.labels} />
+        </div>
+      )}
 
       {/* Verdict hero — one-line answer + status pills as evidence. Full-tint
-          bg legal here (STYLEGUIDE §3, hero one-per-panel). */}
-      <div className={`${s.verdictCallout} ${calloutClass}`}>
-        <div className={`${s.verdictText} ${heroTextClass} d-inline-flex align-items-center gap-2`}>{verdictIcon}{verdictText}</div>
-        <StatusBadges keys={node.statuses ?? []} />
-      </div>
+          bg legal here (STYLEGUIDE §3, hero one-per-panel). Skipped for CIDR:
+          a synthetic ipBlock peer has no health verdict. */}
+      {!isCidr && (
+        <div className={`${s.verdictCallout} ${calloutClass}`}>
+          <div className={`${s.verdictText} ${heroTextClass} d-inline-flex align-items-center gap-2`}>{verdictIcon}{verdictText}</div>
+          <StatusBadges keys={node.statuses ?? []} />
+        </div>
+      )}
 
       {/* Mesh — SA identity + mTLS mode + revision + PA chain. First thing
           checked when an Istio pod isn't reaching the mesh. Placed above the
           per-engine section so operator sees it on scroll open. */}
-      {nodeInfo?.mesh && (
+      {!isCidr && nodeInfo?.mesh && (
         <div>
           <div className={`${s.eyebrow} mb-1`}>Mesh</div>
           <div className="d-flex flex-column gap-2">

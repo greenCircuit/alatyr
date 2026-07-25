@@ -10,6 +10,7 @@ type EvaluationResult struct {
 	PolicyStatuses map[string]PolicyStatus // workloadID → per-engine PolicyStatus
 	NodePolicies   map[string][]PolicyRef  // workloadID → policies that select it
 	NodeRules      map[string]NodeRules	   // workloadId → to all policies
+	Nodes          map[string]WorkloadNode // CIDR polices will become nodes
 
 }
 

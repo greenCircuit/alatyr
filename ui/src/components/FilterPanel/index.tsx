@@ -2,7 +2,7 @@
 //   Row 1 (chrome + reset): view mode, search, display options, "Reset
 //     filters" btn, refresh.
 //   Row 2 (data filters): Issue first (loudest signal / most common debug
-//     entry point), then Namespace, Status, Source, Action, Direction.
+//     entry point), then Namespace, NodeType, Status, Source, Action, Direction.
 // No active-filter chip strip — each filter button already reflects its own
 // narrowed state via warning/danger tint, so a separate summary strip was
 // redundant.
@@ -12,6 +12,7 @@ import { DisplayDropdown } from './parts/display-dropdown';
 import { useFilterReset } from './parts/use-filter-reset';
 import {
   NamespaceDropdown,
+  NodeTypeDropdown,
   StatusDropdown,
   PolicySourceDropdown,
   ActionDropdown,
@@ -98,6 +99,7 @@ export default function FilterPanel() {
       <div className="d-flex flex-wrap align-items-center gap-1 px-3 py-2 min-h-44">
         <IssueTypeDropdown />
         <NamespaceDropdown />
+        <NodeTypeDropdown />
         <StatusDropdown />
         <PolicySourceDropdown />
         <ActionDropdown />

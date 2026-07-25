@@ -155,15 +155,31 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 			)
 			return fmt.Errorf("engine %s: %w", source.Name(), err)
 		}
+		allowRuleCount, denyRuleCount := 0, 0
+		for _, rules := range result.AllowByNs {
+			for _, rule := range rules {
+				if rule.Action == models.ActionDeny {
+					denyRuleCount++
+				} else {
+					allowRuleCount++
+				}
+			}
+		}
+		for _, rules := range result.DenyByNs {
+			denyRuleCount += len(rules)
+		}
 		b.log.Debug("engine evaluate done",
 			slog.String("phase", "engine_evaluate"),
 			slog.String("engine", source.Name()),
-			slog.Int("allow_ns_count", len(result.AllowByNs)),
-			slog.Int("deny_ns_count", len(result.DenyByNs)),
+			slog.Int("allow_rule_count", allowRuleCount),
+			slog.Int("deny_rule_count", denyRuleCount),
 			slog.Int64("duration_ms", time.Since(engineStart).Milliseconds()),
 		)
 		cache.EvaluationResults[source.Name()] = result
 	}
+	// Engines just produced CIDR peer nodes; fold them into WorkloadByID so
+	// node-info, neighbors, and layering resolve external endpoints.
+	cache.RebuildWorkloadIndex()
 
 	if b.meshSource != nil {
 		meshStart := time.Now()

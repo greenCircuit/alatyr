@@ -24,7 +24,8 @@
       "Bash(KEEP=1 timeout 30 bash -c ' *)",
       "Bash(BACKEND_URL=http://localhost:8080 KUBECONFIG=/app/tests/.cache/kubeconfig pytest istio/test_edges.py -vv)",
       "Bash(/app/tests/.bin/kwokctl get *)",
-      "Bash(/app/tests/.bin/kwokctl create *)"
+      "Bash(/app/tests/.bin/kwokctl create *)",
+      "Bash(go vet *)"
     ]
   }
 }

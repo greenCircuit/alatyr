@@ -38,7 +38,7 @@ Every status key the UI can render is exercised by at least one workload:
 |---|---|
 | `internet-full` | `storefront/catalog` (no policy — the coverage gap) |
 | `internet-ingress` | `storefront/web`, `storefront/checkout`, `analytics/ingest` |
-| `internet-egress` | `storefront/web`, `payments/fraud-check`, `payments/payout-worker` |
+| `internet-egress` | `storefront/web`, `payments/fraud-check`, `payments/payout-worker`, `private-net/telemetry-shipper` (with `ipBlock.except` carving out pod+svc CIDR) |
 | `lan-ingress` | `private-net/ldap-proxy` |
 | `lan-egress` | `private-net/backup-agent` |
 | `lan-full` | `payments/ledger-db`, `private-net/vpn-gw` |

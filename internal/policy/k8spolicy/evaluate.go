@@ -86,12 +86,13 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 		}
 	}
 
-	allowByNs, nodeRules := buildAllowRulesByNs(index, policiesByNS)
+	allowByNs, nodeRules, cidrNodes := buildAllowRulesByNs(index, policiesByNS)
 	return models.EvaluationResult{
-		AllowByNs:      allowByNs, 
+		AllowByNs:      allowByNs,
 		PolicyStatuses: policyStatuses,
 		NodePolicies:   nodePolicies,
 		NodeRules:      nodeRules,
+		Nodes:          cidrNodes,
 	}, nil
 }
 

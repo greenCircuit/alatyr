@@ -3,7 +3,7 @@
 // Bundles are keyed by action so allow and deny stay on separate arrows —
 // never a mixed-semantics single line.
 
-import type { PolicyEdge } from '../../../data/policies';
+import type { PolicyEdge, Coverage } from '../../../data/policies';
 import { formatPort, realPorts, formatL7Summary } from '../../../data/policies';
 
 export interface Bundle {
@@ -14,6 +14,7 @@ export interface Bundle {
   hasNS: boolean;
   direction: 'egress' | 'ingress' | 'both';
   action: number;
+  coverage?: Coverage;   // 'except' when every policy in the bundle is a carve-out; blank otherwise
 }
 
 export function aggregateDirection(policies: PolicyEdge[]): 'egress' | 'ingress' | 'both' {
@@ -26,20 +27,26 @@ export function bundleEdges(policyEdges: PolicyEdge[]): Bundle[] {
   const map = new Map<string, PolicyEdge[]>();
   for (const e of policyEdges) {
     const action = e.action ?? 0;
-    const key = `${e.source}→${e.target}@${action}`;
+    // Except carve-outs share (src, dst, action=1) with Istio DENY on rare
+    // overlaps; splitting on coverage keeps the amber "except" arrow from
+    // collapsing into the red "deny" arrow.
+    const covKey = e.coverage === 'except' ? 'except' : '';
+    const key = `${e.source}→${e.target}@${action}@${covKey}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(e);
   }
   return Array.from(map.values()).map((policies) => {
     const action = policies[0].action ?? 0;
+    const coverage = policies.every((p) => p.coverage === 'except') ? 'except' : undefined;
     return {
-      id:        `bnd-${policies[0].source}-${policies[0].target}-${action}`,
+      id:        `bnd-${policies[0].source}-${policies[0].target}-${action}${coverage ? '-except' : ''}`,
       source:    policies[0].source,
       target:    policies[0].target,
       policies,
       hasNS:     policies.some((p) => p.level === 'namespace'),
       direction: aggregateDirection(policies),
       action,
+      coverage,
     };
   });
 }

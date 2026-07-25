@@ -1,5 +1,6 @@
 package models
 
+import "maps"
 
 // Cache holds per-namespace state reused across graph builds.
 // NsIndex skips the k8s pod/cronjob fetch on cache hit; EvaluationResults
@@ -26,6 +27,12 @@ func (c *Cache) RebuildWorkloadIndex() {
 		for _, workload := range nsIndex.Workloads {
 			index[workload.ID] = workload
 		}
+	}
+	// Engine-synthesized nodes (CIDR peers) live only in eval results, never in
+	// NsIndex. Fold them so id lookups resolve external endpoints too. Empty
+	// until engines run — safe to call before and after evaluation.
+	for _, result := range c.EvaluationResults {
+		maps.Copy(index, result.Nodes)
 	}
 	c.WorkloadByID = index
 }

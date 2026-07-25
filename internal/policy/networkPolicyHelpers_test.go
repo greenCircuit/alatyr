@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"graph/internal/config"
+	"graph/internal/models"
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
@@ -16,6 +17,28 @@ func withConfig(t *testing.T, cfg config.Config) {
 	prev := config.Get()
 	config.Set(cfg)
 	t.Cleanup(func() { config.Set(prev) })
+}
+
+func TestCidrType(t *testing.T) {
+	withConfig(t, config.Config{PodCIDR: "10.244.0.0/16", SvcCIDR: "10.96.0.0/12"})
+	cases := []struct {
+		name string
+		cidr string
+		want models.CidrType
+	}{
+		{"0.0.0.0/0 is the wan catch-all", "0.0.0.0/0", models.CIDRWan},
+		{"exact pod CIDR", "10.244.0.0/16", models.CIDRk8sPod},
+		{"exact svc CIDR", "10.96.0.0/12", models.CIDRk8sSvc},
+		{"broader-than-pod CIDR still classifies as pod (10.0.0.0/8 ⊃ 10.244.0.0/16)", "10.0.0.0/8", models.CIDRk8sPod},
+		{"narrower-than-pod CIDR is not pod-covering (10.244.0.0/24 ⊂ /16)", "10.244.0.0/24", models.CIDRLan},
+		{"unrelated RFC1918 range is lan", "172.16.0.0/12", models.CIDRLan},
+		{"external CIDR is lan", "203.0.113.0/24", models.CIDRLan},
+	}
+	for _, testCase := range cases {
+		if got := CidrType(testCase.cidr); got != testCase.want {
+			t.Errorf("%s: CidrType(%q) = %v, want %v", testCase.name, testCase.cidr, got, testCase.want)
+		}
+	}
 }
 
 func TestIsIpBlockInternetAccess(t *testing.T) {

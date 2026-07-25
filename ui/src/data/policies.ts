@@ -89,8 +89,13 @@ export interface WorkloadNode {
   // deployment = pod/deployment with no service exposure
   // headless   = headless service (direct pod addressing, no ClusterIP)
   // external   = traffic origin outside the cluster
-  type: 'service' | 'deployment' | 'headless' | 'external' | 'cronjob' | 'namespace';
+  // cidr       = synthetic node for a k8s NetworkPolicy ipBlock CIDR peer
+  type: 'service' | 'deployment' | 'headless' | 'external' | 'cronjob' | 'namespace' | 'cidr';
   labels: Record<string, string>;
+
+  // set only when type === 'cidr' — backend-computed classification of the
+  // ipBlock range (models.CidrType), not derived client-side.
+  cidrType?: 'wan CIDR' | 'pod CIDR' | 'scv CIDR' | 'lan CIDR';
 
   // effective (intersection) status keys — what the workload actually
   // experiences when every engine's constraints are AND'd together
@@ -177,7 +182,8 @@ export type Coverage =
   | 'allow all ns'
   | 'restricted'
   | 'unenforced'
-  | 'audit';
+  | 'audit'
+  | 'except';   // carve-out from a k8s ipBlock.except entry — rendered distinct from Istio DENY
 
 export interface Rule {
   srcId:        string;

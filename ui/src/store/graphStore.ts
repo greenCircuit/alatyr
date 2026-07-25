@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { fetchGraph, fetchClusterState, fetchNodeInfo, fetchReachability, fetchIssues, fetchMeshStatus, fetchClusterMetrics } from '../api/client';
 import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, IssueType, MeshMembership, ClusterMetrics } from '../data/policies';
 import { filteredNodes as _filteredNodes, filteredEdges as _filteredEdges, type MeshFilterValue } from './filters';
+import { ALL_NODE_TYPES } from '../components/FilterPanel/parts/constants';
 
 export type TablesTab = 'workloads' | 'policies' | 'issues';
 export type { MeshFilterValue };
@@ -71,7 +72,7 @@ interface GraphState {
   toggleMeshFilter:            (value: MeshFilterValue) => void;
   setIssuesDrawerOpen:         (open: boolean) => void;
   toggleIssueType:             (type: IssueType) => void;
-  loadNodeInfo:                (nodeId: string, namespace: string) => Promise<void>;
+  loadNodeInfo:                (nodeId: string) => Promise<void>;
   toggleNamespace:             (ns: string) => void;
   // Drill-down: replace the namespace filter with a single namespace (cluster
   // status page row click), as opposed to toggleNamespace's add/remove.
@@ -105,7 +106,6 @@ interface GraphState {
   filteredEdges: () => PolicyEdge[];
 }
 
-const ALL_TYPES = ['service', 'deployment', 'headless', 'external', 'cronjob'];
 const ALL_ACTIONS = [0, 1];
 const ALL_DIRECTIONS = ['ingress', 'egress'];
 
@@ -119,7 +119,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   error:                  null,
 
   selectedNamespaces:      new Set<string>(),
-  selectedNodeTypes:       new Set(ALL_TYPES),
+  selectedNodeTypes:       new Set<string>(ALL_NODE_TYPES),
   selectedStatuses:        new Set<StatusKey>(),
   selectedPolicySources:   new Set<string>(),
   selectedActions:         new Set<number>(ALL_ACTIONS),
@@ -189,8 +189,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       // Re-fetch detail for the currently-selected node so the panel reflects
       // the refreshed cache (mesh state, issues, rules).
       const selected = get().selectedNode;
-      if (selected?.namespace) {
-        get().loadNodeInfo(selected.id, selected.namespace);
+      if (selected) {
+        get().loadNodeInfo(selected.id);
       }
       // Whole-cluster conflict scan runs against the now-fresh server cache.
       // Chained here so both initial load and the refresh button trigger it,
@@ -338,8 +338,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return;
     }
     set({ selectedNode: node, selectedEdges: [], nodeInfo: null });
-    if (node && node.namespace) {
-      get().loadNodeInfo(node.id, node.namespace);
+    if (node) {
+      get().loadNodeInfo(node.id);
     }
   },
   setSelectedEdges: (edges) => {
@@ -414,10 +414,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     return true;
   },
 
-  loadNodeInfo: async (nodeId, namespace) => {
+  loadNodeInfo: async (nodeId) => {
     set({ nodeInfoLoading: true });
     try {
-      const data = await fetchNodeInfo(nodeId, namespace);
+      const data = await fetchNodeInfo(nodeId);
       // bail if user moved on before fetch completed
       if (get().selectedNode?.id !== nodeId) return;
       set({ nodeInfo: data, nodeInfoLoading: false });

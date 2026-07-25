@@ -5,6 +5,7 @@
 
 import type { Coverage } from '../../data/policies';
 import { SEVERITY_COLOR } from '../../data/policies';
+import { GRAPH_TOKENS } from '../../style/graphTokens';
 import type { CoverageStats } from '../../store/clusterStats';
 import { COVERAGE_CLASSES } from '../../store/clusterStats';
 import ProportionBar from './ProportionBar';
@@ -18,6 +19,7 @@ const COVERAGE_COLOR: Record<Coverage, string> = {
   'allow all':    SEVERITY_COLOR.high,
   'unenforced':   '#868e96',
   'audit':        SEVERITY_COLOR.warning,
+  'except':       GRAPH_TOKENS.except,
 };
 
 const COVERAGE_DESCRIPTION: Record<Coverage, string> = {
@@ -27,6 +29,7 @@ const COVERAGE_DESCRIPTION: Record<Coverage, string> = {
   'allow all':    'no peer restriction — open to everything',
   'unenforced':   'policy names the direction but adds no constraint',
   'audit':        'audit mode — observed, not enforced',
+  'except':       'ipBlock.except carve-out from a broader allow',
 };
 
 export default function CoverageBar({ stats }: { stats: CoverageStats }) {
