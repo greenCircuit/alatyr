@@ -7,6 +7,7 @@
 import { useMemo } from 'react';
 import { useGraphStore } from '../../store/graphStore';
 import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges, nodeMatchesMeshFilter } from '../../store/filters';
+import { policyTableEdges } from '../../store/policyTableEdges';
 import WorkloadsTable from './WorkloadsTable';
 import PoliciesTable from './PoliciesTable';
 import IssuesTable from './IssuesTable';
@@ -18,6 +19,7 @@ import type { IssueType } from '../../data/policies';
 import s from '../DetailPanel/DetailPanel.module.css';
 
 const EMPTY_ISSUE_TYPES = new Set<IssueType>();
+
 
 export default function TablesView() {
   // Tab lives in the store so the cluster status page can land on a specific
@@ -57,6 +59,15 @@ export default function TablesView() {
 
   const nodes = useMemo(() => deriveFilteredNodes(filterState), [filterState]);
   const edges = useMemo(() => deriveFilteredEdges(filterState), [filterState]);
+
+  const availableNamespaces = useGraphStore((s) => s.availableNamespaces);
+  const allNamespaceSet = useMemo(() => new Set(availableNamespaces), [availableNamespaces]);
+  // Policies tab only — the workloads tab counts policies per workload, where a
+  // cluster-wide row from another namespace would be noise.
+  const policyEdges = useMemo(
+    () => policyTableEdges(filterState, allNamespaceSet),
+    [filterState, allNamespaceSet],
+  );
 
   // Namespace nodes (type === 'namespace') are excluded from selectedNodeTypes by
   // design — the graph treats them as compound parents, not togglable workload
@@ -106,9 +117,20 @@ export default function TablesView() {
   // that show up as a contributor on a matching issue. Base `edges` still drives
   // workload policy counts, so column-level chip counts stay accurate.
   const tableEdges = useMemo(() => {
-    if (selectedIssueTypes.size === 0) return edges;
-    return edges.filter((e) => policyIssuesFiltered.has(`${e.policySource}|${e.namespace}|${e.policyName}`));
-  }, [edges, selectedIssueTypes, policyIssuesFiltered]);
+    if (selectedIssueTypes.size === 0) return policyEdges;
+    return policyEdges.filter((e) => policyIssuesFiltered.has(`${e.policySource}|${e.namespace}|${e.policyName}`));
+  }, [policyEdges, selectedIssueTypes, policyIssuesFiltered]);
+
+  // Badge counts distinct policy manifests, not raw edges. A Calico GNP with
+  // Allow + Deny rules emits multiple edges but shows as one row in
+  // PoliciesTable — badge must track the row count or operators distrust it.
+  const policyRowCount = useMemo(() => {
+    const keys = new Set<string>();
+    for (const edge of tableEdges) {
+      keys.add(`${edge.policySource}|${edge.namespace}|${edge.policyName}`);
+    }
+    return keys.size;
+  }, [tableEdges]);
 
   // Issues tab rows: respect the type filter so the chip row above stays
   // consistent with what's rendered. No filter → all issues.
@@ -120,10 +142,10 @@ export default function TablesView() {
   // Edges pre-engine-filter — used by EngineRollup so chips stay visible
   // when the user pivots. Same pattern as StatusRollup vs Workloads table.
   const availablePolicySources = useGraphStore((s) => s.availablePolicySources);
-  const edgesPreEngine = useMemo(() => deriveFilteredEdges({
+  const edgesPreEngine = useMemo(() => policyTableEdges({
     ...filterState,
     selectedPolicySources: new Set(availablePolicySources),
-  }), [filterState, availablePolicySources]);
+  }, allNamespaceSet), [filterState, availablePolicySources, allNamespaceSet]);
 
   return (
     <div className="d-flex flex-column bg-dark text-light flex-grow-1 overflow-hidden">
@@ -140,7 +162,7 @@ export default function TablesView() {
           className={`${s.tabButton} ${tab === 'policies' ? s.tabButtonActive : ''}`}
           onClick={() => setTab('policies')}
         >
-          Policies <span className={s.countChip}>{tableEdges.length}</span>
+          Policies <span className={s.countChip}>{policyRowCount}</span>
         </button>
         <button
           type="button"

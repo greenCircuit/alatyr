@@ -56,6 +56,7 @@ func generatePolicyStatusAssignment(
 				Namespace: authzPolicy.Namespace,
 				Action:    istioAction(authzPolicy),
 				Direction: models.DirectionIngress, // istio AuthZ is ingress-only at L3
+				CreatedAt: creationTime(authzPolicy),
 			})
 		}
 		nodePolicies[node.ID] = refs

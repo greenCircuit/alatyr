@@ -20,13 +20,18 @@ type PolicyManifest struct {
 	YAML      string `json:"yaml"`
 }
 
+// Kinds whose objects live outside a namespace, so the namespace query param is
+// absent rather than missing. Keyed by the frontend kind (PolicySource name).
+var clusterScopedKinds = map[string]bool{"calico": true}
+
 // get yaml for polices from api server
 func (s *Server) getPolicyManifest(c echo.Context) error {
 	ns := c.QueryParam("namespace")
 	name := c.QueryParam("name")
 	kind := c.QueryParam("kind")
 
-	if ns == "" || name == "" || kind == "" {
+	// Cluster-scoped kinds carry no namespace — only name+kind are required.
+	if name == "" || kind == "" || (ns == "" && !clusterScopedKinds[kind]) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing params"})
 	}
 
@@ -85,6 +90,18 @@ func (s *Server) fetchPolicyObject(kind, ns, name string) (runtime.Object, strin
 			Group: "security.istio.io", Version: "v1", Kind: "PeerAuthentication",
 		})
 		return peerAuth, "PeerAuthentication", nil
+	case "calico":
+		globalPolicy, err := s.client.GetGlobalNetworkPolicyByName(name)
+		if err != nil {
+			return nil, "", err
+		}
+		if globalPolicy == nil {
+			return nil, "", fmt.Errorf("calico CRDs not installed")
+		}
+		globalPolicy.GetObjectKind().SetGroupVersionKind(schema.GroupVersionKind{
+			Group: "projectcalico.org", Version: "v3", Kind: "GlobalNetworkPolicy",
+		})
+		return globalPolicy, "GlobalNetworkPolicy", nil
 	default:
 		return nil, "", fmt.Errorf("unknown kind %q", kind)
 	}

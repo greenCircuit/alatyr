@@ -9,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"graph/internal/k8s"
+	calicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,8 @@ import (
 // single-object getter is seeded.
 type fakeManifestClient struct {
 	k8s.KubernetesClient
-	netpol *networkingv1.NetworkPolicy
+	netpol       *networkingv1.NetworkPolicy
+	globalPolicy *calicov3.GlobalNetworkPolicy
 }
 
 func (f *fakeManifestClient) GetK8sPolicyByName(ns, name string) (*networkingv1.NetworkPolicy, error) {
@@ -31,10 +33,13 @@ func (f *fakeManifestClient) GetAuthorizationPoliciesByName(ns, name string) (*i
 func (f *fakeManifestClient) GetPeerAuthenticationsByName(ns, name string) (*istiosec.PeerAuthentication, error) {
 	return nil, nil
 }
+func (f *fakeManifestClient) GetGlobalNetworkPolicyByName(name string) (*calicov3.GlobalNetworkPolicy, error) {
+	return f.globalPolicy, nil
+}
 
-func doManifestRequest(t *testing.T, netpol *networkingv1.NetworkPolicy, query string) *httptest.ResponseRecorder {
+func doManifestRequest(t *testing.T, client *fakeManifestClient, query string) *httptest.ResponseRecorder {
 	t.Helper()
-	server := New(&fakeManifestClient{netpol: netpol}, nil, nil)
+	server := New(client, nil, nil)
 	echoServer := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/api/manifest?"+query, nil)
 	rec := httptest.NewRecorder()
@@ -57,7 +62,7 @@ func TestGetPolicyManifest_K8sCleanHappyPath(t *testing.T) {
 		},
 	}
 
-	rec := doManifestRequest(t, netpol, "kind=k8s&namespace=shop&name=deny-all")
+	rec := doManifestRequest(t, &fakeManifestClient{netpol: netpol}, "kind=k8s&namespace=shop&name=deny-all")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: want 200, got %d (%s)", rec.Code, rec.Body.String())
@@ -86,16 +91,58 @@ func TestGetPolicyManifest_K8sCleanHappyPath(t *testing.T) {
 }
 
 func TestGetPolicyManifest_MissingParam(t *testing.T) {
-	// namespace omitted → 400, no client call.
-	rec := doManifestRequest(t, nil, "kind=k8s&name=deny-all")
+	// namespace omitted on a namespaced kind → 400, no client call.
+	rec := doManifestRequest(t, &fakeManifestClient{}, "kind=k8s&name=deny-all")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status: want 400 for missing namespace, got %d", rec.Code)
+	}
+	// name omitted → 400 even for a cluster-scoped kind.
+	rec = doManifestRequest(t, &fakeManifestClient{}, "kind=calico")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: want 400 for missing name, got %d", rec.Code)
 	}
 }
 
 func TestGetPolicyManifest_UnknownKind(t *testing.T) {
-	rec := doManifestRequest(t, nil, "kind=bogus&namespace=shop&name=x")
+	rec := doManifestRequest(t, &fakeManifestClient{}, "kind=bogus&namespace=shop&name=x")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status: want 400 for unknown kind, got %d", rec.Code)
+	}
+}
+
+// Cluster-scoped kind: no namespace param, GVK stamped, empty namespace echoed.
+func TestGetPolicyManifest_CalicoClusterScoped(t *testing.T) {
+	globalPolicy := &calicov3.GlobalNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:          "egress-default-deny",
+			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kubectl"}},
+		},
+	}
+
+	rec := doManifestRequest(t, &fakeManifestClient{globalPolicy: globalPolicy}, "kind=calico&name=egress-default-deny")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got PolicyManifest
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Kind != "GlobalNetworkPolicy" || got.Namespace != "" {
+		t.Errorf("kind/ns: want GlobalNetworkPolicy + empty ns, got %q / %q", got.Kind, got.Namespace)
+	}
+	if !strings.Contains(got.YAML, "kind: GlobalNetworkPolicy") {
+		t.Errorf("yaml missing stamped GVK:\n%s", got.YAML)
+	}
+	if strings.Contains(got.YAML, "managedFields") {
+		t.Error("managedFields not stripped from manifest")
+	}
+}
+
+// Calico absent from the cluster → nil object, surfaced as 400 not a nil panic.
+func TestGetPolicyManifest_CalicoNotInstalled(t *testing.T) {
+	rec := doManifestRequest(t, &fakeManifestClient{}, "kind=calico&name=whatever")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: want 400 when calico CRDs absent, got %d", rec.Code)
 	}
 }

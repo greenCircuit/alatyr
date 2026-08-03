@@ -102,7 +102,7 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
   const engines = Object.entries(result.engines);
   const meshes  = result.mesh && meshAppliesTo(src, dst) ? Object.entries(result.mesh) : [];
   return (
-    <div className={`${s.verdictCallout} ${calloutTone}`}>
+    <div className={`${s.verdictCallout} ${calloutTone} mb-2`}>
       <div className="d-flex align-items-baseline gap-2 flex-wrap">
         <span className={`${s.verdictText} ${textTone}`}>
           {deny ? '✗ cannot reach' : '✓ can reach'}

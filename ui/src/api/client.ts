@@ -11,27 +11,36 @@ export interface ClusterState {
   policySources: string[];
 }
 
+// getJson fetches and unwraps a JSON response. Error responses carry the
+// backend's own message in {"error": "..."} — surface it verbatim, since it
+// names the policy and rule that failed to decode. Falling back to the bare
+// status code hides the only actionable detail the operator has.
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (response.ok) return response.json() as Promise<T>;
+
+  const body = await response.text().catch(() => '');
+  let message = body;
+  try {
+    message = (JSON.parse(body) as { error?: string }).error ?? body;
+  } catch {
+    // non-JSON error body (proxy/gateway) — use the raw text
+  }
+  throw new Error(message ? `HTTP ${response.status}: ${message}` : `HTTP ${response.status}`);
+}
+
 export function fetchGraph(namespaces?: string[]): Promise<Graph> {
   const params = namespaces?.length ? `?namespaces=${namespaces.join(',')}` : '';
-  return fetch(`/api/graph${params}`).then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<Graph>;
-  });
+  return getJson<Graph>(`/api/graph${params}`);
 }
 
 export function fetchClusterState(): Promise<ClusterState> {
-  return fetch('/api/cluster-state').then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<ClusterState>;
-  });
+  return getJson<ClusterState>('/api/cluster-state');
 }
 
 export function fetchNodeInfo(nodeId: string): Promise<NodeDetail> {
   const params = new URLSearchParams({ nodeId });
-  return fetch(`/api/node-info?${params.toString()}`).then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<NodeDetail>;
-  });
+  return getJson<NodeDetail>(`/api/node-info?${params.toString()}`);
 }
 
 export interface PolicyManifest {
@@ -67,19 +76,13 @@ export function fetchReachability(
   srcId: string, srcNs: string, dstId: string, dstNs: string,
 ): Promise<ReachabilityResult> {
   const params = new URLSearchParams({ srcId, srcNs, dstId, dstNs });
-  return fetch(`/api/reachable?${params.toString()}`).then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<ReachabilityResult>;
-  });
+  return getJson<ReachabilityResult>(`/api/reachable?${params.toString()}`);
 }
 
 // fetchIssues runs the whole-cluster conflict scan. Recomputed server-side per
 // request; the UI calls it on initial load and on refresh.
 export function fetchIssues(): Promise<Issue[]> {
-  return fetch('/api/issues').then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<Issue[]>;
-  });
+  return getJson<Issue[]>('/api/issues');
 }
 
 export interface MeshStatusResponse {
@@ -89,17 +92,11 @@ export interface MeshStatusResponse {
 // fetchMeshStatus pulls the cache-wide mesh membership map. Cheap read —
 // backend serves cache.MeshMembership as-is, no compute.
 export function fetchMeshStatus(): Promise<MeshStatusResponse> {
-  return fetch('/api/mesh-status').then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<MeshStatusResponse>;
-  });
+  return getJson<MeshStatusResponse>('/api/mesh-status');
 }
 
 // fetchClusterMetrics returns cluster totals + nested mesh posture counters.
 // Denominators come from server cache sizes; unaffected by UI filter scope.
 export function fetchClusterMetrics(): Promise<ClusterMetrics> {
-  return fetch('/api/cluster-metrics').then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json() as Promise<ClusterMetrics>;
-  });
+  return getJson<ClusterMetrics>('/api/cluster-metrics');
 }

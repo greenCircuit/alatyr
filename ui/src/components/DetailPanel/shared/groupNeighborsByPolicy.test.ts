@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { groupNeighborsByPolicy, distinctPeers } from './groupNeighborsByPolicy';
-import type { NeighborRef, Rule, WorkloadNode } from '../../../data/policies';
+import { groupNeighborsByPolicy, distinctPeers, groupNodeRulesByPolicy } from './groupNeighborsByPolicy';
+import type { NeighborRef, NodeRule, Rule, WorkloadNode } from '../../../data/policies';
 
 const workload = (id: string, label: string): WorkloadNode => ({
   id,
@@ -65,5 +65,44 @@ describe('distinctPeers', () => {
     ]);
     const peers = distinctPeers(groups, false);
     expect(peers.map((p) => p.id).sort()).toEqual(['grafana', 'web-app']);
+  });
+});
+
+describe('groupNodeRulesByPolicy', () => {
+  const nodeRule = (dstId: string, over: Partial<NodeRule> = {}): NodeRule => ({
+    srcId:     'postgresql-primary',
+    dstId,
+    ports:     [],
+    direction: 'egress',
+    action:    0,
+    contributor: { source: 'calico', namespace: '', name: 'egress-enroll-namespaces', ruleIndex: 0 },
+    ...over,
+  });
+
+  // A cluster-wide Calico policy is indexed under the namespace bucket AND the
+  // workload bucket, so the verdict carries each rule twice. One peer line each.
+  it('collapses the same peer arriving from two rule buckets', () => {
+    const groups = groupNodeRulesByPolicy([
+      nodeRule('cidr:192.168.8.0/24'),
+      nodeRule('any'),
+      nodeRule('cidr:192.168.8.0/24'),
+      nodeRule('any'),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rules.map((rule) => rule.dstId)).toEqual(['cidr:192.168.8.0/24', 'any']);
+  });
+
+  it('keeps the same peer on different ports, and never dedups unattributed rules', () => {
+    const ported = groupNodeRulesByPolicy([
+      nodeRule('cidr:192.168.8.0/24', { ports: [{ port: 443, protocol: 'TCP' }] }),
+      nodeRule('cidr:192.168.8.0/24', { ports: [{ port: 6443, protocol: 'TCP' }] }),
+    ]);
+    expect(ported[0].rules).toHaveLength(2);
+
+    const bare = groupNodeRulesByPolicy([
+      nodeRule('any', { contributor: undefined }),
+      nodeRule('any', { contributor: undefined }),
+    ]);
+    expect(bare).toHaveLength(2);
   });
 });

@@ -26,7 +26,8 @@ interface PolicyRow {
   name: string;
   namespace: string;
   engine: string;
-  action: number; // 0 allow / 1 deny
+  actions: number[]; // unique, ascending — 0 allow / 1 deny
+  actionCounts: Record<number, number>; // per-action edge count for the chip
   directions: string[]; // unique, ordered per DIRECTION_ORDER
   edges: PolicyEdge[];
   srcCount: number;
@@ -42,7 +43,11 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
   const rows = useMemo(() => {
     const grouped = new Map<string, PolicyRow>();
     for (const e of edges) {
-      const key = `${e.policySource}|${e.namespace}|${e.policyName}|${e.action ?? 0}`;
+      // Keyed on policy identity only. A Calico GNP (and an Istio policy) mixes
+      // Allow and Deny rules in one object; splitting the row per action would
+      // show one manifest twice and label each half with an action it only
+      // partly has. Actions collapse into a badge list, same as directions.
+      const key = `${e.policySource}|${e.namespace}|${e.policyName}`;
       let row = grouped.get(key);
       if (!row) {
         row = {
@@ -50,7 +55,8 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
           name: e.policyName,
           namespace: e.namespace,
           engine: e.policySource,
-          action: e.action ?? 0,
+          actions: [],
+          actionCounts: {},
           directions: [],
           edges: [],
           srcCount: 0,
@@ -65,14 +71,27 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
       const srcs = new Set<string>();
       const dsts = new Set<string>();
       const dirs = new Set<string>();
+      const counts: Record<number, number> = {};
       for (const e of row.edges) {
-        srcs.add(e.source);
-        dsts.add(e.target);
+        // Blanket rules leave the peer side empty — counting '' as an endpoint
+        // would inflate the reach column by one phantom node.
+        if (e.source !== '') srcs.add(e.source);
+        if (e.target !== '') dsts.add(e.target);
         dirs.add(e.direction);
+        // Only 0/1 are meaningful — anything else is malformed backend data.
+        // Skip rather than silently bucketing under `allow`, which would hide
+        // the bug behind an inflated count.
+        if (e.action === 0 || e.action === 1) {
+          counts[e.action] = (counts[e.action] ?? 0) + 1;
+        } else if (import.meta.env.DEV) {
+          console.warn('PoliciesTable: edge with unexpected action', e);
+        }
       }
       row.srcCount = srcs.size;
       row.dstCount = dsts.size;
       row.directions = DIRECTION_ORDER.filter((d) => dirs.has(d));
+      row.actionCounts = counts;
+      row.actions = Object.keys(counts).map(Number).sort((first, second) => first - second);
     }
     const list = [...grouped.values()];
     if (!sort.col) return list;
@@ -82,7 +101,7 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
         case 'name':      return sign * a.name.localeCompare(b.name);
         case 'engine':    return sign * a.engine.localeCompare(b.engine);
         case 'namespace': return sign * a.namespace.localeCompare(b.namespace);
-        case 'action':    return sign * (a.action - b.action);
+        case 'action':    return sign * a.actions.join(',').localeCompare(b.actions.join(','));
         case 'direction': return sign * a.directions.join(',').localeCompare(b.directions.join(','));
         case 'rules':     return sign * (a.edges.length - b.edges.length);
         case 'reach':     return sign * ((a.srcCount + a.dstCount) - (b.srcCount + b.dstCount));
@@ -133,9 +152,17 @@ export default function PoliciesTable({ edges, policyIssues }: { edges: PolicyEd
             <td><EngineBadge engine={row.engine} /></td>
             <td>{row.namespace || '—'}</td>
             <td>
-              <span className="chip-verdict" style={{ background: row.action === 1 ? 'var(--color-deny)' : 'var(--color-allow)' }}>
-                {row.action === 1 ? 'deny' : 'allow'}
-              </span>
+              <div className="d-flex flex-wrap gap-1">
+                {row.actions.map((action) => (
+                  <span
+                    key={action}
+                    className="chip-verdict"
+                    style={{ background: action === 1 ? 'var(--color-deny)' : 'var(--color-allow)' }}
+                  >
+                    {action === 1 ? 'deny' : 'allow'} ({row.actionCounts[action]})
+                  </span>
+                ))}
+              </div>
             </td>
             <td>
               <div className="d-flex flex-wrap gap-1">

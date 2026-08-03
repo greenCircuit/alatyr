@@ -70,9 +70,12 @@ export function edgeEngines(edges: PolicyEdge[]): string[] {
 export function edgeLabel(edge: PolicyEdge): string {
   const portStr = realPorts(edge.ports)?.map(formatPort).join(', ');
   const l7Str = formatL7Summary(edge.l7Matches);
-  if (portStr && l7Str) return `${portStr} · ${l7Str}`;
-  if (l7Str) return l7Str;
-  return portStr ?? 'all ports';
+  // Aggregated arrows must say so — one line standing for N workloads reads as a
+  // namespace-scoped policy otherwise.
+  const scope = edge.aggregatedFrom ? `all ${edge.aggregatedFrom} workloads` : null;
+  const parts = [portStr, l7Str, scope].filter(Boolean);
+  if (parts.length === 0) return 'all ports';
+  return parts.join(' · ');
 }
 
 // Bundle label when multiple policies collapse onto one arrow. Surface a hint

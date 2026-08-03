@@ -19,6 +19,11 @@ import (
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	istiolisters "istio.io/client-go/pkg/listers/security/v1"
+
+	calicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
+	calicoclient "github.com/projectcalico/api/pkg/client/clientset_generated/clientset"
+	calicoinformers "github.com/projectcalico/api/pkg/client/informers_generated/externalversions"
+	calicolisters "github.com/projectcalico/api/pkg/client/listers_generated/projectcalico/v3"
 )
 
 // InformerClient backs the KubernetesClient surface with shared informer
@@ -28,8 +33,9 @@ import (
 // installed — methods return (nil, nil) in that case, matching the existing
 // IsNoMatch tolerance.
 type InformerClient struct {
-	coreFactory  informers.SharedInformerFactory
-	istioFactory istioinformers.SharedInformerFactory
+	coreFactory   informers.SharedInformerFactory
+	istioFactory  istioinformers.SharedInformerFactory
+	calicoFactory calicoinformers.SharedInformerFactory
 
 	podLister corelisters.PodLister
 	cjLister  batchlisters.CronJobLister
@@ -38,6 +44,8 @@ type InformerClient struct {
 
 	apLister istiolisters.AuthorizationPolicyLister // nil if security.istio.io/v1 absent
 	paLister istiolisters.PeerAuthenticationLister  // nil if security.istio.io/v1 absent
+
+	gnpLister calicolisters.GlobalNetworkPolicyLister // nil if projectcalico.org/v3 absent
 }
 
 // NewInformerClient builds clientsets, starts shared informer factories,
@@ -55,6 +63,10 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 		return nil, err
 	}
 	istioCS, err := istioclient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	calicoCS, err := calicoclient.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +98,23 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 		c.paLister = paInf.Lister()
 	}
 
+	calicoPresent, err := calicoCRDPresent(coreCS)
+	if err != nil {
+		return nil, fmt.Errorf("probe calico CRDs: %w", err)
+	}
+	if calicoPresent {
+		calicoFactory := calicoinformers.NewSharedInformerFactory(calicoCS, 0)
+		gnpInf := calicoFactory.Projectcalico().V3().GlobalNetworkPolicies()
+		c.calicoFactory = calicoFactory
+		c.gnpLister = gnpInf.Lister()
+	}
+
 	coreFactory.Start(stopCh)
 	if c.istioFactory != nil {
 		c.istioFactory.Start(stopCh)
+	}
+	if c.calicoFactory != nil {
+		c.calicoFactory.Start(stopCh)
 	}
 
 	for typ, ok := range coreFactory.WaitForCacheSync(stopCh) {
@@ -103,8 +129,29 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 			}
 		}
 	}
+	if c.calicoFactory != nil {
+		for typ, ok := range c.calicoFactory.WaitForCacheSync(stopCh) {
+			if !ok {
+				return nil, fmt.Errorf("calico informer failed to sync: %v", typ)
+			}
+		}
+	}
 
 	return c, nil
+}
+
+// calicoCRDPresent probes discovery for projectcalico.org/v3 (the aggregated
+// Calico API the clientset targets). Absent on clusters without Calico's API
+// server — skip the factory so WaitForCacheSync doesn't block on a missing GVK.
+func calicoCRDPresent(cs *kubernetes.Clientset) (bool, error) {
+	_, err := cs.Discovery().ServerResourcesForGroupVersion("projectcalico.org/v3")
+	if err == nil {
+		return true, nil
+	}
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // istioSecurityCRDPresent probes discovery for security.istio.io/v1. WaitForCacheSync
@@ -183,4 +230,20 @@ func (c *InformerClient) GetPeerAuthenticationsByName(ns string, name string) (*
 		return nil, nil
 	}
 	return c.paLister.PeerAuthentications(ns).Get(name)
+}
+
+// GetGlobalNetworkPolicies returns (nil, nil) when projectcalico.org/v3 isn't
+// served — clusters without Calico. Cluster-scoped: no namespace filter.
+func (c *InformerClient) GetGlobalNetworkPolicies() ([]*calicov3.GlobalNetworkPolicy, error) {
+	if c.gnpLister == nil {
+		return nil, nil
+	}
+	return c.gnpLister.List(labels.Everything())
+}
+
+func (c *InformerClient) GetGlobalNetworkPolicyByName(name string) (*calicov3.GlobalNetworkPolicy, error) {
+	if c.gnpLister == nil {
+		return nil, nil
+	}
+	return c.gnpLister.Get(name)
 }

@@ -17,6 +17,11 @@ type PolicyEdge struct {
 	L7Matches    []models.L7Match  `json:"l7Matches,omitempty"` // accumulated L7 blocks; empty for pure-L3 edges
 	Action       models.RuleAction `json:"action"`       // 0 = Allow, 1 = Deny
 	Coverage     models.Coverage   `json:"coverage,omitempty"`
+	// AggregatedFrom > 0 → this arrow stands in for that many per-workload rules
+	// folded into the namespace node (a cluster-wide policy's fan-out). Level
+	// stays "workload": the fact is per-workload, only the drawing is aggregated,
+	// so the UI's namespace-edge toggle must not hide it.
+	AggregatedFrom int `json:"aggregatedFrom,omitempty"`
 }
 
 // Bundle mirrors the UI Bundle interface used for edge aggregation.

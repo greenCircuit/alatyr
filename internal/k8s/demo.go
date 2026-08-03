@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 
+	calicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
 
@@ -23,6 +24,7 @@ type DemoClient struct {
 	policies              map[string][]*networkingv1.NetworkPolicy
 	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
 	peerAuthentications   map[string][]*istiosec.PeerAuthentication
+	globalNetworkPolicies []*calicov3.GlobalNetworkPolicy // cluster-scoped, no ns key
 }
 
 func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
@@ -112,6 +114,13 @@ func (c *DemoClient) parseFile(data []byte) error {
 				return err
 			}
 			c.peerAuthentications[peerAuth.Namespace] = append(c.peerAuthentications[peerAuth.Namespace], peerAuth)
+
+		case "GlobalNetworkPolicy":
+			gnp := &calicov3.GlobalNetworkPolicy{}
+			if err := json.Unmarshal(jsonBytes, gnp); err != nil {
+				return err
+			}
+			c.globalNetworkPolicies = append(c.globalNetworkPolicies, gnp)
 		}
 	}
 	return nil
@@ -184,6 +193,14 @@ func (c *DemoClient) GetAuthorizationPolicies(ns string) ([]*istiosec.Authorizat
 
 func (c *DemoClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuthentication, error) {
 	return c.peerAuthentications[ns], nil
+}
+
+func (c *DemoClient) GetGlobalNetworkPolicies() ([]*calicov3.GlobalNetworkPolicy, error) {
+	return c.globalNetworkPolicies, nil
+}
+
+func (c *DemoClient) GetGlobalNetworkPolicyByName(name string) (*calicov3.GlobalNetworkPolicy, error) {
+	return findByName(c.globalNetworkPolicies, name)
 }
 
 func (c *DemoClient) GetK8sPolicyByName(ns string, name string) (*networkingv1.NetworkPolicy, error) {

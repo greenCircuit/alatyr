@@ -10,6 +10,11 @@ const (
 	MeshConflicts    	  IssueType = "mesh conflict"		   // have edge, but node outside mesh want to talk to node is strict mesh
 	NodeLockOut      	  IssueType = "node lockout"		   // no has all egress/ingress deny all policy so it can't really talk to anyone
 	IssuesPartial	 	  IssueType = "partial access"         // no has all egress/ingress deny all policy so it can't really talk to anyone
+	// One engine allows a CIDR strictly inside the range another engine allows
+	// (a /32 host under a /24). Scope layering, not deny-vs-allow — but the API
+	// objects can't say whether the narrowing was deliberate or a fat-fingered
+	// mask, so it stays visible and filterable instead of demoted to info.
+	IssuesCidrScope       IssueType = "cidr scope mismatch"
 	IssuesFailedToFetch   IssueType=  "failed to fetch"         // no has all egress/ingress deny all policy so it can't really talk to anyone
 )
 

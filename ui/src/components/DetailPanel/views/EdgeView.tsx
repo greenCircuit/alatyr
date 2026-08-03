@@ -20,6 +20,7 @@ export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
   // workload edge. Without this the panel showed neither side.
   const src = nodes.find((n) => n.id === first.source);
   const dst = nodes.find((n) => n.id === first.target);
+  const aggregated = Math.max(...edges.map((e) => e.aggregatedFrom ?? 0));
   return (
     <>
       <EdgeReachabilityBanner result={reachability} loading={reachabilityLoading} />
@@ -28,6 +29,17 @@ export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
         <span className={s.endpointArrow} aria-hidden>→</span>
         <EndpointCard role="dst" node={dst} coverage={first.coverage} />
       </div>
+      {/* Aggregated arrow: a cluster-wide policy resolved identically for every
+          workload in the namespace, so N per-workload rules render as one line.
+          Say it out loud — otherwise this reads as a namespace-scoped policy. */}
+      {aggregated > 0 && (
+        <div className={`${s.card} ${s.smallText} mb-3`}>
+          <span className={s.dim}>
+            Stands for {aggregated} per-workload rules — the policy selects every workload
+            in this namespace, and all {aggregated} resolved this same verdict.
+          </span>
+        </div>
+      )}
       {/* Findings on this pair — why an allow edge may still not carry traffic. */}
       <div className="mb-3">
         <PairIssues srcId={first.source} dstId={first.target} />

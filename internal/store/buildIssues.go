@@ -3,11 +3,13 @@ package store
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"graph/internal/config"
 	"graph/internal/logging"
 	"graph/internal/mesh"
 	"graph/internal/models"
+	"graph/internal/policy"
 	"graph/internal/utils"
 )
 
@@ -114,6 +116,42 @@ func MissingDns(ctx context.Context, data *models.Cache) []models.Issue {
 	return issues
 }
 
+// isInternalCidrAggregate reports whether a node is a synthetic CIDR node
+// standing for the cluster's own pod or service range. Those aren't real
+// endpoints — a ClusterIP is DNAT'd to a backend pod before policy runs — so an
+// engine that names pods and namespaces still permits addresses inside the
+// range without ever mentioning it.
+func isInternalCidrAggregate(node models.WorkloadNode) bool {
+	if node.Type != models.NodeTypeCIDR {
+		return false
+	}
+	return node.CidrType == models.CIDRk8sPod || node.CidrType == models.CIDRk8sSvc
+}
+
+// subsetAllowCidr returns the CIDR this engine allowed strictly inside the range
+// the peer node stands for, or "" when it named none. A /32 host allow under a
+// /24 node means the engines disagree about scope, not about intent. Rules whose
+// peer isn't a CIDR fall out on the CidrContains parse failure.
+//
+// The default route is excluded: 0.0.0.0/0 contains every CIDR, so any unrelated
+// allow would read as a subset and every WAN block would stop being a conflict.
+func subsetAllowCidr(peer models.WorkloadNode, unmatched []models.NodeRule, peerIDOf func(models.NodeRule) string) string {
+	if peer.Type != models.NodeTypeCIDR || peer.CidrType == models.CIDRWan {
+		return ""
+	}
+	aggregate := strings.TrimPrefix(peer.ID, models.CIDRIDPrefix)
+	for _, nodeRule := range unmatched {
+		inner := strings.TrimPrefix(peerIDOf(nodeRule), models.CIDRIDPrefix)
+		if inner == aggregate {
+			continue
+		}
+		if policy.CidrContains(aggregate, inner) {
+			return inner
+		}
+	}
+	return ""
+}
+
 // PolicyIssues flags policy conflicts: an ALLOW rule whose src→dst path is
 // still blocked once every engine's rules + locks are intersected — one policy
 // permits the edge while another denies or locks it out. Mesh runs in the same
@@ -190,7 +228,18 @@ func PolicyIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshS
 				// An ns-node endpoint blocks at namespace granularity while the
 				// culprit's own pod-level clauses may still permit specific pods.
 				// Classify from those fine-grained paths, not the coarse probe.
-				if srcNode.Type == models.NodeTypeNamespace || dstNode.Type == models.NodeTypeNamespace {
+				switch {
+				// Engines target different peer kinds: Calico names cluster ranges,
+				// k8s/istio reach them through pod and namespace selectors. A blocker
+				// with no rule for the pod/svc range is overlapping scope, not
+				// disagreement — its ns allows DO permit addresses inside that range.
+				//
+				// Ordered ahead of the ns-node case on purpose. A CIDR node carries no
+				// namespace, so classifyLayering's candidate join finds zero pairs and
+				// classifyConflict reports a conflict it never actually verified.
+				case isInternalCidrAggregate(srcNode) || isInternalCidrAggregate(dstNode):
+					conflictType = models.IssuesPartial
+				case srcNode.Type == models.NodeTypeNamespace || dstNode.Type == models.NodeTypeNamespace:
 					conflictType, fineAllowed = classifyLayering(ctx, prober, verdict, srcNode.Namespace, dstNode.Namespace)
 				}
 
@@ -216,9 +265,44 @@ func PolicyIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshS
 						egressAllowed = mergePolicyRefs(egressAllowed,
 							excludePolicyRefs(fineAllowed.egress, engineVerdict.Egress.Culprits))
 					}
+					// Type is per-engine from here: the scope check reads THIS
+					// engine's unmatched allows, so a blocker that narrowed the range
+					// is classified differently from one that never named it.
+					issueType := conflictType
+					message := blockEngine + " blocks a permitted path"
+					egressPeerOf := func(nodeRule models.NodeRule) string { return nodeRule.DstID }
+					ingressPeerOf := func(nodeRule models.NodeRule) string { return nodeRule.SrcID }
+					switch {
+					case isInternalCidrAggregate(srcNode) || isInternalCidrAggregate(dstNode):
+						message = blockEngine + " has no rule naming this cluster range — it targets pods and namespaces, not CIDRs"
+					default:
+						aggregate := dstNode
+						narrow := subsetAllowCidr(dstNode, engineVerdict.Egress.OtherAllowMatches, egressPeerOf)
+						if narrow == "" {
+							aggregate = srcNode
+							narrow = subsetAllowCidr(srcNode, engineVerdict.Ingress.OtherAllowMatches, ingressPeerOf)
+						}
+						if narrow != "" {
+							issueType = models.IssuesCidrScope
+							message = blockEngine + " only allows " + narrow + " inside the " +
+								strings.TrimPrefix(aggregate.ID, models.CIDRIDPrefix) +
+								" this node represents — confirm the narrower mask is deliberate least-privilege, not a typo"
+							// The policy granting the WHOLE range lives in a different
+							// engine's verdict, so this row would name only the narrow
+							// policy and leave the operator guessing what it disagrees
+							// with. Pull the counterpart tier in as evidence.
+							for otherEngine, otherVerdict := range verdict.Engines {
+								if otherEngine == blockEngine {
+									continue
+								}
+								ingressAllowed = mergePolicyRefs(ingressAllowed, dedupContributors(otherVerdict.Ingress.AllowMatches))
+								egressAllowed = mergePolicyRefs(egressAllowed, dedupContributors(otherVerdict.Egress.AllowMatches))
+							}
+						}
+					}
 					issues = append(issues, models.Issue{
-						Type:            conflictType,
-						Message:         blockEngine + " blocks a permitted path",
+						Type:            issueType,
+						Message:         message,
 						Engine:          blockEngine,
 						Src:             &srcNode,
 						Dst:             &dstNode,

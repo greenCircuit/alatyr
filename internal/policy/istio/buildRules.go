@@ -1,12 +1,25 @@
 package istio
 
 import (
+	"time"
+
 	"graph/internal/models"
 	"graph/internal/utils"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )
+
+// creationTime returns a pointer to the policy's CreationTimestamp, or nil
+// when unset — omitempty then drops it from the wire rather than marshaling
+// year 0001.
+func creationTime(ap *istiosec.AuthorizationPolicy) *time.Time {
+	if ap.CreationTimestamp.IsZero() {
+		return nil
+	}
+	t := ap.CreationTimestamp.Time
+	return &t
+}
 
 // Note: Istio AuthorizationPolicy is ingress-only at the L3 layer — it gates
 // traffic INTO the selected workload. Egress is handled by Sidecar /
@@ -148,6 +161,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 			Source:    sourceName,
 			Name:      authzPolicy.Name,
 			Namespace: authzPolicy.Namespace,
+			CreatedAt: creationTime(authzPolicy),
 		}
 		rule := expandBlanketRule(authzPolicy)
 		rule.Contributor = contributor
@@ -172,6 +186,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 			Name:      authzPolicy.Name,
 			Namespace: authzPolicy.Namespace,
 			RuleIndex: ruleIndex,
+			CreatedAt: creationTime(authzPolicy),
 		}
 
 		// spec.rules: - {}, it is array with empty rule defined

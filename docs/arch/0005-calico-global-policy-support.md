@@ -26,8 +26,9 @@ Add a third `PolicySource`: `calico`, package `internal/policy/calico/`, mirrori
 
 ### Fetch strategy
 
-- **Correction:** no `buildGraph.go`/per-ns fan-out change needed. Engines are driven from `Builder.PopulateCache` (`/app/internal/store/buildStore.go:150`), which calls `source.Evaluate(ctx, namespaces, indexByNS)` once per engine already — `istio`'s own `Evaluate` (`/app/internal/policy/istio/evaluate.go:37-45`) already does an extra out-of-band fetch (`GetAuthorizationPolicies(RootNamespace)`) alongside its per-ns fetch, entirely inside its own `Evaluate`, with zero orchestration changes. `calico.Evaluate` fetching `GetGlobalNetworkPolicies(ctx)` once is the same shape — a one-line addition to `calico`'s own `Evaluate`, not a `buildGraph.go` change.
-- `k8s.KubernetesClient` interface gets a new method (e.g. `GetGlobalNetworkPolicies(ctx) ([]*calico.GlobalNetworkPolicy, error)`), implemented on both `Client` (needs Calico client-go, e.g. `github.com/projectcalico/api/pkg/client/clientset/versioned`) and `DemoClient` (fixture-backed, same pattern as `detect.go`'s mesh-CRD-installed check). **(verify: confirm actual Calico Go module path and CRD version the target cluster runs — Calico has had several API package moves.)**
+- **Correction:** no `buildGraph.go`/per-ns fan-out change needed *for the fetch*. Engines are driven from `Builder.PopulateCache` (`/app/internal/store/buildStore.go:149`), which calls `source.Evaluate(ctx, namespaces, indexByNS)` once per engine already — `istio`'s own `Evaluate` (`/app/internal/policy/istio/evaluate.go:37-45`) already does an extra out-of-band fetch (`GetAuthorizationPolicies(RootNamespace)`) alongside its per-ns fetch, entirely inside its own `Evaluate`, with zero orchestration changes. `calico.Evaluate` fetching `GetGlobalNetworkPolicies(ctx)` once is the same shape — a one-line addition to `calico`'s own `Evaluate`, not a `buildGraph.go` change.
+- **But the istio precedent only covers the fetch half, not the edge half.** Read the comment at `/app/internal/policy/istio/evaluate.go:34-36`: istio's root-ns (mesh-wide) policies feed `PolicyStatus`/badges but explicitly **do not yet drive `Rule`/edges** — cross-namespace edge fan-out is an open TODO in the existing code (`buildRules` selects workloads by the policy's own namespace). GlobalNetworkPolicy needs exactly that unsolved half: a cluster-scoped policy (own namespace `""`) rendering edges against workloads in namespaces the graph never fetched under it. So "fetch once, zero orchestration change" is confirmed; "cross-namespace edge rendering is a solved pattern to copy" is **not** — istio hasn't solved it either. The precedence-walk section below owns the rule-generation side; don't assume it falls out of the istio fetch pattern.
+- `k8s.KubernetesClient` interface gets a new method (e.g. `GetGlobalNetworkPolicies(ctx) ([]*calico.GlobalNetworkPolicy, error)`), implemented on both `Client` (needs Calico client-go, e.g. `github.com/projectcalico/api/pkg/client/clientset/versioned`) and `DemoClient` (fixture-backed). CRD-presence probe pattern to copy is `istioSecurityCRDPresent` in `/app/internal/k8s/informerClient.go:113` (discovery-based), **not** `mesh/istio/detect.go` (that's ambient-membership label detection, unrelated). **(verify: confirm actual Calico Go module path and CRD version the target cluster runs — Calico has had several API package moves.)**
 - Error handling needs no new design: `buildStore.go:151-158` already aborts `PopulateCache` and surfaces the wrapped error on any engine failure, matching `PolicySource.Evaluate`'s documented contract (`policy.go:16-17`). A Calico fetch error fails the whole graph like the other two engines — confirmed, not an open question.
 
 ### Namespace-key collision in `EvaluationResult` — real, not hypothetical
@@ -47,6 +48,54 @@ For `k8spolicy`/`istio` these never diverge — a namespaced policy's namespace 
 - Walk sorted policies per **(workload, direction, port)**; each policy's first matching rule (by selector + protocol/port) yields `Allow`, `Deny`, or `Pass`. `Allow`/`Deny` terminate the walk for that dimension and become the effective decision. `Pass` continues to the next tier boundary, not the next policy in the same tier **(verify: within-tier Pass behavior vs cross-tier)**.
 - Every policy that matched along the way — including ones a later `Pass` overrode — still renders as its own edge/rule (consistent with "no reducer at the edge level"). The precedence walk's output is not "collapse to one edge"; it's the **effective status** fed into `PolicyStatuses`, same division of labor as today: edges show every contributing policy, `PolicyStatus`/badges show the resolved intent.
 - `RuleAction` (models/rule.go:20) does **not** need a third value. Pass rules emit no `Rule`/edge at all (they have no allow/deny semantic to draw), but — hardened from an open question into a requirement below — every Pass-resolved policy still surfaces via `PolicyRef{Action: "pass"}` in `NodePolicies`. An edge saying "action: pass" would tell the user nothing actionable; a *missing* `PolicyRef` for a policy that scoped the workload would be a silent gap, which is the failure this project explicitly treats as worse than no graph at all.
+
+### Selector evaluation & memoization (backend-sre review, 2026-07-25)
+
+**No intermediate working struct.** Walk the raw `*v3.GlobalNetworkPolicy` objects straight from the informer — `Spec.Order`, `Spec.Tier`, `Spec.Egress[]`/`Spec.Ingress[]` (array order intact — load-bearing, see below), `Spec.Selector`/`Spec.NamespaceSelector` are all already on the object. Copying them into a `calicoPolicy` struct is pure ceremony.
+
+**The one thing worth memoizing is the parsed selector.** `Spec.Selector` is a *string*; `selector.Parse` on every workload×policy is the only real cost, and it's an artifact of parsing in the wrong loop. Hoist it: parse each policy's selector once into a separate `map[string]selector.Selector` keyed by policy UID, up front. Parse cost becomes O(policies) ≈ tens, one-time. What's left per node is `selector.Evaluate(labels)` against the already-parsed AST — label-map lookups, no re-parse. Tens of policies × thousands of pods = tens of thousands of cheap evals.
+
+**Namespace-selector memo, same bucketing instinct as `resolveMtls`.** `namespaceSelector` evaluates against *namespace* labels, and every pod in a ns shares them. Memoize `nsSelector.Evaluate(nsLabels)` per `(policy, namespace)` — tens × tens — not per pod. A workload matches only if both selectors pass, so gate on the cached ns result first and skip the pod-selector eval entirely for namespaces the nsSelector already excluded. (Answers open question #4: the per-workload matching needs namespace *labels* accessible — confirm `NSIndex` carries them.)
+
+Cost profile after hoisting: parse once per policy (negligible); nsSelector eval once per `(policy, ns)`; pod selector eval once per `(policy, workload)` only in namespaces that passed. Nothing pathological at target scale.
+
+**Sort once, not per workload.** Sort the raw `[]*v3.GlobalNetworkPolicy` by `(tier, order asc, name)` a single time before the workload loop, not inside it.
+
+**Resolves open question #3: use the vendored libcalico parser, don't hand-roll.** `github.com/projectcalico/calico/libcalico-go/lib/selector` — `selector.Parse(str)` → `.Evaluate(labels map[string]string) bool`. It covers the full expression grammar (`==`, `!=`, `has()`, `in {...}`, `&&`/`||`, `all()`, negation) that `map[string]string` can't hold. A hand-rolled evaluator will get set-membership or negation subtly wrong and lie. Confirm the exact module path against the vendored client version (ties into open question #1).
+
+**Selected-but-shadowed ≠ doesn't-apply — tri-valued, don't collapse to active/inactive.** The precedence walk produces three distinct per-workload states for a global policy, and rendering them as a binary would repeat the "quietly wrong" failure this project rejects:
+- **wins** — selected the workload *and* its first-match rule decided a destination bucket.
+- **applies-but-shadowed** — selected the workload (both selectors pass) but every rule lost first-match to a lower-`order` policy. Example: for an enrolled-ns workload, `egress-default-deny` (order 2000, `selector: all()`) selects it but is fully shadowed by `egress-enroll-namespaces` (order 500) Allow-all.
+- **doesn't-apply** — `namespaceSelector`/`selector` excluded it; never evaluated. Example: `egress-enroll-namespaces` against a non-enrolled workload.
+
+`NodePolicies[workload]` holds only the policies that **select** the workload (states 1–2). Shadowed losers attach per resolved edge as provenance (winner + `shadowed []PolicyRef`), keyed on `(workload, dstBucket)` — not per workload. A policy that doesn't select is simply absent, not "inactive." Showing a non-selecting policy as evaluated-and-lost tells the user it was in scope when it never was.
+
+### CIDR / nets matching (not just label selectors)
+
+The selector section above covers *which workloads a policy governs*. It does **not** cover *what a rule's source/destination points at* — and Calico rules routinely use CIDR lists, not workload selectors, for that. A rule carries `source`/`destination` blocks with `nets []string`, `notNets []string`, `selector`, and `namespaceSelector`. An engine built only to the label-selector model would silently drop or mis-evaluate every `nets`-based rule — and the "deny internet egress" pattern (`destination: {notNets: [pod-cidr, svc-cidr]}` or the first-use-case `destination: {nets: [...]}` + `Deny {}`) is one of the most common reasons anyone writes a GlobalNetworkPolicy at all. Dropping it is the exact "graph that quietly lies" failure this project rejects. Required subsection, not a footnote.
+
+Reuse the existing classifier — do not build a second one. `policy/networkPolicyHelpers.go` already ships engine-agnostic CIDR helpers (CLAUDE.md calls them "usable across engines"):
+
+- `CidrType(cidr)` → `CIDRWan` / `CIDRk8sPod` / `CIDRk8sSvc` / `CIDRLan` by containment against `config.PodCIDR`/`SvcCIDR`/`ApiServerCIDRs`. Maps each `net` to the right CIDR node.
+- `CidrContains(outer, inner)` → the containment test for matching a resolved destination bucket against a rule's `nets`.
+- CIDR-node emission: copy the `cidrNodes[models.CIDRIDPrefix+cidr] = WorkloadNode{...}` pattern from `k8spolicy/buildRules.go:296`.
+
+Two translation gaps the k8s helpers don't cover (Calico-engine-side, not classifier changes):
+
+1. **`destination: {}` (empty) means *all destinations*, not internet.** The helpers take a CIDR string; empty isn't one. Normalize `{}` → catch-all bucket = `0.0.0.0/0` → `CIDRWan`. For the fallthrough `Deny {}` after an `Allow <cluster>`, the honest render is deny→`0.0.0.0/0`, since cluster was already allowed by the prior (higher-precedence) rule.
+2. **`nets` is a list; `notNets` is exclusion.** k8s helpers take one `IPBlock`; call `CidrType`/`CidrContains` per entry. `notNets` inverts the match — defer to a follow-on unless the target cluster's policies use it (the first-use-case manifests don't; the common internet-deny pattern above does, so scope this deliberately).
+
+**Config dependency, load-bearing:** the pod/svc buckets are correct only if `config.PodCIDR`/`SvcCIDR` are set to the cluster's actual ranges (k3s: `10.42.0.0/16` / `10.43.0.0/16`). Unset → `10.42/16` falls to `CIDRLan` and the whole "in-cluster vs internet egress" story collapses into a LAN blob. Verify config before trusting the buckets.
+
+**Destination universe is bounded — no IP-space or pod-pair explosion.** Resolve per `(workload, direction, destination-bucket)` where the bucket set = every `net` referenced by any selecting policy + the `{}` catch-all. For the first-use-case manifests that's 4 buckets. Walk ordered rules per bucket, `{}`-rule matches every bucket, else `CidrContains(rule.net, bucket)`. Same first-match machinery as the label path.
+
+### First-match is at rule-array granularity *within* a policy, not just across policies
+
+Load-bearing and easy to get wrong: `egress-default-deny` is a single policy whose two rules — `[Allow <cluster-nets>, Deny {}]` — decide *different* destinations. `10.42.x` → rule 1 Allow wins; `8.8.8.8` → rule 1 no match, rule 2 Deny wins. The walk must be `for policy in sortByOrder: for rule in policy.Egress (source array order): if matches → decide`. If you sort or union a policy's rules and lose array index, you invert this policy. This is the concrete reason precedence stays engine-internal scratch and never lands as a `weight` field on `models.Rule` — resolution is per-rule-in-sequence, not a scalar per rule.
+
+### Ingress and egress are independent walks
+
+`Spec.Ingress` and `Spec.Egress` are separate rule arrays with separate `Spec.Types` gating (a policy with `types: [Egress]` contributes nothing to ingress even if it selects the workload). Run the precedence walk once per direction with its own tier/order state — do not share a resolved verdict across directions. The first-use-case policies are `types: [Egress]` only; an ingress-bearing policy is a distinct walk.
 
 ### Status keys
 
@@ -73,8 +122,8 @@ Correct, and reuses a resolution pattern already proven in this codebase rather 
 
 1. Exact Calico Go module/CRD version to vendor against (project's target cluster version).
 2. Tier `order` default and cross-tier Pass fallthrough semantics — confirm against Calico docs/source, not assumption.
-3. Calico selector expression language: hand-roll a small evaluator, or is there a vendored parser in the client-go module worth reusing?
-4. `namespaceSelector` on a `GlobalNetworkPolicy` (verify) — does the graph's per-namespace `NSIndex` fetch have to expand to include namespace *labels* somewhere accessible for cluster-scoped matching, or is that already available?
+3. ~~Calico selector expression language: hand-roll a small evaluator, or is there a vendored parser worth reusing?~~ **Resolved:** use libcalico's `selector` package (`Parse` + `Evaluate`), memoized per policy UID — see Selector evaluation section. Don't hand-roll.
+4. `namespaceSelector` on a `GlobalNetworkPolicy` (verify) — does the graph's per-namespace `NSIndex` fetch have to expand to include namespace *labels* somewhere accessible for cluster-scoped matching, or is that already available? (See Selector evaluation section — nsSelector matching needs ns labels reachable per workload.)
 
 (Resolved during backend-sre review, no longer open: `NodePolicies` shape needs no new type — `map[string][]PolicyRef` suffices once Pass-suppressed policies get a `PolicyRef{Action: "pass"}` unconditionally, see Decision above. `AllowByNs`/`DenyByNs` keying is resolved as workload-namespace keying + a required `layering.go` fix, not left open.)
 

@@ -29,7 +29,7 @@ export default function EngineRollup({ edges, bare = false }: EngineRollupProps)
     const seenPolicy = new Set<string>();
     const out = new Map<string, number>();
     for (const e of edges) {
-      const policyKey = `${e.policySource}|${e.namespace}|${e.policyName}|${e.action ?? 0}`;
+      const policyKey = `${e.policySource}|${e.namespace}|${e.policyName}`;
       if (seenPolicy.has(policyKey)) continue;
       seenPolicy.add(policyKey);
       out.set(e.policySource, (out.get(e.policySource) ?? 0) + 1);
@@ -37,14 +37,15 @@ export default function EngineRollup({ edges, bare = false }: EngineRollupProps)
     return out;
   }, [edges]);
 
-  // Preserve canonical engine order from cluster-state so the chip row is
-  // stable across reloads regardless of which engines have data right now.
-  const engines = availablePolicySources.filter((e) => (counts.get(e) ?? 0) > 0);
+  // Every registered engine keeps its chip, count 0 included — a chip that
+  // disappears at zero takes the pivot control with it, and "calico: 0" is
+  // itself the answer to "why do I see no calico policies here".
+  const engines = availablePolicySources;
 
   if (engines.length === 0) {
     return (
       <div className={bare ? 'text-secondary fs-12' : 'px-3 py-2 border-bottom border-secondary text-secondary fs-12'}>
-        No policies across the current filter set.
+        No policy engines registered.
       </div>
     );
   }
@@ -69,7 +70,7 @@ export default function EngineRollup({ edges, bare = false }: EngineRollupProps)
           <button
             key={engine}
             type="button"
-            className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${chip.engineChip} ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''}`}
+            className={`btn btn-sm d-inline-flex align-items-center gap-1 p-1 ${chip.engineChip} ${r.chip} ${active ? r.active : ''} ${dimmed ? r.dimmed : ''} ${count === 0 && !active && !dimmed ? r.empty : ''}`}
             onClick={() => togglePolicySource(engine)}
             title={`${label} — click to ${active ? 'hide' : 'show only'} ${engine}`}
             style={{ border: `1px solid ${color}` }}

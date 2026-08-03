@@ -17,6 +17,8 @@ export const REASON_META: Record<DirectionReason, { label: string; tone: ReasonT
   'no-opinion':      { label: 'no policy',                   tone: 'inert' },
   'explicit-deny':   { label: 'explicit deny',               tone: 'deny'  },
   'default-deny':    { label: 'default-deny',                tone: 'deny'  },
+  // Warn, not deny: the block is real but there is no deny object to delete.
+  'carved-out':      { label: 'carved out of allow',         tone: 'warn'  },
   'locked-no-match': { label: 'blocked · no matching rule',  tone: 'warn'  },
 };
 

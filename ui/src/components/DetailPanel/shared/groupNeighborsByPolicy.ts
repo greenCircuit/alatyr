@@ -124,11 +124,27 @@ export interface NodeRuleGroup {
 
 export function groupNodeRulesByPolicy(rules: NodeRule[]): NodeRuleGroup[] {
   const groups = new Map<string, NodeRuleGroup>();
+  // A cluster-wide policy (Calico all()) is indexed under BOTH the namespace
+  // bucket and the workload bucket, so a verdict collecting from both receives
+  // the same rule twice and every peer line rendered doubled. Same policy +
+  // direction + peer + ports is one rule, however many buckets carried it.
+  const seenPeers = new Map<string, Set<string>>();
   rules.forEach((rule, index) => {
     const contributor = rule.contributor?.name ? rule.contributor : undefined;
     const key = contributor
       ? `${contributor.source}|${contributor.namespace}|${contributor.name}|${rule.direction}|${rule.action}`
       : `_no_policy_${index}`;
+    if (contributor) {
+      const peerKey = `${rule.srcId}|${rule.dstId}|`
+        + (rule.ports ?? []).map((port) => `${port.port}/${port.endPort ?? 0}/${port.protocol}`).join(',');
+      let seen = seenPeers.get(key);
+      if (!seen) {
+        seen = new Set();
+        seenPeers.set(key, seen);
+      }
+      if (seen.has(peerKey)) return;
+      seen.add(peerKey);
+    }
     let group = groups.get(key);
     if (!group) {
       group = { key, contributor, rules: [] };

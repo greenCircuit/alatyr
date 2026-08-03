@@ -4,12 +4,6 @@ import (
 	"graph/internal/models"
 )
 
-// things that are caching to rebuild data
-type Cache struct {
-	EvaluationResults   map[string]models.EvaluationResult
-	NsIndex				map[string]models.NSIndex	
-}
-
 // structs to figure out if 2 nodes have can talk to each other
 type ReachabilityResult struct {
 	Verdict string                            `json:"verdict"` // "allow" | "deny" | "partial"
@@ -34,6 +28,10 @@ type DirectionVerdict struct {
 	OtherAllowMatches   []models.NodeRule `json:"allowOtherMatches,omitempty"`
 	AllowMatches   		[]models.NodeRule `json:"allowMatches,omitempty"`
 	DenyMatches    		[]models.NodeRule `json:"denyMatches,omitempty"`
+	// ipBlock.except carve-outs. Kept out of DenyMatches so the reason and the
+	// remediation don't claim a deny object exists, but ranked above AllowMatches
+	// so the covering 0.0.0.0/0 allow can't win the peer back.
+	CarveOutMatches		[]models.NodeRule `json:"carveOutMatches,omitempty"`
 	Reason         		DirectionReason   `json:"reason"`
 	Culprits            []models.PolicyRef `json:"culprits,omitempty"` // what polices broke connection
 	Ports 				[]models.Port	  `json:"ports,omitempty"`
@@ -58,6 +56,7 @@ type DirectionReason = models.DirectionReason
 const (
 	ReasonPermitted     = models.ReasonPermitted
 	ReasonExplicitDeny  = models.ReasonExplicitDeny
+	ReasonCarvedOut     = models.ReasonCarvedOut
 	ReasonDefaultDeny   = models.ReasonDefaultDeny
 	ReasonLockedNoMatch = models.ReasonLockedNoMatch
 	ReasonNoOpinion     = models.ReasonNoOpinion

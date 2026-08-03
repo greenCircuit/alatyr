@@ -11,6 +11,7 @@ type EvaluationResult struct {
 	NodePolicies   map[string][]PolicyRef  // workloadID → policies that select it
 	NodeRules      map[string]NodeRules	   // workloadId → to all policies
 	Nodes          map[string]WorkloadNode // CIDR polices will become nodes
+	GlobalPolicies map[string]NodeRules    // cluster-scoped policy name → its ingress/egress rules. Catalog of ALL globals (inactive ones keep an empty bucket); per-workload NodeRules shows only active
 
 }
 

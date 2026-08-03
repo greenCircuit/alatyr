@@ -9,6 +9,10 @@ type DirectionReason string
 const (
 	ReasonPermitted     DirectionReason = "permitted"
 	ReasonExplicitDeny  DirectionReason = "explicit-deny"    // has deny to other node
+	// An allow rule covers the peer but carves it out (k8s ipBlock.except). No
+	// deny object exists to delete — the fixes are widening the allow or dropping
+	// the range from the except list, so this can't share ExplicitDeny's wording.
+	ReasonCarvedOut     DirectionReason = "carved-out"
 	ReasonDefaultDeny   DirectionReason = "default-deny"     // locked, zero allow rules, denyAll policy
 	ReasonLockedNoMatch DirectionReason = "locked-no-match"  // locked, allows exist have other rules but not for target
 	ReasonNoOpinion     DirectionReason = "no-opinion"

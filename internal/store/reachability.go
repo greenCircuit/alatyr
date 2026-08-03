@@ -9,38 +9,60 @@ import (
 	"graph/internal/policy"
 )
 
-// isClusterCoveringCidr reports whether nodeID is a synthetic CIDR node whose
-// range spans the whole cluster pod/svc space (or 0.0.0.0/0) — CidrType is
-// stamped once at node construction (k8spolicy buildRules.go) so reachability
-// doesn't re-parse the CIDR string on every rule it checks.
-func isClusterCoveringCidr(nodeID string, idIndex map[string]models.WorkloadNode) bool {
-	node, ok := idIndex[nodeID]
-	if !ok || node.Type != models.NodeTypeCIDR {
-		return false
-	}
-	return node.CidrType != models.CIDRLan
-}
-
-// cidrCarveOutCoversDst reports whether an ipBlock except carve-out
-// (DstID/SrcID="cidr:<range>", Coverage=CoverageExcept) actually removes the
-// queried peer from the covering allow. A carve-out only bites when the peer
-// falls inside the except range — otherwise the broader allow still permits it.
+// cidrNodeCoversPeer reports whether a rule whose peer endpoint is the synthetic
+// CIDR node cidrID actually speaks for the queried peer. Used on both sides: an
+// allow only permits a peer its CIDR contains, and an ipBlock except carve-out
+// (Coverage=CoverageExcept) only bites when the peer falls inside the except range.
 //
 // Two cases, split by peer kind:
 //   - peer is a CIDR node (external/WAN): real subnet containment. An internal
-//     /16 does NOT contain 0.0.0.0/0, so the WAN node stays reachable — this is
-//     the seam the blanket isClusterCoveringCidr check got wrong.
+//     /16 does NOT contain 0.0.0.0/0, so allowing the pod CIDR must not count as
+//     allowing the internet — and an internal except must not block the WAN node.
 //   - peer is an internal workload: its runtime IP lives in the cluster pod/svc
-//     space, so any carve-out covering the cluster CIDR removes it.
-func cidrCarveOutCoversDst(exceptID, peerID string, idIndex map[string]models.WorkloadNode) bool {
-	exceptNode, ok := idIndex[exceptID]
-	if !ok || exceptNode.Type != models.NodeTypeCIDR {
+//     space, so any range covering the cluster CIDR speaks for it.
+func cidrNodeCoversPeer(cidrID, peerID string, idIndex map[string]models.WorkloadNode) bool {
+	cidrNode, ok := idIndex[cidrID]
+	if !ok || cidrNode.Type != models.NodeTypeCIDR {
 		return false
 	}
 	if peerNode, ok := idIndex[peerID]; ok && peerNode.Type == models.NodeTypeCIDR {
-		return policy.CidrContains(exceptNode.Label, peerNode.Label)
+		return policy.CidrContains(cidrNode.Label, peerNode.Label)
 	}
-	return exceptNode.CidrType != models.CIDRLan
+	return cidrNode.CidrType != models.CIDRLan
+}
+
+// policyIdentityKey — the policy an operator would edit. RuleIndex excluded on
+// purpose: a policy's allow stanza and its catch-all deny are separate rules of
+// the SAME policy.
+func policyIdentityKey(ref models.PolicyRef) string {
+	return ref.Source + "|" + ref.Namespace + "|" + ref.Name
+}
+
+// policiesAllowingPeerSpecifically collects the policies that allow the queried
+// peer by NAMING it — its node ID, its namespace node, or a peer CIDR that
+// contains it. Blanket allow-all does not count.
+//
+// This is what makes ordered first-match engines resolve correctly. Calico
+// buckets a policy by peer: `allow nets 10.42.0.0/16 … then deny` emits a narrow
+// allow for the pod-CIDR bucket AND the policy's catch-all deny for the
+// 0.0.0.0/0 bucket. Both are real; which one governs depends on the peer. When a
+// policy named the queried peer, its own catch-all deny is the fallback for
+// OTHER peers and must not block this one. Istio can't produce that shape (ALLOW
+// and DENY are separate objects), so its deny-overrides behavior is untouched.
+func policiesAllowingPeerSpecifically(
+	allowRules []models.Rule,
+	peerOf func(models.Rule) string,
+	peerID, peerNsID string,
+	idIndex map[string]models.WorkloadNode,
+) map[string]bool {
+	allowing := map[string]bool{}
+	for _, rule := range allowRules {
+		peer := peerOf(rule)
+		if peer == peerID || peer == peerNsID || cidrNodeCoversPeer(peer, peerID, idIndex) {
+			allowing[policyIdentityKey(rule.Contributor)] = true
+		}
+	}
+	return allowing
 }
 
 
@@ -56,6 +78,13 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 	// dedup key: port+endPort+protocol — TCP/53 and UDP/53 stay distinct,
 	// Name is display-only so named vs unnamed same port don't duplicate
 	seenPorts := map[string]bool{}
+	// Built across BOTH buckets before any verdict, so a narrow allow on the pod
+	// bucket outranks the same policy's catch-all deny regardless of which bucket
+	// each landed in.
+	egressPeerOf := func(rule models.Rule) string { return rule.DstID }
+	allowingPolicies := policiesAllowingPeerSpecifically(
+		append(append([]models.Rule{}, nsNodeRules.Egress.Allow...), srcNodeRules.Egress.Allow...),
+		egressPeerOf, dstNodeId, dstNsNodeId, idIndex)
 	collect := func(nodeRules models.NodeRules) {
 		for _, rule := range nodeRules.Egress.Allow {
 			switch {
@@ -66,7 +95,7 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 			// cidrCoveringInternal catches ipBlock peers whose CIDR contains the
 			// cluster pod/svc CIDR (e.g. 0.0.0.0/0): DstID never equals the
 			// workload ID but the rule semantically permits any internal pod.
-			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageAllowAll || isClusterCoveringCidr(rule.DstID, idIndex):
+			case rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageAllowAll || cidrNodeCoversPeer(rule.DstID, dstNodeId, idIndex):
 				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
 				if rule.AllPorts {
 					allowAllPorts = true
@@ -86,10 +115,20 @@ func collectToSide(nsNodeRules models.NodeRules, srcNodeRules models.NodeRules, 
 			}
 		}
 		for _, rule := range nodeRules.Egress.Deny {
+			// A catch-all deny is the policy's fallback for peers it didn't name.
+			// Same policy already allowed this peer specifically → that bucket wins.
+			if rule.Coverage == models.CoverageDenyAll && allowingPolicies[policyIdentityKey(rule.Contributor)] {
+				continue
+			}
 			// Except carve-outs (Coverage=CoverageExcept) land here with a CIDR
-			// DstID — cidrCarveOutCoversDst promotes them to explicit deny only
-			// when the except CIDR actually contains the queried dst.
-			if rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrCarveOutCoversDst(rule.DstID, dstNodeId, idIndex) {
+			// DstID — cidrNodeCoversPeer bites only when the except CIDR actually
+			// contains the queried dst. They suppress the covering allow but are
+			// not deny objects, so they get their own bucket.
+			if rule.DstID == dstNodeId || rule.DstID == dstNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrNodeCoversPeer(rule.DstID, dstNodeId, idIndex) {
+				if rule.Coverage == models.CoverageExcept {
+					verdict.CarveOutMatches = append(verdict.CarveOutMatches, toNodeRule(rule, idIndex))
+					continue
+				}
 				verdict.DenyMatches = append(verdict.DenyMatches, toNodeRule(rule, idIndex))
 			}
 		}
@@ -113,6 +152,10 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 	// dedup key: port+endPort+protocol — TCP/53 and UDP/53 stay distinct,
 	// Name is display-only so named vs unnamed same port don't duplicate
 	seenPorts := map[string]bool{}
+	ingressPeerOf := func(rule models.Rule) string { return rule.SrcID }
+	allowingPolicies := policiesAllowingPeerSpecifically(
+		append(append([]models.Rule{}, nsNodeRules.Ingress.Allow...), dstNodeRules.Ingress.Allow...),
+		ingressPeerOf, srcNodeId, srcNsNodeId, idIndex)
 	collect := func(nodeRules models.NodeRules) {
 		for _, rule := range nodeRules.Ingress.Allow {
 			switch {
@@ -122,7 +165,7 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 			// carry empty SrcID, and only allow-all means "matches any peer".
 			// cidrCoveringInternal mirrors the egress path: ingress from an
 			// ipBlock CIDR that covers the pod/svc CIDR admits any internal src.
-			case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageAllowAll || isClusterCoveringCidr(rule.SrcID, idIndex):
+			case rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageAllowAll || cidrNodeCoversPeer(rule.SrcID, srcNodeId, idIndex):
 				verdict.AllowMatches = append(verdict.AllowMatches, toNodeRule(rule, idIndex))
 				if rule.AllPorts {
 					allowAllPorts = true
@@ -142,7 +185,14 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 			}
 		}
 		for _, rule := range nodeRules.Ingress.Deny {
-			if rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrCarveOutCoversDst(rule.SrcID, srcNodeId, idIndex) {
+			if rule.Coverage == models.CoverageDenyAll && allowingPolicies[policyIdentityKey(rule.Contributor)] {
+				continue
+			}
+			if rule.SrcID == srcNodeId || rule.SrcID == srcNsNodeId || rule.Coverage == models.CoverageDenyAll || cidrNodeCoversPeer(rule.SrcID, srcNodeId, idIndex) {
+				if rule.Coverage == models.CoverageExcept {
+					verdict.CarveOutMatches = append(verdict.CarveOutMatches, toNodeRule(rule, idIndex))
+					continue
+				}
 				verdict.DenyMatches = append(verdict.DenyMatches, toNodeRule(rule, idIndex))
 			}
 		}
@@ -158,12 +208,18 @@ func collectFromSide(nsNodeRules models.NodeRules, dstNodeRules models.NodeRules
 
 // decideDirectionVerdict derives the reason for one direction from which slices
 // are populated. Order is precedence, most-specific first: explicit deny wins,
-// then an allow to this peer permits, then "allows elsewhere" (locked but not
-// for us), then a bare deny-all marker (genuine default-deny), else nothing
-// governs.
+// then an except carve-out (still blocks, but names no deny object), then an
+// allow to this peer permits, then "allows elsewhere" (locked but not for us),
+// then a bare deny-all marker (genuine default-deny), else nothing governs.
+// Carve-outs must outrank AllowMatches — the 0.0.0.0/0 allow they punch a hole
+// in also matches the peer, and letting it win would report an excluded range
+// as reachable.
 func decideDirectionVerdict(verdict DirectionVerdict) (DirectionReason, []models.PolicyRef) {
 	if len(verdict.DenyMatches) != 0 {
 		return ReasonExplicitDeny, dedupContributors(verdict.DenyMatches)
+	}
+	if len(verdict.CarveOutMatches) != 0 {
+		return ReasonCarvedOut, dedupContributors(verdict.CarveOutMatches)
 	}
 	if len(verdict.AllowMatches) != 0 {
 		return ReasonPermitted, nil
@@ -258,8 +314,8 @@ func PoliciesCanReach(ctx context.Context, data *models.Cache, srcNodeId, srcNod
 		}
 
 		// A direction permits when it explicitly allows this peer or no policy
-		// governs it; the three block reasons (explicit-deny, locked-no-match,
-		// default-deny) do not. Both sides must permit for traffic to flow.
+		// governs it; every block reason (explicit-deny, carved-out,
+		// locked-no-match, default-deny) does not. Both sides must permit.
 		egressOK := false
 		if egressEval.Reason == ReasonPermitted || egressEval.Reason == ReasonNoOpinion {
 			egressOK = true

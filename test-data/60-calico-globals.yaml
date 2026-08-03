@@ -1,0 +1,92 @@
+# Calico GlobalNetworkPolicy tier — cluster-scoped egress guardrails demoed
+# on top of the existing per-namespace k8s + istio stories. GNPs render as a
+# separate engine ("calico") with their own edges, badges, and precedence.
+#
+# Three policies, one flat "default" tier, first-match wins by order:
+#
+#   order 100  egress-enroll-full     kube-system + analytics → full egress
+#                                     (infra/observability exempt from lockdown)
+#   order 500  egress-https-only      storefront → 443/TCP anywhere only
+#                                     (public tier: outbound HTTPS, nothing else)
+#   order 1000 egress-cluster-only    every workload → pod + service CIDR only
+#                                     (baseline: east-west allowed, internet denied)
+#
+# Stakeholder story:
+#   - storefront/web can still reach internet, but ONLY on 443 (order 500 wins).
+#   - payments, private-net, mesh-conflicts land on order 1000 → cluster-only.
+#     Any 0.0.0.0/0 egress from those tiers = Calico deny badge, engine=calico.
+#   - kube-system/coredns + analytics/* keep working (order 100 exempt).
+#
+# All three use Selector: all() → NamespaceWide is asserted, so the graph layer
+# collapses fan-out to a single arrow per (ns, direction). Tier + order chips
+# render on culprit rows so the operator sees why a given policy fired.
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-enroll-full
+spec:
+  order: 100
+  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name in { "kube-system", "analytics" }
+  types:
+    - Egress
+  egress:
+    - action: Allow
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-https-only
+spec:
+  order: 500
+  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name == 'storefront'
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        ports:
+          - 443
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-cluster-only
+spec:
+  order: 1000
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      destination:
+        nets:
+          - 10.42.0.0/16
+          - 10.43.0.0/16
+---
+# CIDR scope mismatch fixture. Calico allows the whole 172.20.0.0/16 corporate
+# metrics range for the whole private-net namespace (engine only supports ns
+# selectors, not workload selectors); the paired k8s NP
+# (metrics-relay-netpol) only names a single host 172.20.5.42/32 inside that
+# range. Each engine renders its own CIDR node; probing the pair
+# metrics-relay → 172.20.0.0/16 finds calico=allow, k8s=deny with a narrower
+# allow inside the aggregate → surfaces as "cidr scope mismatch". Order 900
+# so this wins over egress-cluster-only for the 172.20.0.0/16 bucket.
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-corp-metrics-lan
+spec:
+  order: 900
+  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name == 'private-net'
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      destination:
+        nets:
+          - 172.20.0.0/16

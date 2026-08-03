@@ -1,11 +1,24 @@
 package k8spolicy
 
 import (
+	"time"
+
 	"graph/internal/models"
 	"graph/internal/policy"
 	"graph/internal/utils"
 	networkingv1 "k8s.io/api/networking/v1"
 )
+
+// creationTime returns a pointer to the policy's CreationTimestamp, or nil
+// when unset — omitempty then drops it from the wire rather than marshaling
+// year 0001.
+func creationTime(np *networkingv1.NetworkPolicy) *time.Time {
+	if np.CreationTimestamp.IsZero() {
+		return nil
+	}
+	t := np.CreationTimestamp.Time
+	return &t
+}
 
 // buildAllowRulesByNs expands every NetworkPolicy into pod-level rules,
 // grouped by the policy's namespace so per-ns cache invalidation can replace
@@ -131,7 +144,7 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 		return append(out, models.Rule{
 			Direction:   models.DirectionEgress,
 			Coverage:    coverage,
-			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
+			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, CreatedAt: creationTime(networkPolicy)},
 		}), cidrNodes
 	}
 
@@ -146,13 +159,13 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 				Ports:       ports,
 				AllPorts:    len(ports) == 0,
 				AllL7:       true,
-				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex},
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex, CreatedAt: creationTime(networkPolicy)},
 			})
 			continue
 		}
 
 		for _, peer := range rule.To {
-			matchRules, peerCIDRs := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionEgress, peer, ports, index)
+			matchRules, peerCIDRs := expandPeerRules(networkPolicy, ruleIndex, models.DirectionEgress, peer, ports, index)
 			for id, node := range peerCIDRs {
 				cidrNodes[id] = node
 			}
@@ -186,7 +199,7 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 		return append(out, models.Rule{
 			Direction:   models.DirectionIngress,
 			Coverage:    coverage,
-			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace},
+			Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, CreatedAt: creationTime(networkPolicy)},
 		}), cidrNodes
 	}
 
@@ -201,13 +214,13 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 				Ports:       ports,
 				AllPorts:    len(ports) == 0,
 				AllL7:       true,
-				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex},
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex, CreatedAt: creationTime(networkPolicy)},
 			})
 			continue
 		}
 
 		for _, peer := range rule.From {
-			matchRules, peerCIDRs := expandPeerRules(networkPolicy.Name, networkPolicy.Namespace, ruleIndex, models.DirectionIngress, peer, ports, index)
+			matchRules, peerCIDRs := expandPeerRules(networkPolicy, ruleIndex, models.DirectionIngress, peer, ports, index)
 			for id, node := range peerCIDRs {
 				cidrNodes[id] = node
 			}
@@ -235,7 +248,7 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 // so the frontend can render them as carve-outs of the parent allow rather
 // than confuse them with Istio DENY policies.
 // Returned rules have SrcID empty — buildAllowRules fills it from the policy's selected workloads.
-func expandPeerRules(policyName, policyNamespace string, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) ([]models.Rule, map[string]models.WorkloadNode) {
+func expandPeerRules(networkPolicy *networkingv1.NetworkPolicy, ruleIndex int, direction models.Direction, peer networkingv1.NetworkPolicyPeer, ports []models.Port, index map[string]models.NSIndex) ([]models.Rule, map[string]models.WorkloadNode) {
 	var dstIDs []string
 	var exceptDstIDs []string
 	cidrNodes := map[string]models.WorkloadNode{}
@@ -255,7 +268,7 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 
 	// pod selector only — same namespace
 	if peer.PodSelector != nil && peer.NamespaceSelector == nil {
-		nsIndex := index[policyNamespace]
+		nsIndex := index[networkPolicy.Namespace]
 		if isCatchAll(peer.PodSelector.MatchLabels, len(peer.PodSelector.MatchExpressions)) {
 			if nsIndex.NSNode != nil {
 				dstIDs = append(dstIDs, nsIndex.NSNode.ID)
@@ -316,9 +329,10 @@ func expandPeerRules(policyName, policyNamespace string, ruleIndex int, directio
 	// metadata about policy
 	contributor := models.PolicyRef{
 		Source:    sourceName,
-		Name:      policyName,
-		Namespace: policyNamespace,
+		Name:      networkPolicy.Name,
+		Namespace: networkPolicy.Namespace,
 		RuleIndex: ruleIndex,
+		CreatedAt: creationTime(networkPolicy),
 	}
 
 	out := make([]models.Rule, 0, len(dstIDs)+len(exceptDstIDs))
