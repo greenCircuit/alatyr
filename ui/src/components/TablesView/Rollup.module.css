@@ -14,7 +14,13 @@
  * Colored border already carries hue; opacity contrast against `dimmed`
  * siblings signals selection without introducing a foreign white cue. */
 .chip.active   { background: rgba(255, 255, 255, 0.08); }
-.chip.dimmed   { opacity: 0.45; }
+/* Filter-driven deprioritization: dim opacity, hue preserved so a scanning
+ * eye still lands on the color. */
+.chip.dimmed   { opacity: 0.55; }
+/* Data-driven zero ("calico: 0") on an inactive chip. Desaturate so it reads
+ * as "present but empty". Suppressed when the chip is active — grayscale on
+ * an active pivot cancels the selection cue and reads as "disabled". */
+.chip.empty    { filter: grayscale(0.75) saturate(0.55); opacity: 0.85; }
 
 /* Aligned-grid variant — used on the status page inside a card. Long status
  * keys have different label widths (`ns-ingress-access` vs `air-gapped`),

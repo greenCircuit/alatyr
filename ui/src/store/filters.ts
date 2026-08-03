@@ -76,6 +76,19 @@ export function filteredNodes(s: FilterState): WorkloadNode[] {
   return [...baseNodes, ...extraNodes];
 }
 
+// Endpoint-independent half of the edge filter: engine, action, direction.
+// Split out so views that source edges by a different visibility rule (blanket
+// rules carry only one endpoint, so they can't pass the src+dst check) still
+// honour the same chip selections.
+export function edgeMatchesPolicyFilters(s: FilterState, edge: PolicyEdge): boolean {
+  if (!s.selectedPolicySources.has(edge.policySource)) return false;
+  if (!s.selectedActions.has(edge.action ?? 0)) return false;
+  // 'both' edges pass when either direction is selected.
+  return edge.direction === 'both'
+    ? s.selectedDirections.size !== 0
+    : s.selectedDirections.has(edge.direction);
+}
+
 export function filteredEdges(s: FilterState): PolicyEdge[] {
   const visibleWorkloadIds = new Set(filteredNodes(s).map((n) => n.id));
   const occupiedNS = new Set(
@@ -89,12 +102,7 @@ export function filteredEdges(s: FilterState): PolicyEdge[] {
     ...nsSource.map((ns) => `ns-${ns}`),
   ]);
   return s.allEdges.filter((e) => {
-    if (!s.selectedPolicySources.has(e.policySource)) return false;
-    if (!s.selectedActions.has(e.action ?? 0)) return false;
-    // 'both' edges pass when either direction is selected.
-    if (e.direction === 'both'
-      ? s.selectedDirections.size === 0
-      : !s.selectedDirections.has(e.direction)) return false;
+    if (!edgeMatchesPolicyFilters(s, e)) return false;
     if (e.level === 'namespace')
       return s.showNamespaceEdges && visibleIds.has(e.source) && visibleIds.has(e.target);
     return visibleIds.has(e.source) && visibleIds.has(e.target);

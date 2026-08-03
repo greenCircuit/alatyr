@@ -42,6 +42,8 @@ const REASON_VERB: Partial<Record<DirectionReason, string>> = {
   'default-deny':    'Add an allow rule',
   'locked-no-match': 'Widen the selector to include this peer',
   'explicit-deny':   'Remove the deny',
+  // No deny object exists — the range sits in an allow rule's except list.
+  'carved-out':      'Drop this range from the except list, or add an allow for it',
 };
 
 // Mesh conflict's fix target depends on WHICH side is broken — mirrors the two
@@ -67,7 +69,8 @@ const endpointLabel = (issue: Issue, direction: Direction): string => {
 // default-deny often has no policy ref to point at (the block is absence of a
 // rule), and we still want to surface it as a finding, not hide it.
 const isBlockReason = (reason?: DirectionReason): boolean =>
-  reason === 'default-deny' || reason === 'locked-no-match' || reason === 'explicit-deny';
+  reason === 'default-deny' || reason === 'locked-no-match' ||
+  reason === 'explicit-deny' || reason === 'carved-out';
 
 // Clickable policy chip — name badge opens the policy in the detail panel; the
 // adjacent YAML button jumps straight to the raw manifest drawer (one-click,
@@ -110,7 +113,7 @@ function PolicyChip({ policy, onOpen, showEngine }: {
   );
 }
 
-function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines, layering, meshConflict, srcMembership, dstMembership, transportBlocked, onOpen }: {
+function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines, layering, cidrScope, meshConflict, srcMembership, dstMembership, transportBlocked, onOpen }: {
   direction: Direction;
   culprits:  PolicyRef[];
   allowed:   PolicyRef[];
@@ -118,6 +121,10 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
   endpoint:  string;
   engines:   string[];
   layering:  boolean;
+  // CIDR scope mismatch: two engines named overlapping ranges, one strictly
+  // inside the other. Reason chip would say "locked-no-match", which is true of
+  // the aggregate but hides that a narrower allow exists.
+  cidrScope: boolean;
   // Mesh conflict has no DirectionReason (mTLS denies aren't a policy-engine
   // block reason) — both endpoints' membership carries the cause instead, so
   // the row can show src → dst mesh status instead of a generic reason chip.
@@ -167,7 +174,7 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
       {permitted ? (
         // Satisfied side — green check + the policy that already admits this peer.
         <>
-          <span className={`${s.body} text-allow`} style={{ fontWeight: 600 }}>
+          <span className={`${s.body} ${s.reasonEmph} text-allow`}>
             ✓ allowed{allowed.length === 0 && ' (no policy governs)'}
           </span>
           {allowed.length > 0 && <span className={`${s.smallText} ${s.dim}`}>by</span>}
@@ -189,7 +196,7 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
           </span>
           {/* Lead-in renders unconditionally — a bare "narrowed by <chip>" with
               no framing reads like a finding. Chips only when refs exist. */}
-          <span className={`${s.body} text-allow`} style={{ fontWeight: 600 }}>
+          <span className={`${s.body} ${s.reasonEmph} text-allow`}>
             ✓ ns-level allow verified at pod level
           </span>
           {allowed.map((policy) => (
@@ -198,6 +205,25 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
           <span className={`${s.smallText} ${s.dim}`}>narrowed to specific pods by</span>
           {culprits.map((culprit) => (
             <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} />
+          ))}
+        </>
+      ) : cidrScope ? (
+        // Reads broad-first: who granted the range, then who narrowed it. Both
+        // halves live in different engines, so without the allowed chips the row
+        // names one policy and the operator can't tell what it disagrees with.
+        <>
+          <span className={`${s.reasonChip} ${s.reasonWarn}`}>Scope mismatch</span>
+          {allowed.length > 0 && (
+            <>
+              <span className={`${s.smallText} ${s.dim}`}>range allowed by</span>
+              {allowed.map((policy) => (
+                <PolicyChip key={`${policy.source}|${policy.namespace}|${policy.name}`} policy={policy} onOpen={onOpen} showEngine />
+              ))}
+            </>
+          )}
+          <span className={`${s.smallText} ${s.dim}`}>narrowed by</span>
+          {culprits.map((culprit) => (
+            <PolicyChip key={`${culprit.source}|${culprit.namespace}|${culprit.name}`} policy={culprit} onOpen={onOpen} showEngine />
           ))}
         </>
       ) : meshConflict ? (
@@ -324,6 +350,7 @@ export function CulpritActions({ issue, onOpen }: {
   const egressAllowed  = issue.egressAllowed ?? [];
   const ingressAllowed = issue.ingressAllowed ?? [];
   const layering = issue.type === 'partial access';
+  const cidrScope = issue.type === 'cidr scope mismatch';
   const meshConflict = issue.type === 'mesh conflict';
   const transportBlocked = issue.type === 'mesh transport blocked';
   // Show a direction when it blocks (culprit/block reason) OR when it's the
@@ -344,6 +371,11 @@ export function CulpritActions({ issue, onOpen }: {
   };
   return (
     <div className="d-flex flex-column gap-1 mb-2">
+      {/* Scope-mismatch rows carry the two ranges in the message — the table only
+          shows it as a tooltip, and the exact masks ARE the finding here.
+          Body weight + mono so the masks read louder than the chip labeling
+          them; dim+smallText inverted the hierarchy. */}
+      {cidrScope && <div className={`${s.body} ${s.mono}`}>{issue.message}</div>}
       {showEgress && (
         <CulpritGroup
           direction="egress"
@@ -353,6 +385,7 @@ export function CulpritActions({ issue, onOpen }: {
           endpoint={endpointLabel(issue, 'egress')}
           engines={groupEngines(egress.length > 0 ? egress : egressAllowed)}
           layering={layering}
+          cidrScope={cidrScope}
           meshConflict={meshConflict}
           srcMembership={issue.srcMembership}
           dstMembership={issue.dstMembership}
@@ -369,6 +402,7 @@ export function CulpritActions({ issue, onOpen }: {
           endpoint={endpointLabel(issue, 'ingress')}
           engines={groupEngines(ingress.length > 0 ? ingress : ingressAllowed)}
           layering={layering}
+          cidrScope={cidrScope}
           meshConflict={meshConflict}
           srcMembership={issue.srcMembership}
           dstMembership={issue.dstMembership}

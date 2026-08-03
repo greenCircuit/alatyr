@@ -30,6 +30,7 @@ function isBlocking(reason: DirectionReason): boolean {
 // after. Mesh sits between — it's a real block but a separate axis.
 const BLOCK_RANK: Record<string, number> = {
   'explicit-deny': 0,
+  'carved-out': 2,
   'locked-no-match': 2,
   'default-deny': 3,
 };

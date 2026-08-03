@@ -39,6 +39,7 @@ func generatePolicyStatusAssignment(nodes []models.WorkloadNode, policies []*net
 				Namespace: networkPolicy.Namespace,
 				Action:    "allow", // k8s NetworkPolicies are always allow-style (default-deny is structural)
 				Direction: networkPolicyDirection(networkPolicy),
+				CreatedAt: creationTime(networkPolicy),
 			})
 		}
 		nodePolicies[node.ID] = refs

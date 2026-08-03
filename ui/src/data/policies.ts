@@ -130,6 +130,8 @@ export interface PolicyRef {
   ruleIndex:  number;
   action?:    'allow' | 'deny';    // set for selecting-policy refs, omitted for rule contributors
   direction?: string;    // "ingress" | "egress" | "both"
+  order?:     number | null;       // Calico precedence; nil = unset. Absent for non-Calico engines.
+  tier?:      string;              // Calico tier name (defaults "default"). Absent for non-Calico engines.
 }
 
 // Labels that caused a workload to be selected on one side of a rule.
@@ -350,7 +352,8 @@ export type IssueType =
   | 'policy conflict'
   | 'partial access'
   | 'mesh conflict'
-  | 'node lockout';
+  | 'node lockout'
+  | 'cidr scope mismatch';
 
 // Issue mirrors models.Issue — one whole-cluster conflict finding. Edge-scoped
 // issues (policy conflict) carry src+dst so the UI can open the reachability
@@ -413,7 +416,8 @@ export function issueCulprits(issue: Issue): (PolicyRef & { direction: string })
 const refKey = (ref: PolicyRef) => `${ref.source}|${ref.namespace}|${ref.name}`;
 const nodeKey = (node?: WorkloadNode) => (node ? `${node.namespace ?? ''}/${node.label ?? node.id}` : '');
 const isBlockReason = (reason?: DirectionReason): boolean =>
-  reason === 'default-deny' || reason === 'locked-no-match' || reason === 'explicit-deny';
+  reason === 'default-deny' || reason === 'locked-no-match' ||
+  reason === 'explicit-deny' || reason === 'carved-out';
 
 function dedupRefs(refs: PolicyRef[]): PolicyRef[] {
   const seen = new Set<string>();
@@ -473,6 +477,7 @@ export function mergeIssuesByPair(issues: Issue[]): Issue[] {
 export type DirectionReason =
   | 'permitted'
   | 'explicit-deny'
+  | 'carved-out'
   | 'default-deny'
   | 'locked-no-match'
   | 'no-opinion';
@@ -482,6 +487,7 @@ export interface DirectionVerdict {
   allowOtherMatches?: NodeRule[];  // near-miss: allowed elsewhere, not this peer
   allowMatches?:      NodeRule[];  // permits this peer
   denyMatches?:       NodeRule[];  // blocks this peer
+  carveOutMatches?:   NodeRule[];  // ipBlock.except holes — block, but no deny object
   reason:             DirectionReason;
   culprits?:          PolicyRef[]; // deduped policies to edit
 }
@@ -527,6 +533,11 @@ export interface PolicyEdge {
   // Blanket-posture flag from the backend rule. "allow all" = the rule places
   // no peer restriction; target is empty by design, not a resolution failure.
   coverage?: Coverage;
+  // >0 → the arrow ends on a namespace node but stands in for that many
+  // per-workload rules a cluster-wide policy (Calico all()) produced identically
+  // for every workload in the namespace. level stays 'workload': the fact is
+  // per-workload, only the drawing aggregates.
+  aggregatedFrom?: number;
 }
 
 // Short edge-label summary of L7 matchers. Returns null when no L7 data so

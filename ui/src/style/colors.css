@@ -16,9 +16,10 @@
     --color-role-dst: #ffb54e;
 
     /* Engine hues — panel EngineChip + graph edge stroke share vocab. */
-    --color-engine-k8s:   #326ce5;
-    --color-engine-istio: #b16fdf;
-    --color-engine-mesh:  #14b8a6;
+    --color-engine-k8s:    #326ce5;
+    --color-engine-istio:  #b16fdf;
+    --color-engine-mesh:   #14b8a6;
+    --color-engine-calico: #ff7b1c;
 
     /* Semantic — verdict + finding severity in panels. */
     --color-allow:   #2f9e44;
@@ -73,9 +74,10 @@
 .bg-role-src   { background: var(--color-role-src); }
 .bg-role-dst   { background: var(--color-role-dst); }
 
-.bg-engine-k8s   { background: var(--color-engine-k8s); }
-.bg-engine-istio { background: var(--color-engine-istio); }
-.bg-engine-mesh  { background: var(--color-engine-mesh); }
+.bg-engine-k8s    { background: var(--color-engine-k8s); }
+.bg-engine-istio  { background: var(--color-engine-istio); }
+.bg-engine-mesh   { background: var(--color-engine-mesh); }
+.bg-engine-calico { background: var(--color-engine-calico); }
 
 .bg-allow   { background: var(--color-allow); }
 .bg-deny    { background: var(--color-deny); }
@@ -97,9 +99,10 @@
 .text-role-src { color: var(--color-role-src); }
 .text-role-dst { color: var(--color-role-dst); }
 
-.text-engine-k8s   { color: var(--color-engine-k8s); }
-.text-engine-istio { color: var(--color-engine-istio); }
-.text-engine-mesh  { color: var(--color-engine-mesh); }
+.text-engine-k8s    { color: var(--color-engine-k8s); }
+.text-engine-istio  { color: var(--color-engine-istio); }
+.text-engine-mesh   { color: var(--color-engine-mesh); }
+.text-engine-calico { color: var(--color-engine-calico); }
 
 .text-allow   { color: var(--color-allow); }
 .text-deny    { color: var(--color-deny); }

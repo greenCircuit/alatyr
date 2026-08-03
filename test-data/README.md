@@ -40,7 +40,7 @@ Every status key the UI can render is exercised by at least one workload:
 | `internet-ingress` | `storefront/web`, `storefront/checkout`, `analytics/ingest` |
 | `internet-egress` | `storefront/web`, `payments/fraud-check`, `payments/payout-worker`, `private-net/telemetry-shipper` (with `ipBlock.except` carving out pod+svc CIDR) |
 | `lan-ingress` | `private-net/ldap-proxy` |
-| `lan-egress` | `private-net/backup-agent` |
+| `lan-egress` | `private-net/backup-agent`, `private-net/metrics-relay` |
 | `lan-full` | `payments/ledger-db`, `private-net/vpn-gw` |
 | `air-gapped` | `payments/payments-api`, `payments/webhook-receiver`, `storefront/orders-api`, `storefront/sessions`, `analytics/warehouse` |
 | `cross-namespace` | `storefront/web` (→ payments, the one rendered allow arrow); `storefront/orders-api` + `payments/payments-api` badge-only (egress target ns not in demo) |
@@ -48,6 +48,14 @@ Every status key the UI can render is exercised by at least one workload:
 | `ns-egress-access` | `storefront/checkout`, `payments/webhook-receiver` |
 | `ns-full-access` | `storefront/redis-cache` |
 | `l7-applied` | `storefront/orders-api`, `payments/payments-api`, `payments/webhook-receiver` |
+
+## Cross-engine issue fixtures
+
+- **`cidr scope mismatch`** — `private-net/metrics-relay`: Calico GNP
+  `egress-corp-metrics-lan` allows the whole `172.20.0.0/16`; paired k8s NP
+  `metrics-relay-netpol` only names `172.20.5.42/32`. The pair against the
+  broader aggregate node surfaces one `cidr scope mismatch` issue naming both
+  masks.
 
 Not covered by fixtures alone:
 

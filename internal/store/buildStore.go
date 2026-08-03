@@ -13,6 +13,7 @@ import (
 	meshistio "graph/internal/mesh/istio"
 	"graph/internal/models"
 	"graph/internal/policy"
+	"graph/internal/policy/calico"
 	"graph/internal/policy/istio"
 	"graph/internal/policy/k8spolicy"
 )
@@ -46,6 +47,7 @@ func defaultSources(client k8s.KubernetesClient, logger *slog.Logger) []policy.P
 	return []policy.PolicySource{
 		k8spolicy.New(client, logger),
 		istio.New(client, logger),
+		calico.New(client, logger),
 	}
 }
 

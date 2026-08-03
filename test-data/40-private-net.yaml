@@ -7,6 +7,10 @@
 #   192.168.0.0/16  ─▶ ldap-proxy          lan-ingress  (directory reached from the LAN)
 #   backup-agent    ─▶ 172.16.0.0/12       lan-egress   (ships backups off to private DC)
 #   telemetry-shipper ─▶ 0.0.0.0/0  except pod+svc CIDR internet-egress with cluster loopback carved out
+#   metrics-relay   ─▶ 172.20.5.42/32      lan-egress   (paired with calico GNP allowing the whole
+#                                                       172.20.0.0/16 corp metrics range → renders
+#                                                       "cidr scope mismatch" issue: engines disagree
+#                                                       on breadth for the same aggregate)
 ---
 apiVersion: v1
 kind: Namespace
@@ -94,6 +98,25 @@ spec:
       containers:
         - name: telemetry-shipper
           image: registry.example.com/netops/telemetry-shipper:3.2.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-relay
+  namespace: private-net
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-relay
+  template:
+    metadata:
+      labels:
+        app: metrics-relay
+    spec:
+      containers:
+        - name: metrics-relay
+          image: registry.example.com/netops/metrics-relay:3.2.0
 ---
 # vpn-gw: terminates tunnels from the corporate network and dials back into it.
 # Ingress + egress both to the private 10.0.0.0/8 range. -> lan-full
@@ -204,3 +227,30 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+---
+# metrics-relay: ships fleet metrics off to one host in the corporate metrics
+# range. k8s NP only names the single host 172.20.5.42/32; the paired Calico
+# GNP egress-corp-metrics-lan (60-calico-globals.yaml) allows the whole
+# 172.20.0.0/16 range. Two engines, two CIDR nodes (a /32 from k8s and a /16
+# from calico); the pair src → 172.20.0.0/16 fires as "cidr scope mismatch"
+# because calico allows the aggregate but k8s only permits a strict subset.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metrics-relay-netpol
+  namespace: private-net
+spec:
+  podSelector:
+    matchLabels:
+      app: metrics-relay
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.20.5.42/32
+      ports:
+        - protocol: TCP
+          port: 9090

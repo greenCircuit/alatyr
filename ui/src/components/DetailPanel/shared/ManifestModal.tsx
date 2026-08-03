@@ -200,8 +200,16 @@ function ManifestModal({ kind, namespace, name, highlight, highlightPeer, onClos
     <div className={s.manifestDrawer}>
       <div className={`d-flex justify-content-between align-items-start p-3 ${s.drawerHeader}`}>
         <div className="d-flex flex-column gap-1">
-          <span className={s.section}>{headerKind}</span>
-          <span className={`${s.dim} ${s.body} ${s.mono}`}>{namespace}/{name}</span>
+          <span className={s.section}>
+            {headerKind}
+            {/* Qualify scope inline so the name row below is copy-paste-safe
+                for `kubectl get`. Previous form `cluster-scoped/name` reused
+                the namespace slot and misled operators into `-n cluster-scoped`. */}
+            {!namespace && <span className={s.dim}> · cluster-scoped</span>}
+          </span>
+          <span className={`${s.dim} ${s.body} ${s.mono}`}>
+            {namespace ? `${namespace}/${name}` : name}
+          </span>
         </div>
         <div className="d-flex gap-2 align-items-center">
           {state.phase === 'ready' && (

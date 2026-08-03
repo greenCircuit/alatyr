@@ -14,6 +14,11 @@ export interface EngineMeta {
 const ENGINE_META: Record<string, EngineMeta> = {
   k8s:   { label: 'Kubernetes NetworkPolicy', color: '#326ce5' },
   istio: { label: 'Istio AuthorizationPolicy', color: '#466bb0' },
+  // Cluster-scoped GlobalNetworkPolicy — no namespace on its edges. Short text
+  // says "global" because that scope is the thing operators need to notice.
+  // color must match --color-engine-calico in style/colors.css (SVG fill attr
+  // can't reliably resolve CSS vars; raw hex here mirrors the token).
+  calico: { label: 'Calico GlobalNetworkPolicy', color: '#ff7b1c', short: 'calico global' },
   // Manifest-kind key (see get-manifest.go), not a PolicySource — mesh conflict
   // culprits point at a PeerAuthentication, not an Authz/NetworkPolicy engine.
   // Same brand color + logo as istio (it's an Istio CRD), short text spells

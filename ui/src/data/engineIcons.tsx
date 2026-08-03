@@ -37,6 +37,27 @@ function IstioLogo({ color, size }: LogoProps) {
   );
 }
 
+// Calico: a paw print — four toes over a pad, nodding at the project's cat
+// mark without redrawing the leopard head (unreadable at 14px). Toe spread
+// kept tight and pad kept fat so the glyph reads as one dense mass at size=10
+// where the k8s heptagon and Istio sail are single-unit reads.
+function CalicoLogo({ color, size }: LogoProps) {
+  const toes = [
+    { cx: 4.3, cy: 5.4 },
+    { cx: 6.9, cy: 3.7 },
+    { cx: 9.1, cy: 3.7 },
+    { cx: 11.7, cy: 5.4 },
+  ];
+  return (
+    <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
+      {toes.map(({ cx, cy }) => (
+        <ellipse key={cx} cx={cx} cy={cy} rx={1.9} ry={2.4} fill={color} />
+      ))}
+      <path d="M8 14.8c-3 0-5-1.55-5-3.6C3 8.6 5.4 6.9 8 6.9s5 1.7 5 4.3c0 2.05-2 3.6-5 3.6Z" fill={color} />
+    </svg>
+  );
+}
+
 // Unknown engine: brand-tinted rounded square with the first letter.
 function FallbackLogo({ color, size, letter }: LogoProps & { letter: string }) {
   return (
@@ -54,6 +75,7 @@ export function EngineLogo({ engine, size = 14 }: { engine: string; size?: numbe
   if (engine === 'k8s') return <K8sLogo color={color} size={size} />;
   // pa (PeerAuthentication) is an Istio CRD, not a separate engine — same sail.
   if (engine === 'istio' || engine === 'pa') return <IstioLogo color={color} size={size} />;
+  if (engine === 'calico') return <CalicoLogo color={color} size={size} />;
   return <FallbackLogo color={color} size={size} letter={engine.charAt(0).toUpperCase()} />;
 }
 

@@ -1,0 +1,7 @@
+version: "2"
+linters:
+  exclusions:
+    paths:
+      - internal/thirdparty
+      - ui/node_modules
+      - node_modules

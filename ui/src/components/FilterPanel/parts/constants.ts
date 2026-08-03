@@ -15,6 +15,10 @@ export const TYPE_SEVERITY: Record<IssueType, Severity> = {
   'node lockout':           'high',
   'mesh policy':            'info',
   'no dns':                 'warning',
+  // Warning, not high: blast radius is one address slice, and this shape is
+  // common wherever Calico global rules sit alongside per-ns ipBlock policies —
+  // at 'high' it would drown the real deny-vs-allow conflicts.
+  'cidr scope mismatch':    'warning',
 };
 
 // Three-tier fold of the six-value severity scale — the triage granularity
@@ -38,6 +42,7 @@ export const ISSUE_TYPE_LABEL: Record<IssueType, string> = {
   'partial access':         'Partial access',
   'mesh conflict':          'Mesh conflict',
   'node lockout':           'Node lockout',
+  'cidr scope mismatch':    'CIDR scope mismatch',
 };
 
 export const ALL_ISSUE_TYPES: IssueType[] = [
@@ -45,6 +50,7 @@ export const ALL_ISSUE_TYPES: IssueType[] = [
   'mesh conflict',
   'mesh transport blocked',
   'node lockout',
+  'cidr scope mismatch',
   'mesh policy',
   'no dns',
   'partial access',

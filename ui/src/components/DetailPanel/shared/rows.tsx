@@ -548,10 +548,28 @@ export function PolicyRefRow({ policyRef }: { policyRef: PolicyRef }) {
         <span className={`${s.section} text-break ${s.flexFill}`}>{policyRef.name}</span>
         <EngineBadge engine={policyRef.source} />
         <span className={s.dim}>{policyRef.namespace}</span>
+        <CalicoPrecedenceChip tier={policyRef.tier} order={policyRef.order} />
         {policyRef.direction && <DirectionArrow direction={policyRef.direction} />}
         <ManifestButton kind={policyRef.source} namespace={policyRef.namespace} name={policyRef.name} />
       </div>
     </div>
+  );
+}
+
+// Calico first-match precedence chip. Tier + order together determine which
+// policy wins when two select the same workload. Hidden for engines that don't
+// emit these fields (k8s, istio) so the row stays uncluttered.
+function CalicoPrecedenceChip({ tier, order }: { tier?: string; order?: number | null }) {
+  if (!tier && order == null) return null;
+  const orderText = order == null ? 'no order' : `order ${order}`;
+  const tierText = tier || 'default';
+  return (
+    <span
+      className={s.countChip}
+      title={`Calico precedence: tier=${tierText}, ${orderText}. Lower order wins within a tier; unset order sorts last.`}
+    >
+      {tierText} · {orderText}
+    </span>
   );
 }
 

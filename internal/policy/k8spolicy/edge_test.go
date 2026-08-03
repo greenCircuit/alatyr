@@ -12,6 +12,15 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// testPolicy builds a minimal *networkingv1.NetworkPolicy with just name +
+// namespace set. Used by expandPeerRules call sites that only need the
+// identity strings — timestamps, spec fields not exercised here.
+func testPolicy(name, namespace string) *networkingv1.NetworkPolicy {
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+	}
+}
+
 // buildFixtureNSIndex constructs an NSIndex for one namespace's fixture data.
 // Mirrors graph.buildWorkloadIndex but inlined here to avoid a graph→k8spolicy
 // cycle. Picks up the namespace node from the fixture if present.
@@ -287,7 +296,7 @@ func TestGenerateTuples_NSOnly_CatchAll(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		NamespaceSelector: &metav1.LabelSelector{}, // empty = catch-all → skip
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if tuples != nil {
 		t.Errorf("catch-all namespace selector should return nil, got %v", tuples)
 	}
@@ -299,7 +308,7 @@ func TestGenerateTuples_NSOnly_Match(t *testing.T) {
 			MatchLabels: map[string]string{"kubernetes.io/metadata.name": "default"},
 		},
 	}
-	tuples, _ := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "src"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
@@ -314,7 +323,7 @@ func TestGenerateTuples_NSOnly_NoMatch(t *testing.T) {
 			MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"},
 		},
 	}
-	tuples, _ := expandPeerRules("pol", "src", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "src"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 0 {
 		t.Errorf("non-matching namespace selector should produce no tuples, got %d", len(tuples))
 	}
@@ -326,7 +335,7 @@ func TestGenerateTuples_PodOnly_CatchAll(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		PodSelector: &metav1.LabelSelector{}, // empty = catch-all → collapse to NS node
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodesWithNS()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple to NS node, got %d", len(tuples))
 	}
@@ -348,7 +357,7 @@ func TestGenerateTuples_BothSelectors_SpecificNSSpecificPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"}},
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
@@ -368,7 +377,7 @@ func TestGenerateTuples_BothSelectors_CatchAllNSSpecificPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 		NamespaceSelector: &metav1.LabelSelector{}, // catch-all NS
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 2 {
 		t.Fatalf("expected 1 tuple per NS with matching pod (2 total), got %d", len(tuples))
 	}
@@ -385,7 +394,7 @@ func TestGenerateTuples_BothSelectors_SpecificNSCatchAllPod(t *testing.T) {
 		PodSelector:       &metav1.LabelSelector{}, // catch-all pod → use NS node
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "other"}},
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, index)
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, index)
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 NS-level tuple, got %d", len(tuples))
 	}
@@ -400,7 +409,7 @@ func TestGenerateTuples_IPBlock(t *testing.T) {
 	peer := networkingv1.NetworkPolicyPeer{
 		IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"},
 	}
-	tuples, cidrNodes := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	tuples, cidrNodes := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 1 {
 		t.Fatalf("expected 1 tuple, got %d", len(tuples))
 	}
@@ -429,7 +438,7 @@ func TestGenerateTuples_IPBlock_Except_EmitsDenyRules(t *testing.T) {
 			Except: []string{"10.1.0.0/16", "10.2.0.0/16"},
 		},
 	}
-	tuples, cidrNodes := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	tuples, cidrNodes := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 3 {
 		t.Fatalf("want 1 allow + 2 deny (3 total), got %d: %+v", len(tuples), tuples)
 	}
@@ -474,7 +483,7 @@ func TestGenerateTuples_IPBlock_Except_SelfNullifying(t *testing.T) {
 			Except: []string{"10.0.0.0/8"},
 		},
 	}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, nil, buildTestIndex(defaultTestNodes()))
 	if len(tuples) != 2 {
 		t.Fatalf("want 1 allow + 1 deny on same CIDR, got %d", len(tuples))
 	}
@@ -639,7 +648,7 @@ func TestGenerateTuples_PortsPropagated(t *testing.T) {
 		PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
 	}
 	ports := []models.Port{{Port: 8080, Protocol: "TCP"}}
-	tuples, _ := expandPeerRules("pol", "default", 0, models.DirectionEgress, peer, ports, buildTestIndex(defaultTestNodes()))
+	tuples, _ := expandPeerRules(testPolicy("pol", "default"), 0, models.DirectionEgress, peer, ports, buildTestIndex(defaultTestNodes()))
 	if len(tuples) == 0 {
 		t.Fatal("expected at least 1 tuple")
 	}

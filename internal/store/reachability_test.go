@@ -649,8 +649,13 @@ func TestIsNodesReachable_CIDRExceptCarveOutOverridesCovering(t *testing.T) {
 		t.Errorf("verdict: want deny (except carves out pod CIDR), got %q (reason=%q)", got.Verdict, got.Reason)
 	}
 	egress := got.Engines["k8s"].Egress
-	if egress.Reason != ReasonExplicitDeny {
-		t.Errorf("egress reason: want %q (except denies internal traffic), got %q", ReasonExplicitDeny, egress.Reason)
+	// Carved-out, not explicit-deny: the operator wrote an except list, not a
+	// deny object, so the reason must not send them hunting for one to delete.
+	if egress.Reason != ReasonCarvedOut {
+		t.Errorf("egress reason: want %q (except list, no deny object), got %q", ReasonCarvedOut, egress.Reason)
+	}
+	if len(egress.DenyMatches) != 0 {
+		t.Errorf("egress deny matches: want 0 (carve-outs are not denies), got %d", len(egress.DenyMatches))
 	}
 }
 
@@ -660,9 +665,9 @@ func TestIsNodesReachable_CIDRExceptCarveOutOverridesCovering(t *testing.T) {
 // two internal pods must resolve to deny — the covering allow is fully
 // carved out for internal traffic by the two except rules. The engine emits
 // each except as ActionDeny + Coverage=CoverageExcept + DstID="cidr:<except>"
-// (buildRules.go expandPeerRules), and isClusterCoveringCidr must promote
-// both except rules into DenyMatches so decideDirectionVerdict picks
-// ReasonExplicitDeny over the ReasonPermitted from the covering allow.
+// (buildRules.go expandPeerRules), and both must land in CarveOutMatches so
+// decideDirectionVerdict picks ReasonCarvedOut over the ReasonPermitted the
+// covering allow would otherwise produce.
 func TestIsNodesReachable_AllowInternetExceptPodAndSvcCIDR(t *testing.T) {
 	installCIDRConfig(t)
 
@@ -689,11 +694,11 @@ func TestIsNodesReachable_AllowInternetExceptPodAndSvcCIDR(t *testing.T) {
 		t.Errorf("verdict: want deny (except carves out pod+svc CIDR), got %q (reason=%q)", got.Verdict, got.Reason)
 	}
 	engine := got.Engines["k8s"]
-	if engine.Egress.Reason != ReasonExplicitDeny {
-		t.Errorf("egress reason: want %q, got %q", ReasonExplicitDeny, engine.Egress.Reason)
+	if engine.Egress.Reason != ReasonCarvedOut {
+		t.Errorf("egress reason: want %q, got %q", ReasonCarvedOut, engine.Egress.Reason)
 	}
-	if len(engine.Egress.DenyMatches) != 2 {
-		t.Errorf("egress deny matches: want 2 (pod + svc except), got %d", len(engine.Egress.DenyMatches))
+	if len(engine.Egress.CarveOutMatches) != 2 {
+		t.Errorf("egress carve-out matches: want 2 (pod + svc except), got %d", len(engine.Egress.CarveOutMatches))
 	}
 }
 
@@ -758,5 +763,62 @@ func TestIsNodesReachable_AllowBroaderThanPodCIDR(t *testing.T) {
 	}
 	if reason := got.Engines["k8s"].Egress.Reason; reason != ReasonPermitted {
 		t.Errorf("egress reason: want %q, got %q", ReasonPermitted, reason)
+	}
+}
+
+// The reported Calico shape: one GlobalNetworkPolicy allowing the pod/svc/LAN
+// nets then denying everything else. The engine buckets it into narrow allows
+// (per CIDR) plus the policy's catch-all deny for the 0.0.0.0/0 bucket — both
+// real rules from the SAME policy. Covers, in one scenario:
+//   - dst is an internal pod (IP inside the allowed pod CIDR) → permitted; the
+//     policy's own catch-all deny is its fallback for other peers, not this one
+//   - dst is the WAN CIDR node → the same policy blocks: no allowed net contains
+//     0.0.0.0/0, so the catch-all deny stands (exfil channel stays shut)
+//   - a LAN-only allow must never speak for an internal pod
+func TestIsNodesReachable_CalicoAllowInternalNetsThenDenyAll(t *testing.T) {
+	installCIDRConfig(t)
+
+	calicoPolicy := models.PolicyRef{Source: "calico", Name: "egress-default-deny"}
+	allowNet := func(cidr string) models.Rule {
+		rule := egressToCIDR(cidr)
+		rule.Contributor = calicoPolicy
+		return rule
+	}
+	catchAllDeny := models.Rule{
+		SrcID: srcID, Direction: models.DirectionEgress, Action: models.ActionDeny,
+		Coverage: models.CoverageDenyAll, AllPorts: true, Contributor: calicoPolicy,
+	}
+	rules := []models.Rule{
+		allowNet("10.244.0.0/16"), allowNet("10.96.0.0/12"), allowNet("192.168.8.0/24"),
+		catchAllDeny, ingressFrom(srcID),
+	}
+
+	// internal pod dst: pod CIDR allow wins over the same policy's fallback deny
+	cache := buildCache("calico", rules...)
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+	if got.Verdict != "allow" {
+		t.Errorf("internal dst: want allow (pod CIDR allowed), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	if reason := got.Engines["calico"].Egress.Reason; reason != ReasonPermitted {
+		t.Errorf("internal dst egress reason: want %q, got %q", ReasonPermitted, reason)
+	}
+
+	// WAN dst: no allowed net contains 0.0.0.0/0 → catch-all deny governs
+	wanDstID := models.CIDRIDPrefix + "0.0.0.0/0"
+	wanCache := buildCache("calico", rules...)
+	wanCache.EvaluationResults["calico"].Nodes[wanDstID] = models.WorkloadNode{
+		ID: wanDstID, Label: "0.0.0.0/0", Type: models.NodeTypeCIDR, CidrType: models.CIDRWan,
+	}
+	wanCache.RebuildWorkloadIndex()
+	gotWan := PoliciesCanReach(context.Background(), wanCache, srcID, srcNs, wanDstID, "")
+	if gotWan.Verdict != "deny" {
+		t.Errorf("WAN dst: want deny (only internal nets allowed), got %q (reason=%q)", gotWan.Verdict, gotWan.Reason)
+	}
+
+	// LAN-only allow + catch-all deny: an internal pod is NOT in 192.168.8.0/24
+	lanCache := buildCache("calico", allowNet("192.168.8.0/24"), catchAllDeny, ingressFrom(srcID))
+	gotLan := PoliciesCanReach(context.Background(), lanCache, srcID, srcNs, dstID, dstNs)
+	if gotLan.Verdict != "deny" {
+		t.Errorf("LAN-only allow: want deny for internal dst, got %q (reason=%q)", gotLan.Verdict, gotLan.Reason)
 	}
 }
