@@ -4,6 +4,7 @@
 
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
+import { SeverityIcon } from './StatusIcon';
 import s from '../DetailPanel.module.css';
 
 export function StatusBadges({ keys }: { keys: StatusKey[] }) {
@@ -21,6 +22,7 @@ export function StatusBadges({ keys }: { keys: StatusKey[] }) {
             className={`${s.statusBadge}`}
             style={{ background: bg }}
           >
+            <SeverityIcon severity={cfg.severity} />
             <span className={s.statusBadgeSymbol}>{cfg.symbol}</span>
             <span>{key}</span>
           </span>

@@ -8,7 +8,7 @@
 import { useGraphStore } from '../../store/graphStore';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import type { Issue, WorkloadNode } from '../../data/policies';
-import { TYPE_SEVERITY, ISSUE_TYPE_LABEL } from '../FilterPanel/parts/constants';
+import { TYPE_SEVERITY, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from '../FilterPanel/parts/constants';
 import { EngineBadge } from '../../data/engineIcons';
 import styles from './IssuesDrawer.module.css';
 
@@ -29,12 +29,26 @@ export default function IssuesDrawer() {
   // bucketing it under Warnings would tell the operator their intentional
   // layering is a fault.
   const merged = mergeIssuesByPair(issues);
-  const blocking = merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'high');
-  const warnings = merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'warning');
-  const informational = merged.filter((issue) => {
+  // Within-bucket sort: ALL_ISSUE_TYPES defines the canonical danger-first
+  // order (blocking classes first). Same-type rows fall back to endpoint
+  // identity so repeat sessions don't reshuffle the list under the operator.
+  const typeRank = new Map(ALL_ISSUE_TYPES.map((type, index) => [type, index]));
+  const endpointKey = (issue: Issue) =>
+    issue.src && issue.dst
+      ? `${issue.src.namespace}/${issue.src.id}→${issue.dst.namespace}/${issue.dst.id}`
+      : `${issue.node?.namespace ?? ''}/${issue.node?.id ?? ''}`;
+  const sortBucket = (bucket: Issue[]) =>
+    [...bucket].sort((left, right) => {
+      const typeDelta = (typeRank.get(left.type) ?? 99) - (typeRank.get(right.type) ?? 99);
+      if (typeDelta !== 0) return typeDelta;
+      return endpointKey(left).localeCompare(endpointKey(right));
+    });
+  const blocking = sortBucket(merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'high'));
+  const warnings = sortBucket(merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'warning'));
+  const informational = sortBucket(merged.filter((issue) => {
     const severity = TYPE_SEVERITY[issue.type];
     return severity !== 'high' && severity !== 'warning';
-  });
+  }));
 
   // Edge-scoped issues (src+dst) open the reachability panel so the operator
   // sees which engine + rule broke the path. Node-scoped issues select the node.
@@ -101,14 +115,33 @@ export default function IssuesDrawer() {
       <div className={styles.header}>
         <span className={styles.title}>⚠ Issues</span>
         <div className="d-flex align-items-center gap-1">
-          {blocking.length > 0 && (
-            <span className="badge rounded-pill bg-danger">{blocking.length} blocking</span>
-          )}
-          {warnings.length > 0 && (
-            <span className="badge rounded-pill bg-warning text-dark">{warnings.length} warn</span>
-          )}
-          {informational.length > 0 && (
-            <span className="badge rounded-pill bg-info text-dark">{informational.length} info</span>
+          {(blocking.length > 0 || warnings.length > 0 || informational.length > 0) && (
+            <span
+              className={`btn btn-sm btn-dark border ${blocking.length > 0 ? 'border-danger' : 'border-secondary'} py-0 px-2 d-inline-flex align-items-center gap-2 fs-11 fw-semibold leading-tight`}
+              role="group"
+              aria-label="Issue counts by tier"
+              title={[
+                blocking.length > 0 && `${blocking.length} blocking`,
+                warnings.length > 0 && `${warnings.length} warn`,
+                informational.length > 0 && `${informational.length} info`,
+              ].filter(Boolean).join(' · ')}
+            >
+              {blocking.length > 0 && (
+                <span className="d-inline-flex align-items-center gap-1" style={{ color: SEVERITY_COLOR.high }}>
+                  <span aria-hidden="true">●</span>{blocking.length}
+                </span>
+              )}
+              {warnings.length > 0 && (
+                <span className="d-inline-flex align-items-center gap-1" style={{ color: SEVERITY_COLOR.warning }}>
+                  <span aria-hidden="true">●</span>{warnings.length}
+                </span>
+              )}
+              {informational.length > 0 && (
+                <span className="d-inline-flex align-items-center gap-1" style={{ color: SEVERITY_COLOR.info }}>
+                  <span aria-hidden="true">●</span>{informational.length}
+                </span>
+              )}
+            </span>
           )}
           <button
             type="button"

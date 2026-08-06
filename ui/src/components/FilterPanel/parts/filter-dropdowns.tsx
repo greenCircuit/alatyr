@@ -8,7 +8,7 @@ import { useGraphStore, type MeshFilterValue } from '../../../store/graphStore';
 import type { StatusKey } from '../../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../../data/policies';
 import { useOutsideClick } from './useOutsideClick';
-import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, MESH_FILTER_LABEL, MESH_FILTER_GROUPS, ALL_NODE_TYPES, NODE_TYPE_LABEL } from './constants';
+import { STATUS_LABELS, ACTION_LABEL, DIRECTION_LABEL, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, MESH_FILTER_LABEL, MESH_FILTER_GROUPS, ALL_NODE_TYPES, NODE_TYPE_LABEL, TYPE_SEVERITY, issueTier } from './constants';
 import { countIssuesByType } from '../../../store/issueIndex';
 import styles from '../FilterPanel.module.css';
 
@@ -419,28 +419,61 @@ export function IssueTypeDropdown() {
             </button>
           </div>
 
-          {ALL_ISSUE_TYPES.map((type) => {
-            const count = counts[type] ?? 0;
-            return (
-              <div key={type} className="form-check mb-1 d-flex align-items-center gap-2">
-                <input
-                  className="form-check-input m-0"
-                  type="checkbox"
-                  id={`issue-dd-${type}`}
-                  checked={selectedIssueTypes.has(type)}
-                  disabled={count === 0}
-                  onChange={() => toggleIssueType(type)}
-                />
-                <label
-                  className={`form-check-label d-flex align-items-center justify-content-between gap-2 flex-grow-1 fs-13 ${count === 0 ? 'text-secondary' : 'text-light'}`}
-                  htmlFor={`issue-dd-${type}`}
-                >
-                  <span>{ISSUE_TYPE_LABEL[type]}</span>
-                  <span className={`badge ${count === 0 ? 'bg-secondary' : 'bg-danger'}`}>{count}</span>
-                </label>
-              </div>
-            );
-          })}
+          {/* Order rows by severity tier (blocking, warning, info) then by the
+              canonical ALL_ISSUE_TYPES rank so ties stay stable. The exported
+              order isn't strictly sev-desc (e.g. `no dns`=warning sits after
+              `mesh policy`=info), which flipped rows out of tier bands here. */}
+          {[...ALL_ISSUE_TYPES]
+            .sort((left, right) => {
+              const rank = { blocking: 0, warning: 1, info: 2 };
+              const tierDelta = rank[issueTier(left)] - rank[issueTier(right)];
+              if (tierDelta !== 0) return tierDelta;
+              return ALL_ISSUE_TYPES.indexOf(left) - ALL_ISSUE_TYPES.indexOf(right);
+            })
+            .map((type) => {
+              const count = counts[type] ?? 0;
+              // Count colour tracks TYPE_SEVERITY so blocking rows read red,
+              // warnings amber, info blue — same palette the drawer + table use.
+              // Bootstrap `bg-danger` painted every count red regardless of tier,
+              // which flattened severity to a single alarm.
+              const sevColour = count === 0 ? '#495057' : SEVERITY_COLOR[TYPE_SEVERITY[type]];
+              return (
+                <div key={type} className="form-check mb-1 d-flex align-items-center gap-2">
+                  <input
+                    className="form-check-input m-0"
+                    type="checkbox"
+                    id={`issue-dd-${type}`}
+                    checked={selectedIssueTypes.has(type)}
+                    disabled={count === 0}
+                    onChange={() => toggleIssueType(type)}
+                  />
+                  <label
+                    className={`form-check-label d-flex align-items-center justify-content-between gap-2 flex-grow-1 fs-13 ${count === 0 ? 'text-secondary' : 'text-light'}`}
+                    htmlFor={`issue-dd-${type}`}
+                  >
+                    <span>{ISSUE_TYPE_LABEL[type]}</span>
+                    {/* Filled by severity: solid tinted bg + matching border,
+                        dark ink so the count stays legible against bright hues.
+                        Same read as the project's .verdictChip pattern — no
+                        Bootstrap bg-danger or dark-button shell. */}
+                    <span
+                      className="btn btn-sm py-0 px-2 d-inline-flex align-items-center fs-11 fw-semibold leading-tight"
+                      style={{
+                        pointerEvents: 'none',
+                        background:    count === 0 ? 'transparent' : sevColour,
+                        border:        `1px solid ${sevColour}`,
+                        color:         count === 0 ? sevColour : '#0b0d0f',
+                        minWidth:      28,
+                        justifyContent: 'center',
+                      }}
+                      aria-hidden="true"
+                    >
+                      {count}
+                    </span>
+                  </label>
+                </div>
+              );
+            })}
         </div>
       )}
     </div>

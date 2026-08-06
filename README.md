@@ -1,14 +1,13 @@
 # network-policy-visualizer
 
 > **A Kubernetes policy reachability & gap analyzer.**
-> Resolves what your pods can actually reach across NetworkPolicy, Istio AuthorizationPolicy, and ambient-mesh mTLS — then shows the gaps. Read-only by design, runs as a single static binary.
+> Resolves what your pods can actually reach across NetworkPolicy, Istio AuthorizationPolicy, Calico GlobalNetworkPolicy, and ambient-mesh mTLS — then shows the gaps and cross-engine conflicts. Read-only by design, runs as a single static binary.
 
 **Stop guessing what your pods can actually reach.**
 
 Policy is written per-engine and per-namespace, but reachability is *emergent*. No one can answer "can A reach B, and why?" by reading YAML in three places. This tool intersects all the layers and puts the answer on one screen.
 
-<!-- screenshot: full graph overview (existing: docs/fullGraph.png) -->
-![Full graph](docs/fullGraph.png)
+![Full graph — every workload, every policy, every engine on one canvas](docs/fullGraph.png)
 
 ---
 
@@ -19,6 +18,7 @@ Modern Kubernetes pod-to-pod security is a layer cake, and the layers do not tal
 - **K8s NetworkPolicy** — L3/L4. Default-open until something selects you, then default-deny in the locked direction.
 - **Istio AuthorizationPolicy** — L4 + L7, ALLOW + DENY, ingress-only. Ignored entirely if the workload is not in the mesh.
 - **Istio ambient mesh** — ztunnel handles L4 + mTLS, but only for pods labeled `istio.io/dataplane-mode: ambient`. mTLS posture comes from `PeerAuthentication` with a global → namespace → workload precedence chain.
+- **Calico `GlobalNetworkPolicy`** — cluster-scoped, tiered, ordered first-match. Cluster-wide `Pass` / `Allow` / `Deny` verdicts override or shadow namespace-scoped rules. Nothing in `kubectl get networkpolicies` even hints these exist.
 
 Each layer is hard to reason about alone. Stacked, the failure modes multiply:
 
@@ -48,38 +48,63 @@ Reading three layers of YAML in three languages and intersecting them in your he
 
 ### The graph — every policy, every engine, on one canvas
 
-Live nodes for every pod, cronjob, and namespace. Edges for everything each policy permits or denies, **tagged by engine** so k8s and Istio render as separate edges between the same pair. Immediately see when one engine allows what another blocks.
+Live nodes for every pod, cronjob, and namespace. Edges for everything each policy permits or denies, **tagged by engine** (k8s NetworkPolicy, Istio AuthorizationPolicy, Calico GlobalNetworkPolicy) so each engine renders as its own edge between the same pair. Immediately see when one engine allows what another blocks.
 
-- Direction-aware arrows (ingress / egress / both) + explicit DENY styling for Istio deny rules.
+- Direction-aware arrows (ingress / egress / both) + explicit DENY styling for Istio and Calico deny rules.
 - L7 details (hosts, methods, paths) attached to Istio edges.
+- CIDR peers rendered as first-class nodes — including `ipBlock.except` carve-outs, so "allow 10.0.0.0/8 except 10.0.5.0/24" is visible on the canvas instead of hidden inside the rule.
 - Namespace-rollup view collapses each ns to one node for tenant-isolation checks.
 - Status badges on every workload (table below), computed from the **union of every selecting policy across every engine**, intersected so a workload only earns an "open" badge if every engine permits it.
 
 ### Edge panel — the connection's full truth
 
-Click any arrow. The panel shows what the rule says — engine, policy name, namespace, direction, ports, L7 matchers, SRC + DST workload labels — and the cross-engine reachability verdict at the top:
-
-```
-[DENY] end-to-end
-reason: blocked by k8s
-Engines: istio=allow  k8s=deny
-Mesh:    istio=allow
-```
+Click any arrow. Header states the cross-engine reachability verdict (`→ Reachability: can reach` / `✗ Reachability: cannot reach`) with per-engine badges — `CALICO: ALLOW`, `ISTIO: NOT ENFORCED`, `K8S: ALLOW`, plus `MESH: <mode>`. Below the header: SRC + DST workload cards, then a `POLICY RULES` section listing every rule that fired with its engine, namespace, direction, and ports (L7 matchers when present).
 
 The arrow on canvas is one engine's opinion. The banner is the truth across every engine and the mesh. When they disagree, the lying-graph trap surfaces immediately — no guessing why "the policy says allow but traffic dies."
 
-<!-- screenshot: edge click panel showing cross-engine verdict (e.g. istio allow vs k8s deny) -->
+![Edge panel — per-engine verdict, SRC/DST, and every firing rule](docs/edgePanel.png)
 
 ### Tables view — audit, hygiene, search
 
 Two sortable, filterable tables sharing the same filters as the graph:
 
-- **Workloads** — namespace, type, effective status keys, per-engine policy counts, labels. Row click opens the detail panel inline; explicit `→ Graph` button when you want the spatial view. A status-rollup strip across the top counts every status key live and pivots the table when you click a chip.
+- **Workloads** — namespace, type, effective status keys, per-engine policy counts, labels. Row click opens the detail panel inline; explicit `◉ Graph` button when you want the spatial view. A status-rollup strip across the top counts every status key live and pivots the table when you click a chip.
 - **Policies** — one row per `(engine, namespace, policy name, action)`. Rules + endpoints columns surface how broad each policy is. Click a row → drill into every workload it actually affects. Engine-rollup strip across the top counts policies per engine.
 
 Built for the auditor's question: "show me every workload with `internet-ingress`" or "list every policy selecting more than N workloads." Answer in two clicks.
 
-<!-- screenshot: tables view showing both Workloads and Policies tabs with rollup chips -->
+![Workloads tab — per-workload status pills, per-engine policy counts, mesh column, issue counts](docs/workloadsTable.png)
+
+### Cluster Status dashboard — the "should I be worried" page
+
+One operator-facing overview scoped by the same filters as the graph. Scan order matches the on-call flow:
+
+- **Red exposure callout** — every public-facing pod with no policy at all, named. This is the page-worthy finding.
+- **Rule coverage + protection stats** — how many workloads are selected by at least one engine, how many are covered by *every* enabled engine, how many are covered by only one (single-engine coverage is a silent-failure risk once a second engine ships).
+- **Node status severity bar** — the worst status key per workload as a partitioned bar, so `WAN⇆` doesn't get double-counted with `LAN⇆`.
+- **Cluster + per-namespace mesh rollup** — ambient vs sidecar vs no-mesh breakdown, plus resolved PeerAuthentication mode.
+- **Top-risky workloads table** — sorted by severity, click through to detail panel.
+- **Namespace drill-down** — coverage + status breakdown per namespace.
+
+Nothing here is derived data the graph doesn't have — it's the same evaluation results, reshaped for the "walk in, decide if you have a fire" workflow.
+
+### Issues drawer — cross-cutting conflicts and hygiene, live
+
+`/api/issues` runs seven detectors over the current evaluation and surfaces findings the graph can't show as a single arrow. Rendered inline as the **Issues** tab in the Tables view and as a scoped list in every workload's detail panel.
+
+| Detector | What it catches | Where it lives |
+|---|---|---|
+| **Policy conflict** | One engine allows a path, another (engine or mesh) denies it. Walks every allow pair with the same probe as `/api/reachable`. | `internal/store/buildIssues.go` (`PolicyIssues`) |
+| **Mesh conflict** | STRICT destination blocks a pair every policy engine otherwise permits. Surfaced as a side-effect of the reachability walk — no standalone hygiene sweep, so a STRICT PA with no allowed caller today will not appear. | `internal/store/buildIssues.go` |
+| **Mesh transport blocked** | L3 policy strips a port the mesh dataplane needs — today ambient's ztunnel HBONE port 15008. Detected per-workload at graph build. | `internal/mesh/istio/detect.go` (`ValidateExternalRules`) |
+| **Mesh policy hygiene** | PeerAuthentication duplicates, root-namespace selectors that Istio ignores, unset fallback modes. | `internal/mesh/istio/buildMeshMembership.go` |
+| **No DNS egress** | Locked-down egress with no rule allowing port 53. Two false-positive filters skip: workloads with no egress opinion at all (`ReasonNoOpinion`) and workloads whose matching egress rule already permits every port. | `internal/store/buildIssues.go` |
+| **Partial access** | Selector matches multiple pods but only some are reachable through the intended path — usually a stale label selector or a partial rollout. | `internal/store/buildIssues.go` (`IssuesPartial`) |
+| **CIDR scope mismatch** | Rule targets a CIDR that overlaps but does not fully contain the intended peer's address — an easy miss when copy-pasting CIDR ranges. | `internal/store/buildIssues.go` (`IssuesCidrScope`) |
+
+Each finding names the exact policy / workload / port so the fix is `kubectl edit`, not a scavenger hunt.
+
+![Issues tab — every conflict with cause + fix, filterable by type](docs/issuesTable.png)
 
 ### Reachability checks — "can A actually reach B?" answered across all three layers
 
@@ -91,32 +116,39 @@ Pin a source, click any destination. A side-by-side panel renders the verdict pe
 
 The exact PeerAuthentication object that forced the mesh verdict is named.
 
-![Selected node](docs/selectNode.png)
+![Reachability — src pinned, dst clicked, per-engine verdict, blocking policy named, ports table](docs/reachability.png)
 
-### Ambient-mesh misconfiguration detector
+### Per-workload issue surfacing
 
-Clicking any workload runs cross-cutting validators that don't fit inside a single policy. The headline one today:
+Every workload's detail panel replays the subset of `/api/issues` that touches it. The headline example — the ambient HBONE trap:
 
-> **"This workload is in the Istio ambient mesh, but its NetworkPolicy only allows ingress on port(s) `[8080]`. Ambient delivers traffic through ztunnel on port 15008, which is blocked. Add an ingress rule allowing TCP port 15008 so mesh traffic can reach the workload."**
+> **"Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked."**
 
-This catches the single most common ambient rollout failure: a perfectly valid NetworkPolicy and a perfectly valid AuthorizationPolicy that, together, silently null out every packet ztunnel tries to deliver.
+Same detector fires in the Issues drawer, scoped to what you're looking at. Catches a common ambient rollout failure: a perfectly valid NetworkPolicy and a perfectly valid AuthorizationPolicy that, together, silently null out every packet ztunnel tries to deliver.
 
 ---
 
 ## Status badges — what each one means
 
-Computed per workload from the intersection of every selecting policy across every engine.
+Computed per workload from the intersection of every selecting policy across every engine. The UI renders both the glyph and the slug (e.g. `WAN⇆ internet-full`) — both come from the same catalog in `ui/src/data/policies.ts`.
 
-| Badge | When it fires |
-|---|---|
-| `WAN⇆` | Internet reachable both directions — **including any pod with no policy at all** (default-open is the headline footgun). |
-| `WAN↑` / `WAN↓` | One direction locked, the other reaches `0.0.0.0/0`. |
-| `LAN⇆` / `LAN↑` / `LAN↓` | Explicit `ipBlock` peer targets a private LAN outside the cluster. |
-| `API↑` | Egress reaches a configured Kubernetes API-server CIDR. |
-| `⊘` | Both directions locked, no escape hatch — properly air-gapped. |
-| `⇆` | Peer namespaceSelector targets a different namespace. |
-| `NS⇆` / `NS↑` / `NS↓` | Catch-all peer matches every pod in the same namespace. |
-| `L7` | Istio AuthorizationPolicy uses L7 matchers — reachability depends on HTTP attributes the graph can't fully simulate. |
+| Glyph | Slug | Severity | When it fires |
+|---|---|---|---|
+| `WAN⇆` | `internet-full` | critical | Internet reachable both directions — **including any pod with no policy at all** (default-open is the headline footgun). |
+| `WAN↑` | `internet-egress` | high | Egress reaches `0.0.0.0/0` (exfil risk). |
+| `WAN↓` | `internet-ingress` | high | Ingress from `0.0.0.0/0` — public-facing. |
+| `LAN⇆` | `lan-full` | warning | Bidirectional traffic to/from a private LAN outside the cluster. |
+| `LAN↑` | `lan-egress` | caution | Egress to a private LAN. |
+| `LAN↓` | `lan-ingress` | caution | Ingress from a private LAN. |
+| `NS⇆` | `ns-full-access` | warning | Full access to/from every pod in the same namespace (catch-all peer). |
+| `NS↑` | `ns-egress-access` | caution | Egress to every pod in the same namespace. |
+| `NS↓` | `ns-ingress-access` | caution | Ingress from every pod in the same namespace. |
+| `⇆` | `cross-namespace` | info | Peer namespaceSelector targets a different namespace. |
+| `API↑` | `api-server-egress` | info | Egress reaches a configured Kubernetes API-server CIDR. |
+| `⊘` | `air-gapped` | secure | Effectively isolated — both directions locked, no escape hatch. |
+| `L7` | `l7-applied` | secure | Istio AuthorizationPolicy uses L7 matchers — reachability depends on HTTP attributes the graph can't fully simulate. |
+
+Only the literal `0.0.0.0/0` counts as internet today — a rule targeting a specific public CIDR (e.g. `1.2.3.0/24`) does not flip any `internet-*` key. See `internal/policy/networkPolicyHelpers.go`.
 
 The badge to hunt for in practice: **`WAN⇆` on workloads you did not expect to be public**. That's almost always a missing policy.
 
@@ -136,14 +168,14 @@ The badge to hunt for in practice: **`WAN⇆` on workloads you did not expect to
 
 ## Status & roadmap
 
-Today's scope is what's described above — k8s NetworkPolicy + Istio AuthorizationPolicy + ambient-mesh mTLS, graph view, tables view, click-driven reachability, ambient misconfiguration detection. Stable enough to use against a real cluster.
+Today's scope: k8s NetworkPolicy + Istio AuthorizationPolicy + Calico GlobalNetworkPolicy + ambient-mesh mTLS, graph view, tables view, cluster-status dashboard, cross-engine issues drawer, click-driven reachability. Stable enough to use against a real cluster.
 
 Deferred to later iterations:
 
-- **Operational survival** — cluster-scoped RBAC bundle, response size caps, per-engine failure isolation, watch-driven cache instead of per-request evaluation. The current data path is single-replica and request-driven; fine for a few hundred pods, will need work for thousands.
-- **More policy engines** — Cilium `CiliumNetworkPolicy` / `CiliumClusterwideNetworkPolicy`, `AdminNetworkPolicy` (KEP-2091), Calico `GlobalNetworkPolicy`. Each adds real reachability fidelity on clusters that use it.
-- **Cluster-state metrics & trust signals** — data freshness stamp, per-engine last-success timestamps, partial-render banners when an engine fails. The product is silent today when an engine errors.
-- **Policy hygiene linter** — orphan policies, `0.0.0.0/0` ingress without explicit annotation, AuthorizationPolicy principals referencing non-existent ServiceAccounts. Shippable from existing data; not built yet.
+- **Operational survival** — cluster-scoped RBAC bundle, response size caps, per-engine failure isolation. Informer-backed cache is wired (`internal/k8s/informerClient.go`), but every `/api/graph` still re-evaluates the full ns set; fine for a few hundred pods, will need debounced snapshotting for thousands.
+- **More policy engines** — Cilium `CiliumNetworkPolicy` / `CiliumClusterwideNetworkPolicy` and `AdminNetworkPolicy` (KEP-2091) are the next high-value additions. Each adds real reachability fidelity on clusters that use it.
+- **Cluster-state trust signals** — data freshness stamp, per-engine last-success timestamps, partial-render banner when an engine fails. The product is silent today when an engine errors.
+- **Policy hygiene linter** — orphan policies, `0.0.0.0/0` ingress without explicit annotation, AuthorizationPolicy principals referencing non-existent ServiceAccounts, shadowed Istio rules. Shippable from existing data; not built yet.
 - **Snapshot diff** — "what changed in policy state since 5 minutes ago" for incident timelines.
 
 See [`docs/FEATURES.md`](docs/FEATURES.md) for the ranked wishlist with concrete file-line references.
@@ -155,12 +187,13 @@ See [`docs/FEATURES.md`](docs/FEATURES.md) for the ranked wishlist with concrete
 Against your live cluster:
 
 ```bash
+cd ui && npm install && npm run build && cd ..
 go build -o graph .
 KUBECONFIG=~/.kube/config ./graph
 # UI → http://localhost:8080
 ```
 
-The binary embeds the built UI — single static binary, no separate frontend deploy. Read-only on your cluster.
+The Go binary embeds `ui/dist/` via `//go:embed` (see `embed.go`) — the UI build step is required or `go build` fails with `pattern all:ui/dist: no matching files found`. Ship is a single static binary, no separate frontend deploy. Read-only on your cluster.
 
 Demo mode (no cluster required):
 
@@ -168,7 +201,7 @@ Demo mode (no cluster required):
 DEMO_MODE=true ./graph
 ```
 
-Loads sample data from embedded `test-data/` — includes a real `observability` namespace dump showing partial NetworkPolicy coverage as it appears in production, plus curated Istio scenarios (DENY rules, L7 ALLOW with hosts / methods / paths, ambient mesh enrollment with PeerAuthentication precedence).
+Loads sample data from embedded `test-data/` — a curated mid-size SaaS cluster: public storefront + payments tier on an Istio mesh (`20-storefront.yaml`, `30-payments.yaml`), plain-k8s analytics pipeline (`10-analytics.yaml`), private-network connectivity tier (`40-private-net.yaml`), a mesh-conflicts scenario box (`50-mesh-conflicts.yaml`), and Calico globals (`60-calico-globals.yaml`). One namespace per file, applies directly via `kubectl apply -f test-data/`. See [`test-data/README.md`](test-data/README.md).
 
 ## RBAC
 
@@ -178,18 +211,26 @@ Minimum permissions:
 rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
     resources: ["cronjobs"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   # Optional — only required if Istio is installed and you want AuthZ + mesh in the graph.
   - apiGroups: ["security.istio.io"]
     resources: ["authorizationpolicies", "peerauthentications"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
+  # Optional — only required if Calico is installed and you want GlobalNetworkPolicy in the graph.
+  - apiGroups: ["projectcalico.org"]
+    resources: ["globalnetworkpolicies"]
+    verbs: ["get", "list", "watch"]
 ```
+
+`watch` is mandatory, not optional — the shared informers issue LIST + WATCH per GVK at startup (`internal/k8s/informerClient.go`). A role granting only `get,list` will fail cache sync and the process exits.
+
+Istio and Calico CRDs are probed at startup — if the API group is absent, the engine is skipped cleanly (no fatal error, no phantom edges).
 
 ## Development
 
@@ -198,6 +239,6 @@ go test ./...                          # unit tests for graph + policy + mesh + 
 cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api → :8080
 ```
 
-The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently. Mesh / mTLS resolution is **lazy** — PeerAuthentications are fetched only when a workload is clicked or a reachability check runs, so the graph payload stays cheap. No watches, no caching layer — every request hits the API server fresh, so the picture is always live.
+The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently across every registered engine (`defaultSources` in `internal/store/buildStore.go`; engine identifiers exposed via `Builder.EngineNames()`). Mesh membership + resolved PeerAuthentication mode are computed eagerly during graph build so every workload node ships with its mesh posture attached — cluster-status rollups and the ambient-HBONE detector don't have to re-query. Informers back the k8s / Istio / Calico reads — warm requests skip the API-server roundtrip — but `/api/graph` still re-evaluates every engine per request; see [`docs/informers.md`](docs/informers.md) for the sync + startup-blocking behavior.
 
 For architecture detail see the ADRs in [`docs/arch/`](docs/arch/) — in particular [`0003-istio-mesh-membership-and-mtls.md`](docs/arch/0003-istio-mesh-membership-and-mtls.md) for the mesh integration design — and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).

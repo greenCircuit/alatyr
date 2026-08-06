@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react';
 import { useGraphStore } from '../../store/graphStore';
-import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges, nodeMatchesMeshFilter } from '../../store/filters';
+import { filteredNodes as deriveFilteredNodes, filteredEdges as deriveFilteredEdges } from '../../store/filters';
 import { policyTableEdges } from '../../store/policyTableEdges';
 import WorkloadsTable from './WorkloadsTable';
 import PoliciesTable from './PoliciesTable';
@@ -69,24 +69,14 @@ export default function TablesView() {
     [filterState, allNamespaceSet],
   );
 
-  // Namespace nodes (type === 'namespace') are excluded from selectedNodeTypes by
-  // design — the graph treats them as compound parents, not togglable workload
-  // types. The audit table still wants them as rows ("how many policies touch
-  // ns-foo as a whole"), so include them here keyed on the namespace filter +
-  // search query.
+  // Namespace-type rows are included via filteredNodes now that `namespace`
+  // is togglable in the NodeType filter. Prepend them so ns rollup rows
+  // appear above workload rows in the default (unsorted) order.
   const nodesWithNs = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const nsRows = allNodes.filter((n) => {
-      if (n.type !== 'namespace') return false;
-      if (!selectedNamespaces.has(n.label)) return false;
-      if (q !== '' && !n.label.toLowerCase().includes(q)) return false;
-      // Namespace nodes carry their own mesh membership — apply the same mesh
-      // filter so "in mesh" / mtls selections don't leak out-of-mesh ns rows.
-      if (!nodeMatchesMeshFilter(n, meshStatus, selectedMeshFilters)) return false;
-      return true;
-    });
-    return [...nsRows, ...nodes];
-  }, [allNodes, nodes, selectedNamespaces, searchQuery, meshStatus, selectedMeshFilters]);
+    const nsRows = nodes.filter((n) => n.type === 'namespace');
+    const others = nodes.filter((n) => n.type !== 'namespace');
+    return [...nsRows, ...others];
+  }, [nodes]);
 
   // Status filter applies to the table view (hide non-matching rows) but
   // NOT to the rollup itself — chips need to stay visible so the user can

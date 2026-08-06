@@ -112,7 +112,7 @@ export function EdgeReachabilityBanner({
   return (
     <div className={`${s.verdictCallout} ${calloutTone}`}>
       <div className={`${s.verdictText} ${textTone}`}>
-        {deny ? '✗ cannot reach' : '→ can reach'}
+        {deny ? '✗ Reachability: cannot reach' : '→ Reachability: can reach'}
       </div>
       <div className={`${s.body} ${deny ? textTone : s.dim}`} style={deny ? { fontWeight: 600 } : undefined}>
         {result.reason}

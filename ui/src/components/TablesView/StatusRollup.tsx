@@ -9,6 +9,7 @@ import type { WorkloadNode, StatusKey } from '../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import r from './Rollup.module.css';
+import fp from '../FilterPanel/FilterPanel.module.css';
 
 interface StatusRollupProps {
   nodes: WorkloadNode[];
@@ -71,7 +72,13 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
                 title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
                 style={{ border: `1px solid ${bg}` }}
               >
-                <span aria-hidden="true" style={{ color: bg }}>●</span>
+                <span
+                  aria-hidden="true"
+                  className={fp.statusBadge}
+                  style={{ background: bg }}
+                >
+                  {cfg.symbol}
+                </span>
                 <span className="text-truncate">{key}</span>
                 <span className="chip-count ms-1">{count}</span>
               </button>
@@ -101,7 +108,13 @@ export default function StatusRollup({ nodes, onToggled, bare = false }: StatusR
             title={`${cfg.severity}: ${cfg.description} — click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${bg}` }}
           >
-            <span aria-hidden="true" style={{ color: bg }}>●</span>
+            <span
+              aria-hidden="true"
+              className={fp.statusBadge}
+              style={{ background: bg }}
+            >
+              {cfg.symbol}
+            </span>
             <span>{key}</span>
             <span className="chip-count ms-1">{count}</span>
           </button>

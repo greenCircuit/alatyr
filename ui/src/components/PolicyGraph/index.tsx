@@ -334,6 +334,27 @@ export default function PolicyGraph() {
     });
     cyRef.current = cy;
 
+    // Namespace nodes may lack a backend-emitted WorkloadNode when the ns had
+    // no policies to derive one from — the click handler would then bail and
+    // the operator sees no reaction. Synthesize a minimal ns WorkloadNode so
+    // the DetailPanel can still open with identity + zero statuses.
+    const resolveClickedWorkload = (node: cytoscape.NodeSingular): WorkloadNode | undefined => {
+      const attached = node.data('workload') as WorkloadNode | undefined;
+      if (attached) return attached;
+      const ntype = node.data('ntype') as string | undefined;
+      if (ntype !== 'namespace' && ntype !== 'namespace-agg') return undefined;
+      const id = String(node.id());
+      const ns = id.startsWith('ns-') ? id.slice(3) : id;
+      return {
+        id,
+        label:      ns,
+        namespace:  ns,
+        type:       'namespace',
+        labels:     {},
+        statuses:   [],
+      } as WorkloadNode;
+    };
+
     cy.on('viewport', syncViewport);
 
     // Sync badge positions when any node is dragged (namespace box or workload)
@@ -347,7 +368,7 @@ export default function PolicyGraph() {
     // Toggle focus when the same node is clicked twice.
     cy.on('tap', 'node[ntype = "workload"], node[ntype = "namespace"], node[ntype = "namespace-agg"]', (evt) => {
       const node = evt.target as cytoscape.NodeSingular;
-      const workload = node.data('workload') as WorkloadNode | undefined;
+      const workload = resolveClickedWorkload(node);
       if (!workload) return;
       const wasActive = node.hasClass('focused');
       setSelectedNode(wasActive ? null : workload);
@@ -358,7 +379,7 @@ export default function PolicyGraph() {
     // reachability source" button.
     cy.on('cxttap', 'node[ntype = "workload"], node[ntype = "namespace"], node[ntype = "namespace-agg"]', (evt) => {
       const node = evt.target as cytoscape.NodeSingular;
-      const workload = node.data('workload') as WorkloadNode | undefined;
+      const workload = resolveClickedWorkload(node);
       if (!workload) return;
       pinReachabilitySource(workload);
     });

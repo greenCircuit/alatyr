@@ -6,10 +6,12 @@ import { useMemo, useRef, useState } from 'react';
 import type { WorkloadNode, PolicyEdge, StatusKey, Issue, MeshMembership, MtlsScope } from '../../data/policies';
 import { SEVERITY_COLOR, meshBadgeMeta } from '../../data/policies';
 import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
-import { issueTier } from '../FilterPanel/parts/constants';
+import { issueTier, type IssueTier } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
 import { EngineBadge } from '../../data/engineIcons';
-import { StatusBadge } from '../PolicyGraph/parts/legend';
+import { STATUS_CFG } from '../../data/policies';
+import { STATUS_LABELS } from '../FilterPanel/parts/constants';
+import fp from '../FilterPanel/FilterPanel.module.css';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
 import type { IssueIndex } from '../../store/issueIndex';
 import { IssuesPopover } from './IssuesPopover';
@@ -27,6 +29,24 @@ function meshSortKey(membership: MeshMembership | undefined): number {
   return MESH_SORT_ORDER[verdict] ?? MESH_SORT_ORDER.unset;
 }
 
+// Tier weights: blocking dominates warning dominates info. Count-agnostic
+// across tiers — one blocking issue outranks any number of warnings.
+const TIER_WEIGHT: Record<IssueTier, number> = { blocking: 1_000_000, warning: 1_000, info: 1 };
+
+function issueSortKey(issues: Issue[]): number {
+  let key = 0;
+  for (const issue of issues) key += TIER_WEIGHT[issueTier(issue.type)];
+  return key;
+}
+
+// Sort within a row so the popover leads with blocking, then warning, then
+// info — matches the tier dots on the chip left-to-right.
+const TIER_ORDER: Record<IssueTier, number> = { blocking: 0, warning: 1, info: 2 };
+
+function sortIssuesBySeverity(issues: Issue[]): Issue[] {
+  return [...issues].sort((a, b) => TIER_ORDER[issueTier(a.type)] - TIER_ORDER[issueTier(b.type)]);
+}
+
 export default function WorkloadsTable({
   nodes,
   edges,
@@ -40,7 +60,9 @@ export default function WorkloadsTable({
 }) {
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   const setView         = useGraphStore((s) => s.setView);
-  const [sort, setSort] = useState<SortState<Col>>({ col: null, dir: 'asc' });
+  // Default: issues desc — worst rows on top, matches the paging-triage
+  // reflex ("what's on fire") without requiring a click.
+  const [sort, setSort] = useState<SortState<Col>>({ col: 'issues', dir: 'desc' });
 
   // Edge count per workload, split by engine so a row can answer "how many
   // k8s rules vs istio rules touch me" at a glance.
@@ -61,7 +83,7 @@ export default function WorkloadsTable({
       node: n,
       policyCounts: policyCountByNode.get(n.id) ?? {},
       policyTotal: Object.values(policyCountByNode.get(n.id) ?? {}).reduce((a, b) => a + b, 0),
-      issues: nodeIssues.get(n.id) ?? [],
+      issues: sortIssuesBySeverity(nodeIssues.get(n.id) ?? []),
     }));
     if (!sort.col) return list;
     const sign = sort.dir === 'asc' ? 1 : -1;
@@ -72,7 +94,7 @@ export default function WorkloadsTable({
         case 'type':      return sign * a.node.type.localeCompare(b.node.type);
         case 'statuses':  return sign * ((a.node.statuses?.length ?? 0) - (b.node.statuses?.length ?? 0));
         case 'policies':  return sign * (a.policyTotal - b.policyTotal);
-        case 'issues':    return sign * (a.issues.length - b.issues.length);
+        case 'issues':    return sign * (issueSortKey(a.issues) - issueSortKey(b.issues));
         case 'mesh':      return sign * (meshSortKey(meshStatus[a.node.id]) - meshSortKey(meshStatus[b.node.id]));
         default:          return 0;
       }
@@ -152,8 +174,21 @@ export default function WorkloadsTable({
 function StatusCompact({ keys }: { keys: StatusKey[] }) {
   if (keys.length === 0) return <span className="text-secondary">—</span>;
   return (
-    <div className="d-flex flex-wrap gap-1">
-      {keys.map((key) => <StatusBadge key={key} s={key} />)}
+    <div className="d-flex flex-column gap-1">
+      {keys.map((key) => {
+        const cfg = STATUS_CFG[key];
+        return (
+          <span key={key} className="d-inline-flex align-items-center gap-2" title={cfg.description}>
+            <span
+              className={fp.statusBadge}
+              style={{ background: SEVERITY_COLOR[cfg.severity] }}
+            >
+              {cfg.symbol}
+            </span>
+            <span className="fs-12">{STATUS_LABELS[key]}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }

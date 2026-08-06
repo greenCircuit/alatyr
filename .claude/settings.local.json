@@ -25,7 +25,16 @@
       "Bash(BACKEND_URL=http://localhost:8080 KUBECONFIG=/app/tests/.cache/kubeconfig pytest istio/test_edges.py -vv)",
       "Bash(/app/tests/.bin/kwokctl get *)",
       "Bash(/app/tests/.bin/kwokctl create *)",
-      "Bash(go vet *)"
+      "Bash(go vet *)",
+      "Bash(GOTOOLCHAIN=auto go build *)",
+      "Bash(go version *)",
+      "Bash(GOTOOLCHAIN=auto go test *)",
+      "Bash(node *)",
+      "Bash(GOTOOLCHAIN=auto DEMO_MODE=true timeout 8 go run .)",
+      "Bash(curl -s http://localhost:8080/api/cluster-state)",
+      "Bash(curl -s \"http://localhost:8080/api/graph\")",
+      "Bash(wait)",
+      "Bash(npx --prefix ui tsc -p ui/tsconfig.json --noEmit)"
     ]
   }
 }

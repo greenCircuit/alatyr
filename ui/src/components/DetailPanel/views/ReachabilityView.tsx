@@ -26,6 +26,7 @@ import { EndpointCard } from '../shared/edge-composites';
 import { ManifestButton } from '../shared/ManifestModal';
 import { REASON_META, CHIP_STATE } from '../shared/presentation';
 import { MtlsChip } from '../shared/MtlsChip';
+import { EngineLogo } from '../../../data/engineIcons';
 import type { MtlsScope } from '../../../data/policies';
 import { deriveBlockers, classifyPolicy, aggregateAllowPorts, type Blocker, type ChipState, type SidePorts } from '../shared/reachability';
 
@@ -40,11 +41,19 @@ const meshAppliesTo = (src: WorkloadNode, dst: WorkloadNode) =>
 // Per-subsystem chip — engine chip + colored ✓/✗ action icon. Reuses the
 // token vocab used everywhere else so subsystem verdicts read identically
 // across the verdict headline, per-engine grid, and policy cards.
-function SubsystemChip({ label, status }: { label: string; status: string }) {
+// `kind` distinguishes an L3/L7 engine from a mesh transport source so the
+// mesh chip renders `mesh <provider>` while still carrying the provider's
+// brand logo (engineMeta would otherwise fall back to an "M" letter square
+// because "mesh istio" is not a registered engine key).
+function SubsystemChip({ engine, kind, status }: { engine: string; kind: 'engine' | 'mesh'; status: string }) {
   const action = status === 'allow' ? 'allow' : status === 'deny' ? 'deny' : undefined;
   return (
     <span className={s.subsystemChip}>
-      <EngineBadge engine={label} />
+      {kind === 'mesh' ? (
+        <EngineBadge engine={engine} suffix={` · mesh`} />
+      ) : (
+        <EngineBadge engine={engine} />
+      )}
       {action ? <ActionIcon action={action} /> : <span className={`${s.smallText} ${s.dim}`}>{status}</span>}
     </span>
   );
@@ -119,10 +128,10 @@ function VerdictHeadline({ result, reverse, reverseError, src, dst }: {
       {(engines.length > 0 || meshes.length > 0) && (
         <div className="d-flex flex-wrap gap-2 align-items-center">
           {engines.map(([name, ev]) => (
-            <SubsystemChip key={`e-${name}`} label={name} status={ev.status} />
+            <SubsystemChip key={`e-${name}`} engine={name} kind="engine" status={ev.status} />
           ))}
           {meshes.map(([name, v]) => (
-            <SubsystemChip key={`m-${name}`} label={`mesh ${name}`} status={v.verdict} />
+            <SubsystemChip key={`m-${name}`} engine={name} kind="mesh" status={v.verdict} />
           ))}
         </div>
       )}
@@ -359,7 +368,11 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
       <div className="d-flex justify-content-between align-items-center mb-1">
         <span className={s.section}>mesh · {source}</span>
         <div className="d-flex gap-1">
-          <span className={`${s.miniChip} ${inMesh ? s.miniChipAllow : s.miniChipDim}`}>
+          <span
+            className={`${s.miniChip} ${inMesh ? s.miniChipAllow : s.miniChipDim} d-inline-flex align-items-center gap-1`}
+            style={!inMesh ? { opacity: 0.55, filter: 'grayscale(1)' } : undefined}
+          >
+            <EngineLogo engine={source} size={12} />
             {inMesh ? 'in mesh' : 'not in mesh'}
           </span>
           {verdict && (

@@ -172,7 +172,7 @@ function IssueBadge({ issueType, severity }: { issueType: IssueType; severity: S
         className={s.sevDot}
         style={{ '--sev': SEVERITY_COLOR[severity] } as unknown as CSSProperties}
         aria-hidden="true"
-      >●</span>
+      />
       <span className={s.findingKind}>{ISSUE_TYPE_LABEL[issueType]}</span>
     </span>
   );
