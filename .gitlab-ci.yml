@@ -1,3 +1,9 @@
+variables:
+  GITHUB_USER: "greenCircuit"
+  GITHUB_REPO: "greenCircuit/network-policy-visualizer"
+  GHCR_IMAGE: "ghcr.io/greencircuit/network-policy-visualizer"
+  GITHUB_TEST_TAG: "ci-test"
+
 stages:
   - semver
   - test
@@ -152,6 +158,62 @@ smoke-tests:
     reports:
       junit: tests/results/junit.xml
 
+# STATIC DEMO SITE
+# The Go backend never runs on GitHub Pages. It runs here, just long enough for
+# scripts/snapshot-api.py to freeze every /api/* response into ui/public/demo/,
+# then the UI is rebuilt with VITE_DEMO_MODE=true so the frontend reads those
+# files instead of calling the API.
+demo-site:
+  stage: build
+  needs:
+    - build-binary
+  image: docker.io/node:22
+  variables:
+    VITE_DEMO_MODE: "true"
+    VITE_BASE: "/network-policy-visualizer/"
+  cache:
+    key: ui-npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - ui/node_modules/
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends python3 python3-yaml curl
+    - chmod +x ./graph
+    - DEMO_MODE=true ./graph > demo-backend.log 2>&1 &
+    - |
+      for _ in $(seq 1 30); do
+        curl -fsS http://localhost:8080/api/cluster-state >/dev/null 2>&1 && break
+        sleep 1
+      done
+    - python3 scripts/snapshot-api.py --out ui/public/demo
+    - cd ui && npm ci && npm run build
+    - touch dist/.nojekyll
+  artifacts:
+    paths:
+      - ui/dist
+      - demo-backend.log
+    expire_in: 10 days
+
+# Force-pushes the built site to the mirror's gh-pages branch. Pages is
+# configured to serve that branch, so nothing runs on GitHub's side.
+github-pages:
+  stage: release
+  needs:
+    - demo-site
+  image: alpine:3.20
+  when: manual
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - apk add --no-cache git
+    - cd ui/dist
+    - git init -q .
+    - git config user.email "ci@gitlab.dev.io"
+    - git config user.name "gitlab-ci"
+    - git add -A
+    - git commit -qm "demo site from $CI_COMMIT_SHA (pipeline $CI_PIPELINE_ID)"
+    - git push -q --force "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" HEAD:gh-pages
+
 # Security scans
 semgrep-sast:
   stage: security
@@ -193,3 +255,49 @@ try-image-scan:
 
 create-release:
   extends: .publish-release
+
+# GITHUB MIRROR PUBLISH (manual — smoke test that uploads work)
+# GITHUB_TOKEN: classic PAT, scopes repo + write:packages, masked+protected CI var.
+# Both jobs publish to the throwaway tag $GITHUB_TEST_TAG, overwritten each run.
+github-binary:
+  stage: release
+  needs:
+    - build-binary
+  image: alpine:3.20
+  when: manual
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - apk add --no-cache github-cli
+    - export GH_TOKEN="$GITHUB_TOKEN"
+    # tag may not exist on the mirror yet — create release first, fall back to upload
+    - |
+      gh release create "$GITHUB_TEST_TAG" \
+        --repo "$GITHUB_REPO" \
+        --title "$GITHUB_TEST_TAG" \
+        --notes "pipeline $CI_PIPELINE_ID / commit $CI_COMMIT_SHA" \
+        --prerelease graph \
+      || gh release upload "$GITHUB_TEST_TAG" graph --repo "$GITHUB_REPO" --clobber
+
+github-image:
+  stage: release
+  needs:
+    - img-base
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  when: manual
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+    SRC_IMAGE_TAG: "latest"
+  script:
+    # internal registry is self-signed, hence src-tls-verify=false
+    - |
+      skopeo copy --all \
+        --src-tls-verify=false \
+        --src-creds "${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}" \
+        --dest-creds "${GITHUB_USER}:${GITHUB_TOKEN}" \
+        "docker://${CI_REGISTRY_IMAGE}:${SRC_IMAGE_TAG}" \
+        "docker://${GHCR_IMAGE}:${GITHUB_TEST_TAG}"
