@@ -58,7 +58,7 @@ export default function RiskyWorkloadsTable({ rows, onShowNode, onOpenGraph }: R
                     className={s.sevDot}
                     style={{ '--sev': color } as unknown as CSSProperties}
                     aria-hidden="true"
-                  >●</span>
+                  />
                   <span className={s.section}>{row.worstSeverity}</span>
                 </span>
                 {row.worstStatuses.length > 0 && (

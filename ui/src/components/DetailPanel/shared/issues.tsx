@@ -6,7 +6,7 @@
 import type { CSSProperties } from 'react';
 import type { Issue, IssueType } from '../../../data/policies';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../../data/policies';
-import { TYPE_SEVERITY, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from '../../FilterPanel/parts/constants';
+import { TYPE_SEVERITY, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, issueTier } from '../../FilterPanel/parts/constants';
 import { CulpritActions } from '../../TablesView/CulpritActions';
 import { useGraphStore } from '../../../store/graphStore';
 import s from '../DetailPanel.module.css';
@@ -41,7 +41,7 @@ function IssueGroup({ type, issues }: { type: IssueType; issues: Issue[] }) {
   return (
     <div className={s.issueGroup}>
       <div className={s.issueGroupSummary}>
-        <span className={s.sevDot} style={{ '--sev': color } as unknown as CSSProperties} aria-label={TYPE_SEVERITY[type]}>●</span>
+        <span className={s.sevDot} style={{ '--sev': color } as unknown as CSSProperties} aria-label={TYPE_SEVERITY[type]} />
         <span className={s.findingKind}>{ISSUE_TYPE_LABEL[type] ?? type}</span>
         <span className={s.issueGroupCount}>{issues.length}</span>
       </div>
@@ -63,9 +63,17 @@ function IssueSection({ issues }: { issues: Issue[] }) {
     byType.set(issue.type, bucket);
   }
   // ALL_ISSUE_TYPES enforces a stable, severity-desc-adjacent order (blocking
-  // classes first) so groups never reshuffle as findings flow in.
+  // classes first) so groups never reshuffle as findings flow in. Within-group
+  // rows sort by endpoint identity so repeat renders don't shuffle either.
+  const endpointKey = (issue: Issue) =>
+    issue.src && issue.dst
+      ? `${issue.src.namespace}/${issue.src.id}→${issue.dst.namespace}/${issue.dst.id}`
+      : `${issue.node?.namespace ?? ''}/${issue.node?.id ?? ''}`;
   const groups = ALL_ISSUE_TYPES.filter((type) => byType.has(type))
-    .map((type) => ({ type, items: byType.get(type)! }));
+    .map((type) => ({
+      type,
+      items: [...byType.get(type)!].sort((left, right) => endpointKey(left).localeCompare(endpointKey(right))),
+    }));
 
   return (
     <div className={s.semanticWarn}>
@@ -91,8 +99,11 @@ function useScopedNodeIssues(nodeId: string): Issue[] {
   );
 }
 
+// Info-tier findings (partial access) are expected layering, not faults —
+// counting them lights the workload verdict as "warnings" when nothing is
+// actually wrong. Blocking + warning only for the badge/count.
 export function useNodeIssueCount(nodeId: string): number {
-  return useScopedNodeIssues(nodeId).length;
+  return useScopedNodeIssues(nodeId).filter((issue) => issueTier(issue.type) !== 'info').length;
 }
 
 export function NodeIssues({ nodeId }: { nodeId: string }) {

@@ -84,15 +84,17 @@ export const LAYOUTS = [
 
 export const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
 
-// Togglable node types the backend actually emits. Excludes `namespace` —
-// compound container, not filterable. Service/headless/external are defined
-// in models/node.go but never produced yet.
-export const ALL_NODE_TYPES = ['deployment', 'cronjob', 'cidr'] as const;
+// Togglable node types the backend actually emits. `namespace` toggles the
+// namespace-type nodes in filteredNodes (compound parent boxes in the graph
+// are derived from workload.namespace and unaffected). Service/headless/
+// external are defined in models/node.go but never produced yet.
+export const ALL_NODE_TYPES = ['deployment', 'cronjob', 'cidr', 'namespace'] as const;
 
 export const NODE_TYPE_LABEL: Record<string, string> = {
   deployment: 'Deployment',
   cronjob:    'CronJob',
   cidr:       'CIDR',
+  namespace:  'Namespace',
 };
 
 export const DIRECTION_LABEL: Record<string, string> = { ingress: 'Ingress', egress: 'Egress' };

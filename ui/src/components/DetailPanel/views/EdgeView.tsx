@@ -45,7 +45,7 @@ export function EdgeView({ edges, nodes, reachability, reachabilityLoading }: {
         <PairIssues srcId={first.source} dstId={first.target} />
       </div>
       <div className={`${s.eyebrow} mb-2`}>
-        Policies ({edges.length})
+        Policy rules ({edges.length}) — allow/deny by rule
       </div>
       <div className={edges.length > 1 ? s.policyGrid : 'd-flex flex-column gap-2'}>
         {edges.map((p) => <PolicyRow key={p.id} p={p} />)}

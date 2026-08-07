@@ -46,3 +46,23 @@ export function ShieldIcon(props: IconProps = {}) {
     </svg>
   );
 }
+
+// Filled dot — info-tier statuses (partial access, cross-ns, etc.).
+export function InfoDotIcon(props: IconProps = {}) {
+  return (
+    <svg {...iconProps(props)}>
+      <circle cx="8" cy="8" r="4.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+// Severity → glyph picker. Reuses the three existing icons + a filled dot for
+// info so status badges pre-attentively encode risk tier before the operator
+// reads the label. Color inherits from the caller (badge text color).
+import type { Severity } from '../../../data/policies';
+export function SeverityIcon({ severity, size }: { severity: Severity; size?: number }) {
+  if (severity === 'critical' || severity === 'high') return <WarnIcon size={size} />;
+  if (severity === 'warning' || severity === 'caution') return <ShieldIcon size={size} />;
+  if (severity === 'secure') return <CheckIcon size={size} />;
+  return <InfoDotIcon size={size} />;
+}

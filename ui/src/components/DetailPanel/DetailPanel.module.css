@@ -356,13 +356,18 @@
 .dirEgress  { color: var(--color-role-src); }
 .dirIngress { color: var(--color-role-dst); }
 
-/* ── Severity dot — colored bullet driven by --sev var so callers set the
-   color from data without inline typography. */
+/* ── Severity dot — colored bullet driven by --sev var. Caller sets --sev;
+   the dot itself is a background-filled circle so no glyph character is
+   needed inside the element (glyphs render inconsistently across fonts and
+   drift with line-height). */
 .sevDot {
-  color: var(--sev, #7a848e);
-  font-weight: 700;
-  font-size: 12px;
-  line-height: 1;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sev, #7a848e);
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 /* ── Coverage chip — blanket-posture verdicts (deny all / allow all / allow

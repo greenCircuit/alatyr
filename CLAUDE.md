@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Code map: [docs/INDEX.md](docs/INDEX.md)** — flat table of where every subsystem, engine, component, and test lives. Consult it before grep/find; it points to entry files so you can load minimum context.
+
 ## What this project is
 
 A Kubernetes policy visualizer. The Go backend reads pods, cronjobs, NetworkPolicies, and Istio AuthorizationPolicies from a live k8s cluster and returns a graph (nodes + edges). The React/Cytoscape frontend renders that graph so you can see which workloads can talk to each other and where policy gaps exist. Multi-engine: a `PolicySource` interface lets engines plug in independently. Two engines are wired today — `k8spolicy` (k8s NetworkPolicy) and `istio` (AuthorizationPolicy, ALLOW + DENY, with L7 hints captured). Each engine emits its own rules and per-workload `PolicyStatus`; the graph layer renders engine edges separately and intersects per-engine statuses into a single effective view.
