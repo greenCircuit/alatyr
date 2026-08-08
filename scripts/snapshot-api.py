@@ -16,17 +16,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import yaml
-
-# Fixture kind -> the `kind` query param the manifest endpoint expects
-# (PolicySource name, not the k8s Kind).
-MANIFEST_KIND_BY_FIXTURE_KIND = {
-    "NetworkPolicy": "k8s",
-    "AuthorizationPolicy": "istio",
-    "PeerAuthentication": "pa",
-    "GlobalNetworkPolicy": "calico",
-}
-
 # Endpoints with no query params — snapshot verbatim, one file each.
 STATIC_ENDPOINTS = {
     "graph.json": "/api/graph",
@@ -92,27 +81,49 @@ def snapshot_reachability(base_url, nodes):
     return verdicts
 
 
-# Manifest targets come from the fixtures rather than the graph: a policy that
-# selects nothing produces no edge but is still openable from the tables view.
-def collect_manifest_refs(fixture_dir):
-    refs = []
-    for filename in sorted(os.listdir(fixture_dir)):
-        if not filename.endswith((".yaml", ".yml")):
-            continue
-        with open(os.path.join(fixture_dir, filename)) as handle:
-            for document in yaml.safe_load_all(handle):
-                if not isinstance(document, dict):
-                    continue
-                kind = MANIFEST_KIND_BY_FIXTURE_KIND.get(document.get("kind"))
-                if not kind:
-                    continue
-                metadata = document.get("metadata", {})
-                refs.append({
-                    "kind": kind,
-                    "namespace": metadata.get("namespace", ""),
-                    "name": metadata.get("name", ""),
-                })
-    return refs
+# Manifest targets are harvested from the payloads already snapshotted, because
+# the UI can only open a manifest it found in one of them: graph edges feed the
+# policies table, node-info / issues / reachable / mesh-status feed every other
+# ManifestButton. A policy no payload mentions is unreachable in the UI, so
+# snapshotting it would be dead weight.
+#
+# Three ref shapes exist across those payloads:
+#   PolicyEdge  {policySource, namespace, policyName}
+#   PolicyRef   {source, namespace, name}
+#   PARef       {namespace, name}  — PeerAuthentication, kind implied by the UI
+def harvest_manifest_refs(payloads):
+    refs = {}
+
+    def visit(value):
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+
+        namespace = value.get("namespace")
+        if isinstance(namespace, str):
+            if isinstance(value.get("policySource"), str) and isinstance(value.get("policyName"), str):
+                kind, name = value["policySource"], value["policyName"]
+            elif isinstance(value.get("source"), str) and isinstance(value.get("name"), str):
+                kind, name = value["source"], value["name"]
+            elif isinstance(value.get("name"), str):
+                # only PARef reaches here — mesh payloads are the sole source of
+                # bare {namespace, name} objects
+                kind, name = "pa", value["name"]
+            else:
+                kind = name = None
+            if kind and name:
+                refs[(kind, namespace, name)] = {
+                    "kind": kind, "namespace": namespace, "name": name,
+                }
+
+        for nested in value.values():
+            visit(nested)
+
+    visit(payloads)
+    return list(refs.values())
 
 
 def snapshot_manifests(base_url, refs):
@@ -135,7 +146,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://localhost:8080")
     parser.add_argument("--out", default="ui/public/demo")
-    parser.add_argument("--fixtures", default="test-data")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -147,8 +157,9 @@ def main():
 
     responses["node-info.json"] = snapshot_node_info(args.base_url, nodes)
     responses["reachable.json"] = snapshot_reachability(args.base_url, nodes)
-    responses["manifest.json"] = snapshot_manifests(
-        args.base_url, collect_manifest_refs(args.fixtures))
+    refs = harvest_manifest_refs(responses)
+    print(f"manifests: {len(refs)} refs")
+    responses["manifest.json"] = snapshot_manifests(args.base_url, refs)
 
     for filename, payload in responses.items():
         write_json(args.out, filename, payload)
