@@ -199,13 +199,15 @@ github-pages:
   stage: release
   needs:
     - demo-site
-  image: alpine:3.20
+  # git preinstalled — the runner is non-root, so `apk add` can't write the apk db
+  image:
+    name: docker.io/alpine/git:latest
+    entrypoint: [""]
   when: manual
   allow_failure: true
   variables:
     GIT_STRATEGY: none
   script:
-    - apk add --no-cache git
     - cd ui/dist
     - git init -q .
     - git config user.email "ci@gitlab.dev.io"
@@ -263,13 +265,15 @@ github-binary:
   stage: release
   needs:
     - build-binary
-  image: alpine:3.20
+  # gh preinstalled — the runner is non-root, so `apk add` can't write the apk db
+  image:
+    name: docker.io/maniator/gh:latest
+    entrypoint: [""]
   when: manual
   allow_failure: true
   variables:
     GIT_STRATEGY: none
   script:
-    - apk add --no-cache github-cli
     - export GH_TOKEN="$GITHUB_TOKEN"
     # tag may not exist on the mirror yet — create release first, fall back to upload
     - |
