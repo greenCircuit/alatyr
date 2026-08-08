@@ -9,6 +9,8 @@ Policy is written per-engine and per-namespace, but reachability is *emergent*. 
 
 ![Full graph — every workload, every policy, every engine on one canvas](docs/fullGraph.png)
 
+**▶ [Try the live demo](https://greencircuit.github.io/network-policy-visualizer/)** — no cluster, no install. The full UI running against a frozen snapshot of the demo cluster's API responses: graph, tables, cluster status, issues, reachability, manifests. Everything is click-through; nothing writes anywhere.
+
 ---
 
 ## The problem
@@ -182,9 +184,29 @@ See [`docs/FEATURES.md`](docs/FEATURES.md) for the ranked wishlist with concrete
 
 ---
 
+## Get it
+
+Prebuilt artifacts, no build toolchain required:
+
+| Artifact | Where | Notes |
+|---|---|---|
+| Binary (`graph`) | [Releases](https://github.com/greenCircuit/network-policy-visualizer/releases) | Linux/amd64, static, UI embedded. `chmod +x graph` and run. |
+| Container image | `ghcr.io/greencircuit/network-policy-visualizer` | Same binary, serves on `:8080`. |
+
+```bash
+# binary
+curl -sSLo graph https://github.com/greenCircuit/network-policy-visualizer/releases/latest/download/graph
+chmod +x graph && KUBECONFIG=~/.kube/config ./graph
+
+# container, demo mode — nothing to configure
+podman run --rm -p 8080:8080 -e DEMO_MODE=true ghcr.io/greencircuit/network-policy-visualizer:latest
+```
+
+Against a real cluster the image needs a kubeconfig mounted (`-v ~/.kube/config:/kubeconfig:ro -e KUBECONFIG=/kubeconfig`), or in-cluster credentials plus the [RBAC](#rbac) below.
+
 ## Quick start
 
-Against your live cluster:
+Building from source, against your live cluster:
 
 ```bash
 cd ui && npm install && npm run build && cd ..
