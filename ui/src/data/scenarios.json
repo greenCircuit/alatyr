@@ -1,0 +1,61 @@
+[
+  {
+    "id": "dns-blackhole",
+    "label": "DNS resolution broke after we added a policy",
+    "caption": "Egress is locked and no rule allows port 53. The workload looks healthy and every outbound call fails with a resolution error.",
+    "cta": "Open the flagged row — the policy that locked egress is named.",
+    "namespaces": ["analytics"],
+    "view": "tables",
+    "tablesTab": "issues",
+    "issueFilter": "no dns",
+    "target": {
+      "issueType": "no dns",
+      "workload": { "namespace": "analytics", "label": "enrich" }
+    }
+  },
+  {
+    "id": "engine-contradiction",
+    "label": "The policy says allow, but traffic dies",
+    "caption": "The NetworkPolicy permits this path. A cluster-scoped Calico policy denies it — and effective reachability is the AND across every engine.",
+    "cta": "Compare the arrow on the canvas with the verdict in the panel header.",
+    "namespaces": ["payments"],
+    "view": "graph",
+    "target": {
+      "issueType": "policy conflict",
+      "workload": { "namespace": "payments", "label": "fraud-check" }
+    }
+  },
+  {
+    "id": "mesh-transport",
+    "label": "Mesh traffic disappeared and everything looks healthy",
+    "caption": "Both policies are individually valid. Ambient delivers traffic over ztunnel's HBONE port 15008, and neither allows it.",
+    "cta": "Open the flagged workload — the policy stripping the port is named.",
+    "namespaces": ["payments"],
+    "view": "graph",
+    "target": {
+      "issueType": "mesh transport blocked",
+      "workload": { "namespace": "payments", "label": "webhook-receiver" }
+    }
+  },
+  {
+    "id": "strict-mtls",
+    "label": "STRICT mTLS broke a client that speaks plaintext",
+    "caption": "Every policy engine allows this path. The destination requires STRICT and the caller does not speak mTLS, so it fails below the policy layer.",
+    "cta": "The PeerAuthentication that forced the verdict is named in the panel.",
+    "namespaces": ["mesh-conflicts"],
+    "view": "graph",
+    "target": {
+      "issueType": "mesh conflict",
+      "workload": { "namespace": "mesh-conflicts", "label": "strict-server" }
+    }
+  },
+  {
+    "id": "exposure",
+    "label": "What's actually exposed?",
+    "caption": "Every public-facing workload, including the ones with no policy at all — those default to open and never appear in a policy list.",
+    "cta": "Start with the red callout, then filter the Workloads table on WAN traffic.",
+    "namespaces": [],
+    "view": "status",
+    "standalone": true
+  }
+]

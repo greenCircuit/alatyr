@@ -9,6 +9,8 @@ Policy is written per-engine and per-namespace, but reachability is *emergent*. 
 
 ![Full graph — every workload, every policy, every engine on one canvas](docs/fullGraph.png)
 
+**▶ [Try the live demo](https://greencircuit.github.io/network-policy-visualizer/)** — no cluster, no install. The full UI running against a frozen snapshot of the demo cluster's API responses: graph, tables, cluster status, issues, reachability, manifests. Everything is click-through; nothing writes anywhere.
+
 ---
 
 ## The problem
@@ -168,7 +170,7 @@ The badge to hunt for in practice: **`WAN⇆` on workloads you did not expect to
 
 ## Status & roadmap
 
-Today's scope: k8s NetworkPolicy + Istio AuthorizationPolicy + Calico GlobalNetworkPolicy + ambient-mesh mTLS, graph view, tables view, cluster-status dashboard, cross-engine issues drawer, click-driven reachability. Stable enough to use against a real cluster.
+Today's scope: k8s NetworkPolicy + Istio AuthorizationPolicy + Calico GlobalNetworkPolicy + ambient-mesh mTLS, graph view, tables view, cluster-status dashboard, cross-engine issues drawer, click-driven reachability. Stable enough to use against a real cluster with most common types of policies applied.
 
 Deferred to later iterations:
 
@@ -182,9 +184,29 @@ See [`docs/FEATURES.md`](docs/FEATURES.md) for the ranked wishlist with concrete
 
 ---
 
+## Get it
+
+Prebuilt artifacts, no build toolchain required:
+
+| Artifact | Where | Notes |
+|---|---|---|
+| Binary (`graph`) | [Releases](https://github.com/greenCircuit/network-policy-visualizer/releases) | Linux/amd64, static, UI embedded. `chmod +x graph` and run. |
+| Container image | `ghcr.io/greencircuit/network-policy-visualizer` | Same binary, serves on `:8080`. |
+
+```bash
+# binary
+curl -sSLo graph https://github.com/greenCircuit/network-policy-visualizer/releases/latest/download/graph
+chmod +x graph && KUBECONFIG=~/.kube/config ./graph
+
+# container, demo mode — nothing to configure
+podman run --rm -p 8080:8080 -e DEMO_MODE=true ghcr.io/greencircuit/network-policy-visualizer:latest
+```
+
+Against a real cluster the image needs a kubeconfig mounted (`-v ~/.kube/config:/kubeconfig:ro -e KUBECONFIG=/kubeconfig`), or in-cluster credentials plus the [RBAC](#rbac) below.
+
 ## Quick start
 
-Against your live cluster:
+Building from source, against your live cluster:
 
 ```bash
 cd ui && npm install && npm run build && cd ..
@@ -242,3 +264,4 @@ cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api 
 The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently across every registered engine (`defaultSources` in `internal/store/buildStore.go`; engine identifiers exposed via `Builder.EngineNames()`). Mesh membership + resolved PeerAuthentication mode are computed eagerly during graph build so every workload node ships with its mesh posture attached — cluster-status rollups and the ambient-HBONE detector don't have to re-query. Informers back the k8s / Istio / Calico reads — warm requests skip the API-server roundtrip — but `/api/graph` still re-evaluates every engine per request; see [`docs/informers.md`](docs/informers.md) for the sync + startup-blocking behavior.
 
 For architecture detail see the ADRs in [`docs/arch/`](docs/arch/) — in particular [`0003-istio-mesh-membership-and-mtls.md`](docs/arch/0003-istio-mesh-membership-and-mtls.md) for the mesh integration design — and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).
+

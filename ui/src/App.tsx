@@ -8,7 +8,10 @@ import DetailPanel from './components/DetailPanel';
 import IssuesDrawer from './components/IssuesDrawer';
 import DesignPreview from './components/DesignPreview';
 import DesignPreviewPanels from './components/DetailPanel/DesignPreview';
+import ScenarioBar, { ScenarioCaption } from './components/ScenarioBar';
+import { useScenario } from './components/ScenarioBar/use-scenario';
 import { useGraphStore } from './store/graphStore';
+import { DEMO_MODE } from './api/demo';
 
 type PreviewMode = 'status' | 'panels' | null;
 
@@ -42,6 +45,8 @@ export default function App() {
     loadGraph();
   }, [loadClusterState, loadGraph, preview]);
 
+  const scenario = useScenario(!preview);
+
   if (preview === 'status') {
     return (
       <div className="d-flex flex-column" style={{ height: '100vh', overflow: 'hidden' }}>
@@ -60,12 +65,20 @@ export default function App() {
   return (
     <div className="d-flex flex-column" style={{ height: '100vh', overflow: 'hidden' }}>
       <FilterPanel />
+      {DEMO_MODE && <ScenarioBar active={scenario.active} onSelect={scenario.select} />}
       <div className="position-relative flex-grow-1 d-flex flex-column overflow-hidden">
         {view === 'graph' && <PolicyGraph />}
         {view === 'tables' && <TablesView />}
         {view === 'status' && <ClusterStatusView />}
         <IssuesDrawer />
         <DetailPanel />
+        {scenario.active && scenario.captionOpen && (
+          <ScenarioCaption
+            scenario={scenario.active}
+            resolution={scenario.resolution}
+            onDismiss={scenario.dismiss}
+          />
+        )}
       </div>
     </div>
   );
