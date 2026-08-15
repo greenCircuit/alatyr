@@ -22,7 +22,14 @@ rules:
     verbs: ["get", "list", "watch"]
   {{- end }}
   {{- if .Values.serviceAccount.calico }}
+  # Calico aggregated API (projectcalico.org/v3) enforces tier RBAC:
+  # reads need the tier itself plus the tier.<resource> pseudo-resource.
   - apiGroups: ["projectcalico.org"]
-    resources: ["globalnetworkpolicies"]
+    resources: ["tiers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["projectcalico.org"]
+    resources:
+      - "globalnetworkpolicies"
+      - "tier.globalnetworkpolicies"
     verbs: ["get", "list", "watch"]
   {{- end }}

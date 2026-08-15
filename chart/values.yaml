@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: registry.dev.local/home-lab/network-policy-visualizer
   pullPolicy: Always
-  tag: "0.0.2-1-add-labels-for-workloads"  # defaults to Chart.appVersion
+  tag: "0.1.2-49-metrics-enpoint-and-grafana-dashboard"  
 
 serviceAccount:
   create: true
@@ -56,8 +56,8 @@ serviceMonitor:
   enabled: true
   metricsPort: 8085
   promLabel:
-    yourServiceMonitor: labels
-  promNs: monitoring # ns where deploy service monitor
+    release: observability-kube-prometheus-stack # label that prometheus uses to find service monitors
+  promNs: observability # ns where deploy service monitor
   interval: 60s
 
 alerts:
