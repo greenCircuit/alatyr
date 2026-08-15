@@ -42,7 +42,7 @@
       "id": 1,
       "title": "Evaluation freshness",
       "description": "Seconds since the last successful full-cluster evaluation. Everything else on this dashboard is only true if this is green — read this panel first.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
@@ -69,7 +69,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "time() - alatyr_evaluation_timestamp_seconds",
           "legendFormat": "since last eval"
         }
@@ -80,7 +80,7 @@
       "id": 2,
       "title": "Workloads (denominator)",
       "description": "Total workloads observed. Every ratio below is over this number.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 3, "x": 4, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -99,7 +99,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})"
         }
       ]
@@ -109,7 +109,7 @@
       "id": 3,
       "title": "Unpoliced",
       "description": "Workloads no engine selects — default-open. Value + delta vs 24h ago. RED at 1: any workload uncovered by every engine is default-open, so any non-zero value is a finding.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 4, "x": 7, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -134,13 +134,13 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)",
           "legendFormat": "now"
         },
         {
           "refId": "B",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) - (sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"} offset 24h) or vector(0))",
           "legendFormat": "Δ 24h"
         }
@@ -151,7 +151,7 @@
       "id": 4,
       "title": "Internet-full (ingress + egress)",
       "description": "Workloads reachable both ways from the internet — critical severity. RED at 1.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 4, "x": 11, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -176,13 +176,13 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)",
           "legendFormat": "now"
         },
         {
           "refId": "B",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "(sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) - (sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"} offset 24h) or vector(0))",
           "legendFormat": "Δ 24h"
         }
@@ -193,7 +193,7 @@
       "id": 5,
       "title": "Internet-ingress",
       "description": "Workloads reachable from the internet. RED at 1.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 3, "x": 15, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -218,7 +218,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads_internet_reachable{direction=\"ingress\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
         }
       ]
@@ -228,7 +228,7 @@
       "id": 6,
       "title": "Internet-egress",
       "description": "Workloads permitted to reach the internet. YELLOW at 1.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 3, "x": 18, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -253,7 +253,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_workloads_internet_reachable{direction=\"egress\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
         }
       ]
@@ -263,7 +263,7 @@
       "id": 7,
       "title": "HBONE blocked",
       "description": "Ambient workloads whose policy strips port 15008 — silent traffic loss. RED at 1.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 3, "x": 21, "y": 1},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -288,7 +288,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_mesh_hbone_blocked_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
         }
       ]
@@ -306,7 +306,7 @@
       "id": 10,
       "title": "Covered by every engine",
       "description": "Workloads selected by every enabled engine, as a share of total workloads. RED under 100% — anything less is a workload whose posture depends on which engine you asked.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 6, "w": 6, "x": 0, "y": 6},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -334,7 +334,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "(sum(alatyr_workloads_covered_by_all_engines{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) / clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)"
         }
       ]
@@ -344,7 +344,7 @@
       "id": 11,
       "title": "Single-engine coverage",
       "description": "Share of workloads covered by exactly one engine — a silent-failure risk since the intersection collapses to that engine's opinion alone. YELLOW at any, RED >20%.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 6, "w": 6, "x": 6, "y": 6},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -371,7 +371,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "(sum(alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) / clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)"
         }
       ]
@@ -381,7 +381,7 @@
       "id": 12,
       "title": "Per-engine coverage rate",
       "description": "Fraction of workloads each engine selects. An engine at 0% is either disabled or broken — cross-check the Freshness section.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 6, "w": 12, "x": 12, "y": 6},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -409,7 +409,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (engine) (alatyr_workloads_covered{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / scalar(clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)) or (max by (engine) (alatyr_engine_enabled) * 0)",
           "legendFormat": "{{engine}}"
         }
@@ -428,7 +428,7 @@
       "id": 20,
       "title": "Workloads by status",
       "description": "Effective status keys over time. Colors approximate the severity buckets in policy/catalog.go — internet-* red, lan-* orange, ns-* blue, air-gapped green, l7-applied teal.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
       "fieldConfig": {
         "defaults": {
@@ -450,7 +450,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
           "legendFormat": "{{status}}"
         }
@@ -461,7 +461,7 @@
       "id": 21,
       "title": "Status headline (current vs 24h)",
       "description": "Every status key with its current cluster-wide count and its 24h delta. Auditors want deltas, not raw totals.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": ""},
@@ -486,7 +486,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
           "legendFormat": "{{status}}"
         }
@@ -505,7 +505,7 @@
       "id": 30,
       "title": "Issues by type (24h)",
       "description": "Current issue counts by type over the last day. Control-plane namespaces are excluded by default (see $hide_infra template variable) — clear the variable to include them.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
       "fieldConfig": {
         "defaults": {
@@ -527,7 +527,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (type) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
           "legendFormat": "{{type}}"
         }
@@ -538,7 +538,7 @@
       "id": 31,
       "title": "Issue drill-down (namespace × type)",
       "description": "Click a row to open the Alatyr Issues panel filtered to that (namespace, type). Counts here are per (workload, engine) — a single conflict between two engines shows as 2.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
       "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
       "fieldConfig": {
@@ -562,7 +562,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (namespace, type) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
           "format": "table",
           "instant": true
@@ -585,14 +585,14 @@
       "type": "stat",
       "id": 40,
       "title": "Mesh enrolled",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 31},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "auto"},
       "fieldConfig": {"defaults": {"unit": "short", "noValue": "0"}},
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_mesh_workloads{enrolled=\"true\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
         }
       ]
@@ -601,14 +601,14 @@
       "type": "stat",
       "id": 41,
       "title": "Mesh opted-out",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 6, "x": 6, "y": 31},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "auto"},
       "fieldConfig": {"defaults": {"unit": "short", "noValue": "0"}},
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum(alatyr_mesh_workloads{enrolled=\"false\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
         }
       ]
@@ -618,7 +618,7 @@
       "id": 42,
       "title": "Namespaces partially enrolled",
       "description": "Enrolled namespaces containing at least one opted-out workload. The rollout footgun as a single number.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 31},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
       "fieldConfig": {
@@ -632,7 +632,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "alatyr_mesh_namespaces_partially_enrolled or vector(0)"
         }
       ]
@@ -642,14 +642,14 @@
       "id": 43,
       "title": "mTLS mode (cluster)",
       "description": "Populated only once MeshMembership.Mtls is stamped during snapshot. Empty for now — see docs.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 31},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "displayMode": "gradient"},
       "fieldConfig": {"defaults": {"unit": "short", "noValue": "0", "color": {"mode": "palette-classic"}}},
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (mode) (alatyr_mesh_mtls_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
           "legendFormat": "{{mode}}"
         }
@@ -668,7 +668,7 @@
       "id": 50,
       "title": "Engine last success (age)",
       "description": "Per-engine seconds since last successful evaluation. One engine failing while others succeed is the case the product is otherwise silent about.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 8, "x": 0, "y": 36},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value_and_name"},
       "fieldConfig": {
@@ -689,7 +689,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "time() - alatyr_engine_last_success_timestamp_seconds",
           "legendFormat": "{{engine}}"
         }
@@ -700,7 +700,7 @@
       "id": 51,
       "title": "Evaluation duration (p50 / p95)",
       "description": "Full-cycle wall-clock time. Drives the 'is the refresh interval sustainable' question.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 8, "x": 8, "y": 36},
       "fieldConfig": {
         "defaults": {
@@ -714,13 +714,13 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "histogram_quantile(0.5, sum by (le) (rate(alatyr_evaluation_duration_seconds_bucket[5m])))",
           "legendFormat": "p50"
         },
         {
           "refId": "B",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "histogram_quantile(0.95, sum by (le) (rate(alatyr_evaluation_duration_seconds_bucket[5m])))",
           "legendFormat": "p95"
         }
@@ -731,7 +731,7 @@
       "id": 52,
       "title": "Engine evaluation duration p95",
       "description": "Per-engine tail latency — pinpoints which engine dominates cycle time.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 36},
       "fieldConfig": {
         "defaults": {
@@ -745,7 +745,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "histogram_quantile(0.95, sum by (le, engine) (rate(alatyr_engine_evaluation_duration_seconds_bucket[5m])))",
           "legendFormat": "{{engine}}"
         }
@@ -756,7 +756,7 @@
       "id": 53,
       "title": "Engine errors (rate)",
       "description": "Bucketed engine failure rate. 'or vector(0)' forces a zero line so an empty result renders as 'no errors', not 'exporter down' — freshness (top row) is the definitive down-detector.",
-      "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 6, "w": 8, "x": 0, "y": 40},
       "fieldConfig": {
         "defaults": {
@@ -770,7 +770,7 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "expr": "sum by (engine, reason) (rate(alatyr_engine_errors_total[5m])) or vector(0)",
           "legendFormat": "{{engine}} · {{reason}}"
         }
@@ -787,7 +787,7 @@
           "type": "timeseries",
           "id": 60,
           "title": "HTTP request rate by path",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 8, "w": 12, "x": 0, "y": 47},
           "fieldConfig": {
             "defaults": {
@@ -801,7 +801,7 @@
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "sum by (path) (rate(alatyr_http_requests_total[5m]))",
               "legendFormat": "{{path}}"
             }
@@ -811,7 +811,7 @@
           "type": "timeseries",
           "id": 61,
           "title": "HTTP request duration p95 by path",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 8, "w": 12, "x": 12, "y": 47},
           "fieldConfig": {
             "defaults": {
@@ -825,7 +825,7 @@
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "histogram_quantile(0.95, sum by (le, path) (rate(alatyr_http_request_duration_seconds_bucket[5m])))",
               "legendFormat": "{{path}}"
             }
@@ -844,14 +844,14 @@
           "type": "table",
           "id": 70,
           "title": "Build info",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 4, "w": 12, "x": 0, "y": 48},
           "options": {"showHeader": true},
           "fieldConfig": {"defaults": {"custom": {"align": "left"}}},
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "alatyr_build_info",
               "format": "table",
               "instant": true
@@ -865,14 +865,14 @@
           "type": "stat",
           "id": 71,
           "title": "Enabled engines",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 4, "w": 12, "x": 12, "y": 48},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "value_and_name"},
           "fieldConfig": {"defaults": {"unit": "short", "noValue": "0"}},
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "alatyr_engine_enabled",
               "legendFormat": "{{engine}}"
             }
@@ -892,7 +892,7 @@
           "id": 80,
           "title": "Culprit policies by issue count",
           "description": "One row per (namespace, type, engine, policy). Counts fan out each issue across its ingress + egress + node culprits; a policy cited on both sides of the same issue counts once. Powered by alatyr_issues_by_policy — disable via METRICS_ISSUE_POLICY_BREAKDOWN=false if cardinality bites.",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 10, "w": 16, "x": 0, "y": 53},
           "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
           "fieldConfig": {
@@ -911,7 +911,7 @@
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "sum by (namespace, type, engine, policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
               "format": "table",
               "instant": true
@@ -927,7 +927,7 @@
           "id": 81,
           "title": "Top 15 culprit policies",
           "description": "Sum across all issue types + namespaces per policy. Answers 'which policy is causing the most breakage right now'.",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 10, "w": 8, "x": 16, "y": 53},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true},
           "fieldConfig": {
@@ -942,7 +942,7 @@
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "topk(15, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}))",
               "legendFormat": "{{policy_namespace}}/{{policy_name}}"
             }
@@ -953,7 +953,7 @@
           "id": 82,
           "title": "Culprit policy issue count over time",
           "description": "Top 10 culprit policies over the dashboard time range. Useful for spotting new offenders vs steady-state noise.",
-          "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
           "gridPos": {"h": 8, "w": 24, "x": 0, "y": 63},
           "fieldConfig": {
             "defaults": {
@@ -967,7 +967,7 @@
           "targets": [
             {
               "refId": "A",
-              "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+              "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "topk(10, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}))",
               "legendFormat": "{{policy_namespace}}/{{policy_name}}"
             }
@@ -983,11 +983,24 @@
   "templating": {
     "list": [
       {
+        "name": "datasource",
+        "label": "Prometheus source",
+        "description": "Prometheus datasource backing every panel on this dashboard.",
+        "type": "datasource",
+        "query": "prometheus",
+        "regex": "",
+        "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
+        "hide": 0,
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false
+      },
+      {
         "name": "namespace",
         "label": "Namespace",
         "description": "Filter to specific namespaces. Multi-select; defaults to All.",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "alatyr-prometheus"},
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
         "query": {"query": "label_values(alatyr_workloads, namespace)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
         "definition": "label_values(alatyr_workloads, namespace)",
         "regex": "",
