@@ -10,16 +10,18 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"graph/internal/k8s"
+	"graph/internal/metrics"
 	"graph/internal/models"
 	"graph/internal/store"
 )
 
 type Server struct {
-	client k8s.KubernetesClient
-	store  *store.Builder
-	cache  *models.Cache
-	log    *slog.Logger
-	mu     sync.RWMutex
+	client  k8s.KubernetesClient
+	store   *store.Builder
+	cache   *models.Cache
+	log     *slog.Logger
+	metrics *metrics.Recorder // nil when metrics are disabled — every call site nil-checks
+	mu      sync.RWMutex
 }
 
 func New(client k8s.KubernetesClient, store *store.Builder, logger *slog.Logger) *Server {
@@ -34,6 +36,13 @@ func New(client k8s.KubernetesClient, store *store.Builder, logger *slog.Logger)
 	}
 }
 
+// SetMetrics wires the Prometheus recorder. Optional — the server runs
+// without it — but cache-refresh and the /metrics endpoint both need it,
+// so main is expected to call this before RegisterRoutes.
+func (s *Server) SetMetrics(recorder *metrics.Recorder) {
+	s.metrics = recorder
+}
+
 func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/graph", s.handleGraph)
 	e.GET("/api/node-info", s.getNodeInfo)
@@ -43,6 +52,13 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/issues", s.getIssues)
 	e.GET("/api/mesh-status", s.MeshStatuses)
 	e.GET("/api/cluster-metrics", s.ClusterMetrics)
+	// /metrics is unauthenticated + cluster-revealing. docs/METRICS.md line
+	// 183: same bind-to-localhost + network-policy guidance as the UI. Serving
+	// on the same Echo for v1; move to a separate listener when the ops story
+	// demands it.
+	if s.metrics != nil {
+		e.GET("/metrics", echo.WrapHandler(s.metrics.Handler()))
+	}
 }
 
 // RegisterUI mounts the embedded SPA at "/". Returns an error instead of

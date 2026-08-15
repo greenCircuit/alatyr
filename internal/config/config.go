@@ -26,4 +26,5 @@ type Config struct {
 	ApiServerCIDRs []string          `mapstructure:"apiServerCIDRs"`
 	DNSNamespace   string            `mapstructure:"dnsNs"`
 	DNSLabels      map[string]string `mapstructure:"dnsLabels"`
+	CacheRefreshSec int16			 `mapstructure:"cacheRefreshSec"`
 }

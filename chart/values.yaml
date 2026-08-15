@@ -7,6 +7,13 @@ image:
 
 serviceAccount:
   create: true
+  # Per-engine RBAC toggles. Disable when the CRD is absent from the cluster
+  # or you want to scope the SA away from an engine. The Go engines return
+  # empty results when the CRD is missing, so a 403 from a missing rule is
+  # louder than actual missing-CRD behavior — keep in sync.
+  k8s: true
+  istio: true
+  calico: true
 
 service:
   type: ClusterIP
@@ -36,3 +43,22 @@ securityContext:
   capabilities:
     drop: [ALL]
 
+config:
+  podCIDR: 10.42.0.0/24
+  svcCIDR: 10.43.0.0/24
+  apiServerCIDRs: []
+  dnsNs: kube-system
+  dnsLabels:
+    k8s-app: kube-dns
+  cacheRefreshSec: 10
+
+serviceMonitor:
+  enabled: true
+  metricsPort: 8085
+  promLabel:
+    yourServiceMonitor: labels
+  promNs: monitoring # ns where deploy service monitor
+  interval: 60s
+
+alerts:
+  enabled: true

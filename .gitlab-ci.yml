@@ -19,6 +19,9 @@ include:
     file: pipelines/build.yaml
   - project: home-lab/pipeline-catalog
     file: pipelines/release.yaml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/k8s.yaml
+
 
 release-dry-run:
   extends: .semantic-release-dry-run
@@ -51,6 +54,12 @@ ui-test:
       - ui/node_modules/
   script:
     - cd ui && npm ci && npm run test:coverage
+
+chart-test:
+  stage: test
+  extends: .check-helm
+  variables:
+    CHECK_PATH: "./chart"
 
 # BUILD
 img-base:

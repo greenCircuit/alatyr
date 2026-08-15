@@ -1,16 +1,28 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "netpol-viz.fullname" . }}
+  name: {{ include "alatyr.fullname" . }}
   labels:
-    {{- include "netpol-viz.labels" . | nindent 4 }}
+    {{- include "alatyr.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["pods", "namespaces", "services"]
-    verbs: ["get", "list"]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
     resources: ["cronjobs"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
+  {{- if .Values.serviceAccount.k8s }}
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
+  {{- if .Values.serviceAccount.istio }}
+  - apiGroups: ["security.istio.io"]
+    resources: ["authorizationpolicies", "peerauthentications"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
+  {{- if .Values.serviceAccount.calico }}
+  - apiGroups: ["projectcalico.org"]
+    resources: ["globalnetworkpolicies"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
