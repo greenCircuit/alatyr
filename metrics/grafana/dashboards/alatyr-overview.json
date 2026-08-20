@@ -100,7 +100,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})"
+          "expr": "sum(alatyr_workloads{namespace=~\"$namespace\"})"
         }
       ]
     },
@@ -108,7 +108,7 @@
       "type": "stat",
       "id": 3,
       "title": "Unpoliced",
-      "description": "Workloads no engine selects — default-open. Value + delta vs 24h ago. RED at 1: any workload uncovered by every engine is default-open, so any non-zero value is a finding.",
+      "description": "Workloads no engine selects — default-open. RED at 1: any workload uncovered by every engine is default-open, so any non-zero value is a finding.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 4, "x": 7, "y": 1},
       "options": {
@@ -135,14 +135,8 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)",
-          "legendFormat": "now"
-        },
-        {
-          "refId": "B",
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) - (sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"} offset 24h) or vector(0))",
-          "legendFormat": "Δ 24h"
+          "expr": "sum(alatyr_workloads_unpoliced{namespace=~\"$namespace\"}) or vector(0)",
+          "legendFormat": "unpoliced"
         }
       ]
     },
@@ -177,14 +171,8 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)",
-          "legendFormat": "now"
-        },
-        {
-          "refId": "B",
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "(sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) - (sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"} offset 24h) or vector(0))",
-          "legendFormat": "Δ 24h"
+          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"both\",namespace=~\"$namespace\"}) or vector(0)",
+          "legendFormat": "internet-full"
         }
       ]
     },
@@ -219,7 +207,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"ingress\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
+          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"ingress\",namespace=~\"$namespace\"}) or vector(0)"
         }
       ]
     },
@@ -254,7 +242,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"egress\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
+          "expr": "sum(alatyr_workloads_internet_reachable{direction=\"egress\",namespace=~\"$namespace\"}) or vector(0)"
         }
       ]
     },
@@ -289,7 +277,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_mesh_hbone_blocked_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
+          "expr": "sum(alatyr_mesh_hbone_blocked_workloads{namespace=~\"$namespace\"}) or vector(0)"
         }
       ]
     },
@@ -334,7 +322,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "(sum(alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) / clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)"
+          "expr": "(sum(alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\"}) or vector(0)) / clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\"}), 1)"
         }
       ]
     },
@@ -372,7 +360,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (engine) (alatyr_workloads_covered{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / scalar(clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)) or (max by (engine) (alatyr_engine_enabled) * 0)",
+          "expr": "sum by (engine) (alatyr_workloads_covered{namespace=~\"$namespace\", engine=~\"$engine\"}) / scalar(clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\"}), 1)) or (max by (engine) (alatyr_engine_enabled{engine=~\"$engine\"}) * 0)",
           "legendFormat": "{{engine}}"
         }
       ]
@@ -380,7 +368,7 @@
     {
       "type": "row",
       "id": 92,
-      "title": "Findings (24h)",
+      "title": "Findings",
       "collapsed": false,
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12},
       "panels": []
@@ -413,7 +401,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\"})",
           "legendFormat": "{{status}}"
         }
       ]
@@ -421,8 +409,8 @@
     {
       "type": "stat",
       "id": 21,
-      "title": "Status headline (current vs 24h)",
-      "description": "Every status key with its current cluster-wide count and its 24h delta. Auditors want deltas, not raw totals.",
+      "title": "Status headline",
+      "description": "Every status key with its current cluster-wide count.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
       "options": {
@@ -449,7 +437,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "expr": "sum by (status) (alatyr_workloads_by_status{namespace=~\"$namespace\"})",
           "legendFormat": "{{status}}"
         }
       ]
@@ -465,8 +453,8 @@
     {
       "type": "timeseries",
       "id": 30,
-      "title": "Issues by type (24h)",
-      "description": "Current issue counts by type over the last day. Control-plane namespaces are excluded by default (see $hide_infra template variable) — clear the variable to include them.",
+      "title": "Issues by type",
+      "description": "Current issue counts by type.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
       "fieldConfig": {
@@ -490,7 +478,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (type) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "expr": "sum by (type) (alatyr_issues{namespace=~\"$namespace\"})",
           "legendFormat": "{{type}}"
         }
       ]
@@ -518,7 +506,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (namespace, type) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+          "expr": "sum by (namespace, type) (alatyr_issues{namespace=~\"$namespace\"}) > 0",
           "format": "table",
           "instant": true
         }
@@ -548,7 +536,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_mesh_workloads{enrolled=\"true\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
+          "expr": "sum(alatyr_mesh_workloads{enrolled=\"true\",namespace=~\"$namespace\"}) or vector(0)"
         }
       ]
     },
@@ -564,7 +552,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum(alatyr_mesh_workloads{enrolled=\"false\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)"
+          "expr": "sum(alatyr_mesh_workloads{enrolled=\"false\",namespace=~\"$namespace\"}) or vector(0)"
         }
       ]
     },
@@ -605,7 +593,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (mode) (alatyr_mesh_mtls_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "expr": "sum by (mode) (alatyr_mesh_mtls_workloads{namespace=~\"$namespace\"})",
           "legendFormat": "{{mode}}"
         }
       ]
@@ -763,12 +751,12 @@
         ]
       },
       "targets": [
-        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_by_status{status=\"internet-full\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "D", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "E", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "F", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_policies{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true}
+        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\"})", "format": "table", "instant": true},
+        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_by_status{status=\"internet-full\",namespace=~\"$namespace\"})", "format": "table", "instant": true},
+        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_unpoliced{namespace=~\"$namespace\"})", "format": "table", "instant": true},
+        {"refId": "D", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\"})", "format": "table", "instant": true},
+        {"refId": "E", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_issues{namespace=~\"$namespace\"})", "format": "table", "instant": true},
+        {"refId": "F", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_policies{namespace=~\"$namespace\", engine=~\"$engine\"})", "format": "table", "instant": true}
       ],
       "transformations": [
         {"id": "joinByField", "options": {"byField": "namespace", "mode": "outer"}},
@@ -815,7 +803,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (namespace, engine) (alatyr_workloads_covered{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / on (namespace) group_left sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "expr": "sum by (namespace, engine) (alatyr_workloads_covered{namespace=~\"$namespace\", engine=~\"$engine\"}) / on (namespace) group_left sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\"})",
           "format": "table",
           "instant": true
         }
@@ -850,7 +838,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (namespace, engine) (alatyr_policies{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+          "expr": "sum by (namespace, engine) (alatyr_policies{namespace=~\"$namespace\", engine=~\"$engine\"}) > 0",
           "format": "table",
           "instant": true
         }
@@ -996,7 +984,7 @@
             {
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
-              "expr": "sum by (namespace, type, engine, policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+              "expr": "sum by (namespace, type, engine, policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", engine=~\"$engine\"}) > 0",
               "format": "table",
               "instant": true
             }
@@ -1027,7 +1015,7 @@
             {
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
-              "expr": "topk(15, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}))",
+              "expr": "topk(15, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", engine=~\"$engine\"}))",
               "legendFormat": "{{policy_namespace}}/{{policy_name}}"
             }
           ]
@@ -1052,7 +1040,7 @@
             {
               "refId": "A",
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
-              "expr": "topk(10, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}))",
+              "expr": "topk(10, sum by (policy_namespace, policy_name) (alatyr_issues_by_policy{namespace=~\"$namespace\", engine=~\"$engine\"}))",
               "legendFormat": "{{policy_namespace}}/{{policy_name}}"
             }
           ]
@@ -1094,7 +1082,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "sum by (namespace, engine, action, direction) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+          "expr": "sum by (namespace, engine, action, direction) (alatyr_rule_edges{namespace=~\"$namespace\", engine=~\"$engine\"}) > 0",
           "format": "table",
           "instant": true
         }
@@ -1128,9 +1116,9 @@
         ]
       },
       "targets": [
-        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
-        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true}
+        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", engine=~\"$engine\"})", "format": "table", "instant": true},
+        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", engine=~\"$engine\"})", "format": "table", "instant": true},
+        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", engine=~\"$engine\"}) / sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", engine=~\"$engine\"})", "format": "table", "instant": true}
       ],
       "transformations": [
         {"id": "joinByField", "options": {"byField": "coverage", "mode": "outer"}},
@@ -1175,7 +1163,7 @@
         {
           "refId": "A",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"} > 0",
+          "expr": "alatyr_policy_coverage{namespace=~\"$namespace\", engine=~\"$engine\"} > 0",
           "format": "table",
           "instant": true
         }
@@ -1223,19 +1211,20 @@
         "hide": 0
       },
       {
-        "name": "hide_infra",
-        "label": "Hide infra namespaces",
-        "description": "Regex of namespaces to exclude. Default drops control-plane noise. Set to '^$' to include everything.",
-        "type": "custom",
-        "query": "kube-.*|istio-system|calico-system|calico-apiserver|tigera-.*,^$",
-        "options": [
-          {"text": "kube-* + mesh control planes", "value": "kube-.*|istio-system|calico-system|calico-apiserver|tigera-.*", "selected": true},
-          {"text": "kube-* only", "value": "kube-.*", "selected": false},
-          {"text": "nothing (include all)", "value": "^$", "selected": false}
-        ],
-        "current": {"selected": true, "text": "kube-* + mesh control planes", "value": "kube-.*|istio-system|calico-system|calico-apiserver|tigera-.*"},
-        "multi": false,
-        "includeAll": false,
+        "name": "engine",
+        "label": "Engine",
+        "description": "Filter engine-scoped panels (policies, rule edges, coverage, issue culprits) to specific engines. Multi-select; defaults to All. Health/enablement panels (engine last-success, errors, evaluation duration, engine_enabled) ignore this and always show all engines.",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "query": {"query": "label_values(alatyr_policies, engine)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "definition": "label_values(alatyr_policies, engine)",
+        "regex": "",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "refresh": 2,
+        "sort": 1,
         "hide": 0
       }
     ]

@@ -13,7 +13,8 @@ edges and intersects statuses into node badges.
 
 Jump to: [k8s](#1-k8s--kubernetes-networkpolicy) · [istio](#2-istio--authorizationpolicy-ingress-only) ·
 [calico](#3-calico--globalnetworkpolicy) · [status keys](#4-status-keys-node-badges) ·
-[mesh](#5-mesh-status-istio-ambient) · [issues](#6-issue-types-and-how-each-is-determined)
+[mesh](#5-mesh-status-istio-ambient) · [issues](#6-issue-types-and-how-each-is-determined) ·
+[metrics](#7-prometheus-metrics)
 
 ---
 
@@ -351,6 +352,69 @@ Precedence when a direction is decided (`reachability.go:217`): explicit deny �
 carve-out → allow → allows-elsewhere → deny-all marker → no opinion. Carve-outs
 deliberately outrank allows, so a `0.0.0.0/0` allow can't win back a range its
 own `except` list removed.
+
+---
+
+## 7. Prometheus metrics
+
+Second HTTP listener on `:8085` (env `METRICS_PORT`), path `/metrics`, unauth
+(`main.go:133`). Separate from `:8080` so scrape traffic bypasses Recover +
+logging + HTTP-metrics middleware and cannot self-report on the request-rate
+dashboard. All series are namespaced `alatyr_*`; Go runtime + process collectors
+keep their canonical unprefixed names so stock Grafana dashboards still key on
+them (`registry.go:121`). Full catalog with labels + cardinality budget in
+[`docs/METRICS.md`](docs/METRICS.md).
+
+### Emitted today (`internal/metrics/registry.go:130`)
+
+| Section | Series | Notes |
+|---|---|---|
+| Exposure | `alatyr_workloads`, `alatyr_workloads_by_status`, `alatyr_workloads_unpoliced`, `alatyr_workloads_internet_reachable` | Denominator + effective status-key census. `status` is the slug, never the glyph. |
+| Coverage | `alatyr_workloads_covered`, `alatyr_workloads_single_engine_coverage`, `alatyr_policies` | `_covered` is **not summable across engines** — read one engine at a time. Cluster-scoped policies (Calico) stamp `namespace="_cluster"`. |
+| Issues | `alatyr_issues`, `alatyr_issues_by_engine`, `alatyr_issues_by_policy` | Gauges — a persistent issue is the same issue. `_by_policy` fan-out is on by default, gated by `METRICS_ISSUE_POLICY_BREAKDOWN=false`. |
+| Mesh | `alatyr_mesh_workloads`, `alatyr_mesh_namespaces_partially_enrolled`, `alatyr_mesh_mtls_workloads`, `alatyr_mesh_hbone_blocked_workloads` | `mode="unknown"` in mTLS = PA fetch failed; alertable, not a real mTLS mode. |
+| Freshness | `alatyr_evaluation_timestamp_seconds`, `alatyr_engine_last_success_timestamp_seconds`, `alatyr_engine_errors_total`, `alatyr_engine_enabled`, `alatyr_evaluation_duration_seconds`, `alatyr_engine_evaluation_duration_seconds`, `alatyr_evaluation_failures_total`, `alatyr_informer_cache_synced` | Gates trust for every finding above. `engine_enabled` distinguishes absent-from-cluster from broken. `engine_errors_total` reasons are a closed set: `fetch`, `decode`, `unsupported`, `timeout`. |
+| Process | `alatyr_build_info`, `alatyr_http_requests_total`, `alatyr_http_request_duration_seconds` | HTTP `path` is the route pattern, never a raw URL. |
+| Rule inventory | `alatyr_rule_edges`, `alatyr_policy_coverage` | `_rule_edges` is raw post-expansion (sum-safe). `_policy_coverage` deduped per bucket (**sum() is not a valid total**). |
+
+### Opt-in high-cardinality (off by default)
+
+`METRICS_DETAIL=workload` registers `alatyr_workload_status` and
+`alatyr_workload_issues`, both labelled `namespace,workload,type|status`. Workload
+label is the owner-reference rollup (Deployment / StatefulSet / CronJob), never a
+pod name — pod names carry ReplicaSet hashes, every rollout would churn the
+whole series set. On a 5,000-pod cluster status alone is ~65,000 series; the
+warning in `values.yaml` is not decorative.
+
+### Chart wiring (`chart/values.yaml`)
+
+- `serviceMonitor.enabled` — ships a `ServiceMonitor` selecting the metrics
+  endpoint. `promLabel` is the discovery label the Prometheus instance selects
+  on; `promNs` is where the ServiceMonitor lands.
+- `alerts.enabled` — ships a `PrometheusRule` with two groups
+  (`alatyr.staleness`, `alatyr.findings`) covering the alerts from
+  [`docs/METRICS.md`](docs/METRICS.md#starter-alerts): evaluation stalled, per-engine
+  stalled, informer desynced, mTLS unknown, unpoliced workloads, new internet
+  exposure, policy conflict, HBONE blocked, no-DNS egress. Every rule has
+  per-instance `enabled` / `threshold(Seconds)` / `for` / `severity`; namespace
+  allowlisting belongs in downstream label matchers, not in the exporter.
+- `alerts.extraGroups` — passthrough for site-specific rule groups.
+- `alerts.commonLabels` — stamped on every alert (team, service, tier).
+
+### Not emitted today
+
+- **Cluster-scoped Calico policies with `namespace=""`** get folded under
+  `namespace="_cluster"` so the exporter's own tool (surface cluster-scoped
+  policy) doesn't disappear from its own metrics. This is a labelling choice,
+  not a gap.
+- **Rule / port / CIDR / policy-name as default labels** — deliberately absent.
+  Any addition to the default label set must not multiply by the workload
+  inventory; see the cardinality budget in `docs/METRICS.md`.
+- **Waypoint metrics** — waypoint binding is not resolved in the mesh source
+  yet (`FEATURES.md` §5), so nothing emits.
+- `/metrics` is **unauthenticated and cluster-revealing** — exposure counts per
+  namespace are reconnaissance data. Same bind-to-localhost / NetworkPolicy
+  guidance as the UI (`docs/METRICS.md` shipping checklist).
 
 ### Per-engine path verdict
 
