@@ -5,6 +5,15 @@ package metrics
 // downstream dashboard and alert — treat as append-only.
 const MetricsNamespace = "alatyr"
 
+// ClusterScopeNamespace is the sentinel stamped into the `namespace` (or
+// `policy_namespace`) label whenever a policy object is cluster-scoped and
+// therefore has no real namespace — e.g. Calico GlobalNetworkPolicy. Kept
+// starting with an underscore because valid k8s namespace names are DNS-1123
+// labels (no leading underscore), so this can never collide with a real ns.
+// Making it explicit is not cosmetic: the tool exists to surface cluster-scoped
+// policy, so it must not render as a null on its own dashboard.
+const ClusterScopeNamespace = "_cluster"
+
 // DetailLevel gates high-cardinality metric families. Off by default because
 // per-workload gauges scale as pods × statuses, which is exactly the failure
 // mode the metrics doc's cardinality section warns about.

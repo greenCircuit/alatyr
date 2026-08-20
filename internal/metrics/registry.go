@@ -37,7 +37,6 @@ type Recorder struct {
 
 	// Section 2 — coverage
 	workloadsCovered           *prometheus.GaugeVec
-	workloadsCoveredByAll      *prometheus.GaugeVec
 	workloadsSingleEngineCover *prometheus.GaugeVec
 	policies                   *prometheus.GaugeVec
 
@@ -70,6 +69,15 @@ type Recorder struct {
 	// Section 7 — opt-in per-workload detail. Nil unless Detail == DetailWorkload.
 	workloadStatus *prometheus.GaugeVec
 	workloadIssues *prometheus.GaugeVec
+
+	// Section 8 — rules.
+	// ruleEdges: raw post-expansion count. One podSelector:{} manifest fans
+	// into src×dst rules, so this counts graph edges, not policy objects.
+	// Sum-safe across any label subset.
+	// policyCoverage: deduped by (engine, ns, name, action, coverage,
+	// direction). One count per policy per bucket. sum() is NOT a valid total.
+	ruleEdges      *prometheus.GaugeVec
+	policyCoverage *prometheus.GaugeVec
 }
 
 // New constructs a Recorder with all metric vecs registered on a fresh
@@ -137,15 +145,12 @@ func (r *Recorder) registerMetrics() {
 	r.workloadsCovered = factory.NewGaugeVec("workloads_covered",
 		"Workloads selected by at least one policy from this engine.",
 		"namespace", "engine")
-	r.workloadsCoveredByAll = factory.NewGaugeVec("workloads_covered_by_all_engines",
-		"Workloads selected by every enabled engine.",
-		"namespace")
 	r.workloadsSingleEngineCover = factory.NewGaugeVec("workloads_single_engine_coverage",
 		"Workloads covered by exactly one engine — silent-failure risk on intersection.",
 		"namespace")
 	r.policies = factory.NewGaugeVec("policies",
-		"Policy object counts per engine per action. Cheap detector for a GitOps sync that silently dropped a directory.",
-		"namespace", "engine", "action")
+		"Distinct policy manifests per engine per namespace. Deduped by (engine, ns, name). Action is a rule-level attribute — Calico/Kyverno mix allow+deny in one manifest, so keying by action would double-count. Action, direction, coverage live on alatyr_rule_edges.",
+		"namespace", "engine")
 
 	// Section 3
 	r.issues = factory.NewGaugeVec("issues",
@@ -225,6 +230,22 @@ func (r *Recorder) registerMetrics() {
 			"Issue counts attributed to a specific culprit policy. Enabled by default; disable via METRICS_ISSUE_POLICY_BREAKDOWN=false.",
 			"namespace", "type", "engine", "policy_namespace", "policy_name")
 	}
+
+	// Section 8 — rules.
+	// alatyr_rule_edges: raw post-expansion count. Every rule fan-out contributes
+	// exactly one edge; a single podSelector:{} manifest can produce thousands.
+	// Sum-safe: sum(alatyr_rule_edges) is total edges; sum by (namespace) is
+	// per-ns; sum by (action) is per-action; etc.
+	// alatyr_policy_coverage: deduped per (engine, ns, name, action, coverage,
+	// direction). One count per policy per bucket. sum() is NOT a valid total —
+	// a policy spanning multiple buckets contributes once per bucket, so summing
+	// double-counts. Ratio edges/policy_coverage per bucket = avg fan-out.
+	r.ruleEdges = factory.NewGaugeVec("rule_edges",
+		"Raw post-expansion rule count. One policy fans into src×dst edges; this counts every edge. Sum-safe across any label subset.",
+		"namespace", "engine", "action", "coverage", "direction")
+	r.policyCoverage = factory.NewGaugeVec("policy_coverage",
+		"Distinct policies per (namespace, engine, action, coverage, direction) bucket. Deduped by (engine, ns, name, action, coverage, direction). sum() across labels is NOT a valid total — use alatyr_rule_edges for raw counts.",
+		"namespace", "engine", "action", "coverage", "direction")
 }
 
 // promauto is a tiny local factory that MustRegisters everything on our

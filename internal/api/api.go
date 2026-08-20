@@ -52,13 +52,6 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/issues", s.getIssues)
 	e.GET("/api/mesh-status", s.MeshStatuses)
 	e.GET("/api/cluster-metrics", s.ClusterMetrics)
-	// /metrics is unauthenticated + cluster-revealing. docs/METRICS.md line
-	// 183: same bind-to-localhost + network-policy guidance as the UI. Serving
-	// on the same Echo for v1; move to a separate listener when the ops story
-	// demands it.
-	if s.metrics != nil {
-		e.GET("/metrics", echo.WrapHandler(s.metrics.Handler()))
-	}
 }
 
 // RegisterUI mounts the embedded SPA at "/". Returns an error instead of

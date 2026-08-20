@@ -303,49 +303,11 @@
     },
     {
       "type": "gauge",
-      "id": 10,
-      "title": "Covered by every engine",
-      "description": "Workloads selected by every enabled engine, as a share of total workloads. RED under 100% — anything less is a workload whose posture depends on which engine you asked.",
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 6},
-      "options": {
-        "reduceOptions": {"calcs": ["lastNotNull"]},
-        "orientation": "auto",
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.8},
-              {"color": "green", "value": 1}
-            ]
-          },
-          "min": 0,
-          "max": 1,
-          "unit": "percentunit",
-          "noValue": "0"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "expr": "(sum(alatyr_workloads_covered_by_all_engines{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) or vector(0)) / clamp_min(sum(alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}), 1)"
-        }
-      ]
-    },
-    {
-      "type": "gauge",
       "id": 11,
       "title": "Single-engine coverage",
       "description": "Share of workloads covered by exactly one engine — a silent-failure risk since the intersection collapses to that engine's opinion alone. YELLOW at any, RED >20%.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 6},
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 6},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
         "orientation": "auto",
@@ -380,9 +342,9 @@
       "type": "bargauge",
       "id": 12,
       "title": "Per-engine coverage rate",
-      "description": "Fraction of workloads each engine selects. An engine at 0% is either disabled or broken — cross-check the Freshness section.",
+      "description": "Fraction of workloads each engine selects. An engine at 0% is either disabled or broken — cross-check the Freshness section. Per-engine, not intersected: a workload uncovered by engine X but covered by engine Y is not a gap unless engine X is expected to select it.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
-      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 6},
+      "gridPos": {"h": 6, "w": 18, "x": 6, "y": 6},
       "options": {
         "reduceOptions": {"calcs": ["lastNotNull"]},
         "orientation": "horizontal",
@@ -537,7 +499,7 @@
       "type": "table",
       "id": 31,
       "title": "Issue drill-down (namespace × type)",
-      "description": "Click a row to open the Alatyr Issues panel filtered to that (namespace, type). Counts here are per (workload, engine) — a single conflict between two engines shows as 2.",
+      "description": "Counts here are per (workload, engine) — a single conflict between two engines shows as 2.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
       "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
@@ -545,14 +507,7 @@
         "defaults": {
           "custom": {"align": "left", "displayMode": "auto"},
           "color": {"mode": "thresholds"},
-          "thresholds": {"mode": "absolute", "steps": [{"color": "yellow", "value": null}, {"color": "red", "value": 1}]},
-          "links": [
-            {
-              "title": "Open in Alatyr UI",
-              "url": "http://localhost:8080/#/issues?namespace=${__data.fields.namespace}&type=${__data.fields.type}",
-              "targetBlank": true
-            }
-          ]
+          "thresholds": {"mode": "absolute", "steps": [{"color": "yellow", "value": null}, {"color": "red", "value": 1}]}
         },
         "overrides": [
           {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "displayName", "value": "count (workload×engine)"}]},
@@ -641,7 +596,7 @@
       "type": "bargauge",
       "id": 43,
       "title": "mTLS mode (cluster)",
-      "description": "Populated only once MeshMembership.Mtls is stamped during snapshot. Empty for now — see docs.",
+      "description": "Enrolled workloads by resolved mTLS verdict (strict/permissive/disabled/unset/unknown). `unknown` = PA fetch failed; alertable.",
       "datasource": {"type": "prometheus", "uid": "${datasource}"},
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 31},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "displayMode": "gradient"},
@@ -778,17 +733,146 @@
     },
     {
       "type": "row",
+      "id": 99,
+      "title": "Per-namespace breakdown",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 46},
+      "panels": []
+    },
+    {
+      "type": "table",
+      "id": 32,
+      "title": "Namespace scorecard",
+      "description": "One row per namespace. workloads = denominator; internet-full = worst-case reachability; unpoliced = zero engines select this workload; single-engine = only one engine covers it (intersection collapses to that engine's opinion); issues + policies = raw counts. Sorted by internet-full desc — the row a CISO reads first. `sum by (namespace)` is safe on all series here: none are engine-labelled, so no per-engine overcount.",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 47},
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["workloads", "internet-full", "unpoliced", "single-engine", "issues", "policies"]}},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "internet-full"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}]},
+          {"matcher": {"id": "byName", "options": "unpoliced"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}]},
+          {"matcher": {"id": "byName", "options": "issues"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}]},
+          {"matcher": {"id": "byName", "options": "single-engine"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}]}}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 240}]}
+        ]
+      },
+      "targets": [
+        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_by_status{status=\"internet-full\",namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_unpoliced{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "D", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_workloads_single_engine_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "E", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_issues{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "F", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace) (alatyr_policies{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true}
+      ],
+      "transformations": [
+        {"id": "joinByField", "options": {"byField": "namespace", "mode": "outer"}},
+        {"id": "organize", "options": {
+          "excludeByName": {"Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "Time 5": true, "Time 6": true, "__name__": true, "job": true, "instance": true},
+          "renameByName": {
+            "Value #A": "workloads",
+            "Value #B": "internet-full",
+            "Value #C": "unpoliced",
+            "Value #D": "single-engine",
+            "Value #E": "issues",
+            "Value #F": "policies"
+          },
+          "indexByName": {"namespace": 0, "workloads": 1, "internet-full": 2, "unpoliced": 3, "single-engine": 4, "issues": 5, "policies": 6}
+        }},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "internet-full", "desc": true}]}}
+      ]
+    },
+    {
+      "type": "table",
+      "id": 33,
+      "title": "Per-namespace × engine coverage",
+      "description": "Fraction of workloads each engine selects, per namespace. `group_left` joins by namespace so the engine-labelled numerator can divide by the un-labelled workload total. Zero rows for a namespace means no engine touches it — cross-check the scorecard's `unpoliced` column. NOT summable across engines (a workload covered by two engines shows twice) — read one engine at a time.",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 59},
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.9}]},
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "displayName", "value": "coverage"}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 220}]},
+          {"matcher": {"id": "byName", "options": "engine"}, "properties": [{"id": "custom.width", "value": 140}]}
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "expr": "sum by (namespace, engine) (alatyr_workloads_covered{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / on (namespace) group_left sum by (namespace) (alatyr_workloads{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "engine": 1, "Value": 2}}},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "Value", "desc": false}]}}
+      ]
+    },
+    {
+      "type": "table",
+      "id": 34,
+      "title": "Per-namespace manifest census",
+      "description": "Distinct policy manifests per (namespace, engine). Deduped by (engine, ns, name) — a manifest producing many rules or mixing allow+deny counts once. Cluster-scoped policies (Calico GlobalNetworkPolicy, etc.) roll up under namespace=`_cluster`. Cheap detector for a GitOps sync that silently dropped a directory — a namespace whose count halved overnight is usually the story. Action, direction, coverage live on alatyr_rule_edges (Calico/Kyverno mix actions in one manifest, so keying by action would double-count).",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 59},
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 25}]},
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "displayName", "value": "manifests"}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 220}]},
+          {"matcher": {"id": "byName", "options": "engine"}, "properties": [{"id": "custom.width", "value": 120}]}
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "expr": "sum by (namespace, engine) (alatyr_policies{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "engine": 1, "Value": 2}}},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "Value", "desc": true}]}}
+      ]
+    },
+    {
+      "type": "row",
       "id": 96,
       "title": "HTTP",
       "collapsed": true,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 46},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 67},
       "panels": [
         {
           "type": "timeseries",
           "id": 60,
           "title": "HTTP request rate by path",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 47},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 68},
           "fieldConfig": {
             "defaults": {
               "color": {"mode": "palette-classic"},
@@ -812,7 +896,7 @@
           "id": 61,
           "title": "HTTP request duration p95 by path",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 47},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 68},
           "fieldConfig": {
             "defaults": {
               "color": {"mode": "palette-classic"},
@@ -838,14 +922,14 @@
       "id": 97,
       "title": "Build",
       "collapsed": true,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 47},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 68},
       "panels": [
         {
           "type": "table",
           "id": 70,
           "title": "Build info",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 4, "w": 12, "x": 0, "y": 48},
+          "gridPos": {"h": 4, "w": 12, "x": 0, "y": 69},
           "options": {"showHeader": true},
           "fieldConfig": {"defaults": {"custom": {"align": "left"}}},
           "targets": [
@@ -866,7 +950,7 @@
           "id": 71,
           "title": "Enabled engines",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 4, "w": 12, "x": 12, "y": 48},
+          "gridPos": {"h": 4, "w": 12, "x": 12, "y": 69},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "value_and_name"},
           "fieldConfig": {"defaults": {"unit": "short", "noValue": "0"}},
           "targets": [
@@ -885,7 +969,7 @@
       "id": 98,
       "title": "Issue culprits (per-policy breakdown)",
       "collapsed": true,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 52},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 73},
       "panels": [
         {
           "type": "table",
@@ -893,7 +977,7 @@
           "title": "Culprit policies by issue count",
           "description": "One row per (namespace, type, engine, policy). Counts fan out each issue across its ingress + egress + node culprits; a policy cited on both sides of the same issue counts once. Powered by alatyr_issues_by_policy — disable via METRICS_ISSUE_POLICY_BREAKDOWN=false if cardinality bites.",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 10, "w": 16, "x": 0, "y": 53},
+          "gridPos": {"h": 10, "w": 16, "x": 0, "y": 74},
           "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
           "fieldConfig": {
             "defaults": {
@@ -928,7 +1012,7 @@
           "title": "Top 15 culprit policies",
           "description": "Sum across all issue types + namespaces per policy. Answers 'which policy is causing the most breakage right now'.",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 10, "w": 8, "x": 16, "y": 53},
+          "gridPos": {"h": 10, "w": 8, "x": 16, "y": 74},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true},
           "fieldConfig": {
             "defaults": {
@@ -954,7 +1038,7 @@
           "title": "Culprit policy issue count over time",
           "description": "Top 10 culprit policies over the dashboard time range. Useful for spotting new offenders vs steady-state noise.",
           "datasource": {"type": "prometheus", "uid": "${datasource}"},
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 63},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 84},
           "fieldConfig": {
             "defaults": {
               "color": {"mode": "palette-classic"},
@@ -973,6 +1057,132 @@
             }
           ]
         }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 100,
+      "title": "Rule shape (fan-out & coverage)",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 92},
+      "panels": []
+    },
+    {
+      "type": "table",
+      "id": 101,
+      "title": "Rule edges by (namespace, engine, action, direction)",
+      "description": "Raw post-expansion rule count. One podSelector:{} manifest fans into src×dst edges; this counts every edge. Sum-safe across any label subset — use for total graph size, per-ns growth, or per-engine fan-out. A single row spiking overnight usually means someone widened a selector.",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 93},
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": true, "reducer": ["sum"], "countRows": false, "fields": ["Value"]}},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 100}, {"color": "red", "value": 1000}]},
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "displayName", "value": "edges"}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 200}]},
+          {"matcher": {"id": "byName", "options": "engine"}, "properties": [{"id": "custom.width", "value": 110}]},
+          {"matcher": {"id": "byName", "options": "action"}, "properties": [{"id": "custom.width", "value": 80}]},
+          {"matcher": {"id": "byName", "options": "direction"}, "properties": [{"id": "custom.width", "value": 90}]}
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "expr": "sum by (namespace, engine, action, direction) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) > 0",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "engine": 1, "action": 2, "direction": 3, "Value": 4}}},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "Value", "desc": true}]}}
+      ]
+    },
+    {
+      "type": "table",
+      "id": 102,
+      "title": "Blanket detector — fan-out per coverage bucket",
+      "description": "Edge count vs distinct policies per (namespace, coverage) bucket, with ratio = avg fan-out per policy. High ratio in `namespace_wide` means one podSelector:{} policy inflating coverage — the failure mode where nobody wrote real policy but the graph looks covered. edges = sum(alatyr_rule_edges); policies = sum(alatyr_policy_coverage). Note: alatyr_policy_coverage is deduped per (policy, bucket) so summing across coverage buckets double-counts — read one bucket at a time.",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 93},
+      "options": {"showHeader": true, "cellHeight": "sm"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 20}, {"color": "red", "value": 100}]},
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "edges"}, "properties": [{"id": "custom.displayMode", "value": "auto"}]},
+          {"matcher": {"id": "byName", "options": "policies"}, "properties": [{"id": "custom.displayMode", "value": "auto"}]},
+          {"matcher": {"id": "byName", "options": "fan-out"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "decimals", "value": 1}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 200}]},
+          {"matcher": {"id": "byName", "options": "coverage"}, "properties": [{"id": "custom.width", "value": 160}]}
+        ]
+      },
+      "targets": [
+        {"refId": "A", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "B", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true},
+        {"refId": "C", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "expr": "sum by (namespace, coverage) (alatyr_rule_edges{namespace=~\"$namespace\", namespace!~\"$hide_infra\"}) / sum by (namespace, coverage) (alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"})", "format": "table", "instant": true}
+      ],
+      "transformations": [
+        {"id": "joinByField", "options": {"byField": "coverage", "mode": "outer"}},
+        {"id": "organize", "options": {
+          "excludeByName": {"Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "__name__": true, "job": true, "instance": true, "namespace 2": true, "namespace 3": true},
+          "renameByName": {
+            "namespace 1": "namespace",
+            "Value #A": "edges",
+            "Value #B": "policies",
+            "Value #C": "fan-out"
+          },
+          "indexByName": {"namespace": 0, "coverage": 1, "edges": 2, "policies": 3, "fan-out": 4}
+        }},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "fan-out", "desc": true}]}}
+      ]
+    },
+    {
+      "type": "table",
+      "id": 103,
+      "title": "Distinct policies per coverage bucket",
+      "description": "Raw alatyr_policy_coverage — one count per (policy, bucket). Deduped by (engine, ns, name, action, coverage, direction) so a manifest producing many rules with the same shape counts once per direction+action pair. Reads bucket-by-bucket: `namespace_wide` count is how many manifests are effectively blanket for that (ns, engine, action, direction). Do NOT sum across coverage or direction — a policy spanning multiple buckets appears once per bucket, so summing double-counts. For manifest-level totals use alatyr_policies instead.",
+      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 103},
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": false}},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "left", "displayMode": "auto"},
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 3}, {"color": "red", "value": 10}]},
+          "noValue": "0"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "displayName", "value": "policies"}]},
+          {"matcher": {"id": "byName", "options": "namespace"}, "properties": [{"id": "custom.width", "value": 200}]},
+          {"matcher": {"id": "byName", "options": "engine"}, "properties": [{"id": "custom.width", "value": 110}]},
+          {"matcher": {"id": "byName", "options": "action"}, "properties": [{"id": "custom.width", "value": 80}]},
+          {"matcher": {"id": "byName", "options": "coverage"}, "properties": [{"id": "custom.width", "value": 160}]},
+          {"matcher": {"id": "byName", "options": "direction"}, "properties": [{"id": "custom.width", "value": 90}]}
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "expr": "alatyr_policy_coverage{namespace=~\"$namespace\", namespace!~\"$hide_infra\"} > 0",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true, "instance": true}, "indexByName": {"namespace": 0, "engine": 1, "action": 2, "coverage": 3, "direction": 4, "Value": 5}}},
+        {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "Value", "desc": true}]}}
       ]
     }
   ],

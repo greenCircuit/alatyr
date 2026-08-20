@@ -27,6 +27,7 @@ func (r *Recorder) RecordSnapshot(cache *models.Cache, issues []models.Issue, en
 	r.recordWorkloads(cache, enabledEngines)
 	r.recordCoverage(cache, enabledEngines)
 	r.recordPolicies(cache)
+	r.recordRulMetrics(cache)
 	r.recordIssues(issues)
 	r.recordMesh(cache)
 	r.evalTimestamp.Set(float64(time.Now().Unix()))
@@ -41,7 +42,6 @@ func (r *Recorder) resetSnapshotVecs() {
 	r.workloadsUnpoliced.Reset()
 	r.workloadsInternetReach.Reset()
 	r.workloadsCovered.Reset()
-	r.workloadsCoveredByAll.Reset()
 	r.workloadsSingleEngineCover.Reset()
 	r.policies.Reset()
 	r.issues.Reset()
@@ -58,6 +58,8 @@ func (r *Recorder) resetSnapshotVecs() {
 	if r.workloadIssues != nil {
 		r.workloadIssues.Reset()
 	}
+	r.ruleEdges.Reset()
+	r.policyCoverage.Reset()
 }
 
 // recordWorkloads walks every namespace once and stamps the exposure +
@@ -125,14 +127,16 @@ func (r *Recorder) recordWorkloads(cache *models.Cache, enabledEngines []string)
 }
 
 // recordCoverage stamps the per-engine "did any policy select this workload"
-// gauges plus the intersection views (covered by all / by exactly one).
+// gauges plus the single-engine view. "Covered by all engines" is intentionally
+// not emitted — not every workload participates in every engine (Istio-only
+// workloads should not count as "missing" k8s NetworkPolicy coverage).
 func (r *Recorder) recordCoverage(cache *models.Cache, enabledEngines []string) {
 	if len(enabledEngines) == 0 {
 		return
 	}
 	for ns, nsIndex := range cache.NsIndex {
 		perEngine := map[string]int{}
-		coveredByAll, singleEngine := 0, 0
+		singleEngine := 0
 		for i := range nsIndex.Workloads {
 			workload := &nsIndex.Workloads[i]
 			if !isCountableWorkload(workload) {
@@ -145,9 +149,6 @@ func (r *Recorder) recordCoverage(cache *models.Cache, enabledEngines []string) 
 					coveringEngines++
 				}
 			}
-			if coveringEngines == len(enabledEngines) {
-				coveredByAll++
-			}
 			if coveringEngines == 1 {
 				singleEngine++
 			}
@@ -155,24 +156,23 @@ func (r *Recorder) recordCoverage(cache *models.Cache, enabledEngines []string) 
 		for _, engine := range enabledEngines {
 			r.workloadsCovered.WithLabelValues(ns, engine).Set(float64(perEngine[engine]))
 		}
-		r.workloadsCoveredByAll.WithLabelValues(ns).Set(float64(coveredByAll))
 		r.workloadsSingleEngineCover.WithLabelValues(ns).Set(float64(singleEngine))
 	}
 }
 
-// policyLabelKey is the (namespace, engine, action) tuple emitted as the
-// alatyr_policies label set. Named type so recordPolicies + bumpPolicy
-// share it without a structurally-typed dance.
+// policyLabelKey is the (namespace, engine) tuple emitted as the
+// alatyr_policies label set. Action lives on alatyr_rule_edges — some engines
+// (Calico, Kyverno) mix allow+deny inside a single manifest, so keying policy
+// counts by action would double-count manifests.
 type policyLabelKey struct {
 	namespace string
 	engine    string
-	action    string
 }
 
-// recordPolicies dedupes policy objects across every rule that references
-// them, keyed by (source, namespace, name, action). Deduping across
-// per-workload NodePolicies would lose the action label, so this pass reads
-// AllowByNs + DenyByNs directly — the same source that renderEdges walks.
+// recordPolicies dedupes policy manifests across every rule that references
+// them, keyed by (engine, namespace, name). Reads AllowByNs + DenyByNs
+// directly — same source renderEdges walks — so a manifest that produces
+// both allow and deny rules still counts once.
 func (r *Recorder) recordPolicies(cache *models.Cache) {
 	seen := map[string]struct{}{}
 	counts := map[policyLabelKey]int{}
@@ -189,32 +189,30 @@ func (r *Recorder) recordPolicies(cache *models.Cache) {
 		}
 	}
 	for key, count := range counts {
-		r.policies.WithLabelValues(key.namespace, key.engine, key.action).Set(float64(count))
+		r.policies.WithLabelValues(key.namespace, key.engine).Set(float64(count))
 	}
 }
 
-// bumpPolicy is the dedup half of recordPolicies. Keyed by (engine, ns, name)
-// to count each policy once regardless of how many rules it produced; action
-// is joined in for the metric label.
+// bumpPolicy dedupes one rule's contributor into the manifest count. Keyed by
+// (engine, ns, name) so each manifest counts once regardless of how many rules
+// it produced or which actions those rules carried. Cluster-scoped policies
+// (empty ref.Namespace) are stamped with ClusterScopeNamespace so the null
+// doesn't render as a phantom "0" namespace on the dashboard.
 func bumpPolicy(seen map[string]struct{}, counts map[policyLabelKey]int, engine string, rule models.Rule) {
 	ref := rule.Contributor
 	if ref.Name == "" {
 		return
 	}
-	action := ref.Action
-	if action == "" {
-		if rule.Action == models.ActionDeny {
-			action = "deny"
-		} else {
-			action = "allow"
-		}
+	namespace := ref.Namespace
+	if namespace == "" {
+		namespace = ClusterScopeNamespace
 	}
-	dedupKey := engine + "|" + ref.Namespace + "|" + ref.Name + "|" + action
+	dedupKey := engine + "|" + namespace + "|" + ref.Name
 	if _, ok := seen[dedupKey]; ok {
 		return
 	}
 	seen[dedupKey] = struct{}{}
-	counts[policyLabelKey{namespace: ref.Namespace, engine: engine, action: action}]++
+	counts[policyLabelKey{namespace: namespace, engine: engine}]++
 }
 
 // recordIssues groups issues by (namespace, type) using the affected
@@ -312,11 +310,15 @@ func bumpIssuePolicies(
 		if engine == "" {
 			engine = issue.Engine
 		}
+		policyNamespace := ref.Namespace
+		if policyNamespace == "" {
+			policyNamespace = ClusterScopeNamespace
+		}
 		key := policyIssueKey{
 			namespace:       namespace,
 			issueType:       string(issue.Type),
 			engine:          engine,
-			policyNamespace: ref.Namespace,
+			policyNamespace: policyNamespace,
 			policyName:      ref.Name,
 		}
 		if _, ok := seen[key]; ok {
@@ -342,14 +344,15 @@ func issueLocation(issue models.Issue) (namespace, workload string) {
 	return "", ""
 }
 
-// recordMesh reads MeshMembership per namespace for enrollment breakdown +
-// MeshMetrics for the cluster-wide partial-enrollment count. HBONE-blocked
-// counts derive from MeshIssues (already parked on the cache by store).
-// mTLS per-ns breakdown skipped: MeshMembership.Mtls is nil in the cached
-// payload — populate it there before emitting mesh_mtls_workloads.
+// recordMesh reads MeshMembership per namespace for enrollment + mTLS-verdict
+// breakdown, MeshMetrics for the cluster-wide partial-enrollment count, and
+// MeshIssues for HBONE-blocked counts (already parked on the cache by store).
+// Only enrolled workloads contribute to the mTLS breakdown — an unenrolled
+// workload has no verdict to report and would smear the "unset" bucket.
 func (r *Recorder) recordMesh(cache *models.Cache) {
 	enrolled := map[string]int{}
 	notEnrolled := map[string]int{}
+	mtlsByNsMode := map[[2]string]int{}
 	for nodeID, membership := range cache.MeshMembership {
 		workload, ok := cache.WorkloadByID[nodeID]
 		if !ok || !isCountableWorkload(&workload) {
@@ -357,6 +360,8 @@ func (r *Recorder) recordMesh(cache *models.Cache) {
 		}
 		if membership.InMesh {
 			enrolled[workload.Namespace]++
+			mode := mtlsModeLabel(membership.Mtls)
+			mtlsByNsMode[[2]string{workload.Namespace, mode}]++
 		} else {
 			notEnrolled[workload.Namespace]++
 		}
@@ -366,6 +371,9 @@ func (r *Recorder) recordMesh(cache *models.Cache) {
 	}
 	for ns, count := range notEnrolled {
 		r.meshWorkloads.WithLabelValues(ns, "false").Set(float64(count))
+	}
+	for key, count := range mtlsByNsMode {
+		r.meshMtls.WithLabelValues(key[0], key[1]).Set(float64(count))
 	}
 	r.meshNsPartial.Set(float64(cache.MeshMetrics.NsPartial))
 
@@ -379,6 +387,28 @@ func (r *Recorder) recordMesh(cache *models.Cache) {
 	for ns, count := range hbone {
 		r.meshHboneBlocked.WithLabelValues(ns).Set(float64(count))
 	}
+}
+
+// mtlsModeLabel maps a MeshMembership.Mtls verdict to the wire vocabulary
+// documented for alatyr_mesh_mtls_workloads (strict|permissive|disabled|unset|
+// unknown). Nil verdict → "unknown"; a PA fetch failure already lands as
+// MeshUnknown at build time, so this branch only fires if a future code path
+// leaves Mtls unset on an enrolled workload.
+func mtlsModeLabel(mtls *models.MtlsState) string {
+	if mtls == nil {
+		return "unknown"
+	}
+	switch mtls.Verdict {
+	case models.MeshStrict:
+		return "strict"
+	case models.MeshPermissive:
+		return "permissive"
+	case models.MeshDisable:
+		return "disabled"
+	case models.MeshUnset:
+		return "unset"
+	}
+	return "unknown"
 }
 
 // isCountableWorkload filters out synthetic nodes so aggregate ratios stay
@@ -415,3 +445,5 @@ func isCoveredByEngine(cache *models.Cache, workloadID string, engine string) bo
 	}
 	return len(eval.NodePolicies[workloadID]) > 0
 }
+
+

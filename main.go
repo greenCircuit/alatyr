@@ -140,6 +140,8 @@ func main() {
 	metricsEcho.HidePort = true
 	metricsEcho.GET("/metrics", echo.WrapHandler(metricsRecorder.Handler()))
 	metricsEcho.Server.ReadHeaderTimeout = 5 * time.Second
+	metricsEcho.Server.IdleTimeout = 5 * time.Second
+	metricsEcho.Server.IdleTimeout = 5 * time.Second
 
 	go func() {
 		logger.Info("metrics server starting",
