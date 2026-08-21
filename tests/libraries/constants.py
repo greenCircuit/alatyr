@@ -30,3 +30,8 @@ AMBIENT_LABEL_VALUE = "ambient"
 ZTUNNEL_HBONE_PORT = 15008
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
+
+# Prometheus scrape endpoint. Served on a separate listener (main.go) so scrape
+# traffic bypasses Recover + logging + HTTP-metrics middleware. Default 8085
+# matches main.go; run.sh bumps it when 8085 is busy and exports METRICS_URL.
+METRICS_URL = os.environ.get("METRICS_URL", "http://localhost:8085")
