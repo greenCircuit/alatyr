@@ -59,6 +59,9 @@ serviceMonitor:
     release: observability-kube-prometheus-stack # label that prometheus uses to find service monitors
   promNs: observability # ns where deploy service monitor
   interval: 60s
+  # keep exposed `namespace` label (cluster ns being analyzed) instead of
+  # letting the scrape target's own pod namespace overwrite it
+  honorLabels: true
 
 alerts:
   enabled: true

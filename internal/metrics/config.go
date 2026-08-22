@@ -13,6 +13,7 @@ const MetricsNamespace = "alatyr"
 // Making it explicit is not cosmetic: the tool exists to surface cluster-scoped
 // policy, so it must not render as a null on its own dashboard.
 const ClusterScopeNamespace = "_cluster"
+const CIDRScopedNamespace = "_CIDR_node_ns"
 
 // DetailLevel gates high-cardinality metric families. Off by default because
 // per-workload gauges scale as pods × statuses, which is exactly the failure
