@@ -40,6 +40,7 @@ func (r *Recorder) resetSnapshotVecs() {
 	r.workloads.Reset()
 	r.workloadsByStatus.Reset()
 	r.workloadsUnpoliced.Reset()
+	r.workloadsUnpolicedExclGlobal.Reset()
 	r.workloadsInternetReach.Reset()
 	r.workloadsCovered.Reset()
 	r.workloadsSingleEngineCover.Reset()
@@ -53,104 +54,6 @@ func (r *Recorder) resetSnapshotVecs() {
 	}
 	r.ruleEdges.Reset()
 	r.policyCoverage.Reset()
-}
-
-// recordWorkloads walks every namespace once and stamps the exposure +
-// status gauges. Only real workloads count — synthetic namespace nodes
-// (Type NodeTypeNamespace) and CIDR nodes are excluded so the denominator
-// stays "workloads a policy could actually select".
-func (r *Recorder) recordWorkloads(cache *models.Cache, enabledEngines []string) {
-	for ns, nsIndex := range cache.NsIndex {
-		total := 0
-		byStatus := map[models.StatusKey]int{}
-		unpoliced := 0
-		internetIn, internetOut, internetBoth := 0, 0, 0
-		for i := range nsIndex.Workloads {
-			workload := &nsIndex.Workloads[i]
-			if !isCountableWorkload(workload) {
-				continue
-			}
-			total++
-			hasInternetIn, hasInternetOut, hasInternetFull := false, false, false
-			for _, status := range workload.Statuses {
-				byStatus[status]++
-				switch status {
-				case models.StatusInternetIngress:
-					hasInternetIn = true
-				case models.StatusInternetEgress:
-					hasInternetOut = true
-				case models.StatusInternetFull:
-					hasInternetFull = true
-				}
-			}
-			switch {
-			case hasInternetFull:
-				internetBoth++
-			case hasInternetIn && hasInternetOut:
-				internetBoth++
-			case hasInternetIn:
-				internetIn++
-			case hasInternetOut:
-				internetOut++
-			}
-			if !isCoveredByAnyEngine(cache, workload.ID, enabledEngines) {
-				unpoliced++
-			}
-			if r.workloadStatus != nil {
-				for _, status := range workload.Statuses {
-					r.workloadStatus.WithLabelValues(ns, workload.Label, string(status)).Set(1)
-				}
-			}
-		}
-		r.workloads.WithLabelValues(ns).Set(float64(total))
-		for status, count := range byStatus {
-			r.workloadsByStatus.WithLabelValues(ns, string(status)).Set(float64(count))
-		}
-		r.workloadsUnpoliced.WithLabelValues(ns).Set(float64(unpoliced))
-		if internetIn > 0 {
-			r.workloadsInternetReach.WithLabelValues(ns, "ingress").Set(float64(internetIn))
-		}
-		if internetOut > 0 {
-			r.workloadsInternetReach.WithLabelValues(ns, "egress").Set(float64(internetOut))
-		}
-		if internetBoth > 0 {
-			r.workloadsInternetReach.WithLabelValues(ns, "both").Set(float64(internetBoth))
-		}
-	}
-}
-
-// recordCoverage stamps the per-engine "did any policy select this workload"
-// gauges plus the single-engine view. "Covered by all engines" is intentionally
-// not emitted — not every workload participates in every engine (Istio-only
-// workloads should not count as "missing" k8s NetworkPolicy coverage).
-func (r *Recorder) recordCoverage(cache *models.Cache, enabledEngines []string) {
-	if len(enabledEngines) == 0 {
-		return
-	}
-	for ns, nsIndex := range cache.NsIndex {
-		perEngine := map[string]int{}
-		singleEngine := 0
-		for i := range nsIndex.Workloads {
-			workload := &nsIndex.Workloads[i]
-			if !isCountableWorkload(workload) {
-				continue
-			}
-			coveringEngines := 0
-			for _, engine := range enabledEngines {
-				if isCoveredByEngine(cache, workload.ID, engine) {
-					perEngine[engine]++
-					coveringEngines++
-				}
-			}
-			if coveringEngines == 1 {
-				singleEngine++
-			}
-		}
-		for _, engine := range enabledEngines {
-			r.workloadsCovered.WithLabelValues(ns, engine).Set(float64(perEngine[engine]))
-		}
-		r.workloadsSingleEngineCover.WithLabelValues(ns).Set(float64(singleEngine))
-	}
 }
 
 // policyLabelKey is the (namespace, engine) tuple emitted as the
@@ -274,40 +177,3 @@ func mtlsModeLabel(mtls *models.MtlsState) string {
 	}
 	return "unknown"
 }
-
-// isCountableWorkload filters out synthetic nodes so aggregate ratios stay
-// meaningful. Namespace nodes and CIDR peers are graph fixtures, not
-// workloads a policy could select.
-func isCountableWorkload(workload *models.WorkloadNode) bool {
-	if workload == nil {
-		return false
-	}
-	switch workload.Type {
-	case models.NodeTypeNamespace, models.NodeTypeCIDR, models.NodeTypeExternal:
-		return false
-	}
-	return true
-}
-
-// isCoveredByAnyEngine reports whether at least one enabled engine has a
-// selecting policy for the workload. Iterates only enabled engines so a
-// disabled engine's stale NodePolicies entries don't mask an unpoliced
-// workload.
-func isCoveredByAnyEngine(cache *models.Cache, workloadID string, engines []string) bool {
-	for _, engine := range engines {
-		if isCoveredByEngine(cache, workloadID, engine) {
-			return true
-		}
-	}
-	return false
-}
-
-func isCoveredByEngine(cache *models.Cache, workloadID string, engine string) bool {
-	eval, ok := cache.EvaluationResults[engine]
-	if !ok {
-		return false
-	}
-	return len(eval.NodePolicies[workloadID]) > 0
-}
-
-

@@ -40,7 +40,8 @@ The headline findings. These are what a dashboard is built around.
 |---|---|---|---|
 | `alatyr_workloads` | gauge | `namespace` | Denominator for every ratio below. Without it, percentages can't be computed in PromQL. |
 | `alatyr_workloads_by_status` | gauge | `namespace`, `status` | One series per status key present. `status` is the slug (`internet-full`, `lan-egress`, `air-gapped`, …), never the glyph. |
-| `alatyr_workloads_unpoliced` | gauge | `namespace` | Selected by zero engines — default-open. The single most alertable number the tool produces. |
+| `alatyr_workloads_unpoliced` | gauge | `namespace` | Selected by zero engines — default-open. Reads 0 everywhere on any cluster with a cluster-wide catch-all (Calico `GlobalNetworkPolicy` selects every pod, so every pod is "covered"). Alert on the excluding-global variant instead there. |
+| `alatyr_workloads_unpoliced_excluding_global` | gauge | `namespace` | No **namespace-local** policy selects the workload; cluster-scoped manifests don't count as coverage. The alertable number on Calico clusters. Always `>=` `alatyr_workloads_unpoliced`. |
 | `alatyr_workloads_internet_reachable` | gauge | `namespace`, `direction` | `direction` = `ingress`/`egress`/`both`. Redundant with `_by_status` but worth having explicitly: it's the number people alert on, and a dedicated series survives status-key catalog changes. |
 
 ## 2. Coverage
@@ -157,6 +158,10 @@ should be zero in a healthy cluster, so they don't need thresholds tuned per sit
 ```
 # A workload with no policy at all is default-open
 alatyr_workloads_unpoliced > 0
+
+# A workload whose only "coverage" is a cluster-wide catch-all. On Calico
+# clusters this is the alert that fires — the line above never will.
+alatyr_workloads_unpoliced_excluding_global > 0
 
 # New internet exposure
 increase(alatyr_workloads_internet_reachable{direction="both"}[1h]) > 0

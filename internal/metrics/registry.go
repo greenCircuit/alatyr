@@ -30,10 +30,11 @@ type Recorder struct {
 	registry *prometheus.Registry
 
 	// Section 1 — exposure and posture
-	workloads              *prometheus.GaugeVec
-	workloadsByStatus      *prometheus.GaugeVec
-	workloadsUnpoliced     *prometheus.GaugeVec
-	workloadsInternetReach *prometheus.GaugeVec
+	workloads                    *prometheus.GaugeVec
+	workloadsByStatus            *prometheus.GaugeVec
+	workloadsUnpoliced           *prometheus.GaugeVec
+	workloadsUnpolicedExclGlobal *prometheus.GaugeVec
+	workloadsInternetReach       *prometheus.GaugeVec
 
 	// Section 2 — coverage
 	workloadsCovered           *prometheus.GaugeVec
@@ -135,7 +136,10 @@ func (r *Recorder) registerMetrics() {
 		"Workloads carrying a given effective status key. status is the slug (internet-full, lan-egress, ...).",
 		"namespace", "status")
 	r.workloadsUnpoliced = factory.NewGaugeVec("workloads_unpoliced",
-		"Workloads selected by zero policy engines — default-open.",
+		"Workloads selected by zero policy engines — default-open. Pinned at 0 on any cluster with a cluster-wide catch-all (Calico GlobalNetworkPolicy): use workloads_unpoliced_excluding_global there.",
+		"namespace")
+	r.workloadsUnpolicedExclGlobal = factory.NewGaugeVec("workloads_unpoliced_excluding_global",
+		"Workloads with no NAMESPACE-LOCAL policy selecting them. Cluster-scoped manifests (Calico GlobalNetworkPolicy) don't count as coverage — one global catch-all otherwise marks every pod covered and hides workloads with no policy of their own. Always >= workloads_unpoliced.",
 		"namespace")
 	r.workloadsInternetReach = factory.NewGaugeVec("workloads_internet_reachable",
 		"Workloads reachable to or from the internet, broken down by direction (ingress|egress|both).",
