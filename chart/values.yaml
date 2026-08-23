@@ -65,3 +65,52 @@ serviceMonitor:
 
 alerts:
   enabled: true
+  # namespace / promLabel fall back to serviceMonitor.* when unset — see prometheusRule.yaml.
+  namespace: ""
+  promLabel: {}
+  # Labels stamped on every alert (team, tier, etc.). Merged into each rule's labels block.
+  commonLabels: {}
+  # Extra PrometheusRule groups appended verbatim. Structure: list of {name, rules: [...]}.
+  extraGroups: []
+  rules:
+    evaluationStalled:
+      enabled: true
+      thresholdSeconds: 300
+      for: 5m
+      severity: critical
+    engineStalled:
+      enabled: true
+      thresholdSeconds: 600
+      for: 10m
+      severity: warning
+    informerCacheDesynced:
+      enabled: true
+      for: 5m
+      severity: critical
+    mtlsUnknown:
+      enabled: true
+      for: 10m
+      severity: warning
+    workloadsUnpoliced:
+      enabled: true
+      threshold: 0
+      for: 15m
+      severity: warning
+    newInternetExposure:
+      enabled: true
+      window: 15m
+      for: 0m
+      severity: warning
+    # Generic issue detector. Fires when (namespace, type) count grows past its
+    # value baselineWindow ago, or when a new (namespace, type) series appears.
+    # Pre-existing findings older than baselineWindow stay silent — treat as
+    # accepted baseline. Bump baselineWindow if evaluation is noisy on startup.
+    issuePresent:
+      enabled: true
+      baselineWindow: 1h
+      for: 10m
+      severity: warning
+    hboneBlocked:
+      enabled: true
+      for: 10m
+      severity: warning
