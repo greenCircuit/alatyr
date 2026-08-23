@@ -1,0 +1,108 @@
+# calico global egress — cluster-wide GlobalNetworkPolicy enrollment pattern.
+# Two GlobalNetworkPolicies (cluster-scoped, projectcalico.org/v3):
+#
+#   egress-enroll-namespaces (order 500)  → enrolled namespaces get full egress
+#   egress-default-deny      (order 2000) → everyone else: east-west only, deny rest
+#
+# Precedence: enroll (lower order) evaluated first; its catch-all Allow wins for
+# enrolled namespaces. Non-enrolled fall through to default-deny.
+#
+#   kube-system  (enrolled)     → AllowAll egress (reaches internet)
+#   default      (not enrolled) → allow pod/svc/LAN CIDRs, DenyAll rest (no internet)
+#
+# Renders the calico engine's edges + badges under DEMO_MODE=true.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-system
+  labels:
+    kubernetes.io/metadata.name: kube-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  labels:
+    kubernetes.io/metadata.name: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-shipper
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-shipper
+  template:
+    metadata:
+      labels:
+        app: metrics-shipper
+    spec:
+      containers:
+        - name: metrics-shipper
+          image: registry.example.com/sys/metrics-shipper:1.4.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: registry.example.com/app/web:2.1.0
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-default-deny
+spec:
+  # Highest order number = lowest precedence: the floor.
+  # Enrollment policy (lower order) is evaluated first; anything it
+  # doesn't match falls through to here.
+  order: 2000
+  selector: all()
+  types:
+    - Egress
+  egress:
+    # Keep the cluster alive: pod/service/node east-west stays open.
+    # DNS to CoreDNS ClusterIP is covered here (10.43.0.0/16), so name
+    # resolution works WITHOUT allowing pods to reach external :53 —
+    # that closes direct-to-internet DNS tunneling as an exfil channel.
+    - action: Allow
+      destination:
+        nets:
+          - 10.42.0.0/16      # pods
+          - 10.43.0.0/16      # services (incl. kube-dns)
+          - 192.168.8.0/24    # nodes / LAN (k3s API on node IP)
+    # Everything else (all external egress) is denied unless the workload
+    # is enrolled via egress-enroll-namespaces.
+    - action: Deny
+---
+# Namespace-level enrollment: any pod in these namespaces gets full egress.
+# Crude by design — trusts that in-namespace k8s NetworkPolicies scope the
+# rest. Add/remove namespaces here as the trust list changes.
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-enroll-namespaces
+spec:
+  order: 500
+  namespaceSelector: kubernetes.io/metadata.name in {"observability", "gitlab", "frigate", "security", "flux-system", "kube-system"}
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
