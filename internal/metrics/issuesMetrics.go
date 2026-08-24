@@ -3,14 +3,21 @@ package metrics
 import "graph/internal/models"
 
 // Issue-derived metrics live here: alatyr_issues, alatyr_issues_by_engine,
-// alatyr_issues_by_policy, and the opt-in per-workload alatyr_workload_issues.
+// alatyr_issues_by_policy, alatyr_workloads_with_issues,
+// alatyr_workloads_with_issues_by_type, and the opt-in per-workload
+// alatyr_workload_issues.
 //
-// The three families answer different questions and must not be compared:
-//   - issues            — one count per finding, per (namespace, type)
-//   - issues_by_engine  — same, split by the engine that produced the finding
-//   - issues_by_policy  — finding x culprit-policy pairs. Findings with no
+// The families answer different questions and must not be compared:
+//   - issues                        — one count per finding, per (namespace, type)
+//   - issues_by_engine              — same, split by the engine that produced the finding
+//   - issues_by_policy              — finding x culprit-policy pairs. Findings with no
 //     named culprit never appear; findings citing several policies appear
 //     several times. sum() is NOT a finding count.
+//   - workloads_with_issues         — distinct workloads with >=1 finding per namespace.
+//     Blast-radius denominator; ratio over alatyr_workloads = % of ns affected.
+//   - workloads_with_issues_by_type — distinct workloads per (namespace, type).
+//     sum across types is NOT a workload count — a workload hit by N types
+//     contributes to N series.
 
 // resetIssueVecs clears every issue gauge before repopulation. Called from
 // resetSnapshotVecs so a finding that cleared this cycle disappears instead of
@@ -18,6 +25,8 @@ import "graph/internal/models"
 func (r *Recorder) resetIssueVecs() {
 	r.issues.Reset()
 	r.issuesByEngine.Reset()
+	r.workloadsWithIssues.Reset()
+	r.workloadsWithIssuesByType.Reset()
 	if r.issuesByPolicy != nil {
 		r.issuesByPolicy.Reset()
 	}
@@ -36,6 +45,13 @@ func (r *Recorder) recordIssues(issues []models.Issue) {
 	byNsWorkload := map[[3]string]int{}
 	byNsTypeEnginePolicy := map[policyIssueKey]int{}
 
+	// Distinct-workload sets. Key = (namespace, workload-label); value is a set
+	// so a workload hit by N findings still counts once. workloadsWithIssuesByType
+	// keys additionally by type. Sum across the by-type vec is NOT a workload
+	// count — same workload with two types contributes to two series.
+	distinctByNs := map[string]map[string]struct{}{}
+	distinctByNsType := map[[2]string]map[string]struct{}{}
+
 	for _, issue := range issues {
 		namespace, workload := issueLocation(issue)
 		if namespace == "" {
@@ -47,6 +63,17 @@ func (r *Recorder) recordIssues(issues []models.Issue) {
 		if issue.Engine != "" {
 			engineKey := [3]string{namespace, string(issue.Type), issue.Engine}
 			byNsTypeEngine[engineKey]++
+		}
+
+		if workload != "" {
+			if distinctByNs[namespace] == nil {
+				distinctByNs[namespace] = map[string]struct{}{}
+			}
+			distinctByNs[namespace][workload] = struct{}{}
+			if distinctByNsType[key] == nil {
+				distinctByNsType[key] = map[string]struct{}{}
+			}
+			distinctByNsType[key][workload] = struct{}{}
 		}
 
 		if r.workloadIssues != nil && workload != "" {
@@ -63,6 +90,12 @@ func (r *Recorder) recordIssues(issues []models.Issue) {
 	}
 	for key, count := range byNsTypeEngine {
 		r.issuesByEngine.WithLabelValues(key[0], key[1], key[2]).Set(float64(count))
+	}
+	for namespace, set := range distinctByNs {
+		r.workloadsWithIssues.WithLabelValues(namespace).Set(float64(len(set)))
+	}
+	for key, set := range distinctByNsType {
+		r.workloadsWithIssuesByType.WithLabelValues(key[0], key[1]).Set(float64(len(set)))
 	}
 	if r.workloadIssues != nil {
 		for key, count := range byNsWorkload {

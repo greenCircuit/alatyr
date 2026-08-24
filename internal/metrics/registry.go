@@ -42,9 +42,11 @@ type Recorder struct {
 	policies                   *prometheus.GaugeVec
 
 	// Section 3 — issues
-	issues         *prometheus.GaugeVec
-	issuesByEngine *prometheus.GaugeVec
-	issuesByPolicy *prometheus.GaugeVec
+	issues                     *prometheus.GaugeVec
+	issuesByEngine             *prometheus.GaugeVec
+	issuesByPolicy             *prometheus.GaugeVec
+	workloadsWithIssues        *prometheus.GaugeVec
+	workloadsWithIssuesByType  *prometheus.GaugeVec
 
 	// Section 4 — mesh
 	meshWorkloads          *prometheus.GaugeVec
@@ -163,6 +165,12 @@ func (r *Recorder) registerMetrics() {
 	r.issuesByEngine = factory.NewGaugeVec("issues_by_engine",
 		"Issues attributed to a specific engine. Not every issue type carries engine attribution.",
 		"namespace", "type", "engine")
+	r.workloadsWithIssues = factory.NewGaugeVec("workloads_with_issues",
+		"Distinct workloads with at least one finding, per namespace. Blast-radius denominator counterpart to alatyr_issues (which counts findings and double-counts workloads hit by multiple issues). Ratio over alatyr_workloads = % of namespace affected.",
+		"namespace")
+	r.workloadsWithIssuesByType = factory.NewGaugeVec("workloads_with_issues_by_type",
+		"Distinct workloads with at least one finding of the given type, per namespace. Sum across types is NOT a workload count — a workload hit by two types counts once per type.",
+		"namespace", "type")
 
 	// Section 4
 	r.meshWorkloads = factory.NewGaugeVec("mesh_workloads",

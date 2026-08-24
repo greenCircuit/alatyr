@@ -256,6 +256,186 @@ func TestRecordIssues_BreakdownDisabled(t *testing.T) {
 	}
 }
 
+// TestRecordIssues_WorkloadsWithIssues_DedupBlastRadius pins the reason both
+// blast-radius vecs exist: one workload hit by many findings must count once
+// per namespace, and once per (namespace, type). If dedup regresses, the
+// gauge starts inflating in lock-step with alatyr_issues and stops being a
+// blast-radius signal.
+func TestRecordIssues_WorkloadsWithIssues_DedupBlastRadius(t *testing.T) {
+	recorder := New(Config{}, nil)
+	// payments in billing carries 4 findings across 2 types; checkout in shop
+	// carries 2 findings across 2 types. Distinct workloads per ns: 1 each.
+	recorder.recordIssues([]models.Issue{
+		{Type: models.PolicyConflicts, Engine: "k8spolicy", Src: &checkoutWorkload, Dst: &paymentsWorkload},
+		{Type: models.PolicyConflicts, Engine: "istio", Src: &checkoutWorkload, Dst: &paymentsWorkload},
+		{Type: models.IssuesPartial, Engine: "istio", Src: &checkoutWorkload, Dst: &paymentsWorkload},
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &paymentsWorkload},
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &checkoutWorkload},
+		{Type: models.PolicyConflicts, Engine: "k8spolicy", Src: &checkoutWorkload, Dst: &internetCidr},
+	})
+
+	distinctCases := []struct {
+		namespace string
+		want      float64
+	}{
+		{"billing", 1},
+		{"shop", 1},
+	}
+	for _, testCase := range distinctCases {
+		got := testutil.ToFloat64(recorder.workloadsWithIssues.WithLabelValues(testCase.namespace))
+		if got != testCase.want {
+			t.Errorf("alatyr_workloads_with_issues{namespace=%q} = %v, want %v",
+				testCase.namespace, got, testCase.want)
+		}
+	}
+
+	byTypeCases := []struct {
+		namespace string
+		issueType string
+		want      float64
+	}{
+		{"billing", string(models.PolicyConflicts), 1},
+		{"billing", string(models.IssuesPartial), 1},
+		{"billing", string(models.NodeLockOut), 1},
+		{"shop", string(models.PolicyConflicts), 1},
+		{"shop", string(models.NodeLockOut), 1},
+	}
+	for _, testCase := range byTypeCases {
+		got := testutil.ToFloat64(recorder.workloadsWithIssuesByType.WithLabelValues(testCase.namespace, testCase.issueType))
+		if got != testCase.want {
+			t.Errorf("alatyr_workloads_with_issues_by_type{namespace=%q,type=%q} = %v, want %v",
+				testCase.namespace, testCase.issueType, got, testCase.want)
+		}
+	}
+}
+
+// TestRecordIssues_WorkloadsWithIssues_MultiWorkloadPerNs covers the case
+// alatyr_issues cannot distinguish: N findings in one namespace could all be
+// on one workload (blast radius = 1) or spread across N workloads (blast
+// radius = N). Blast-radius vec must reflect the actual distinct count.
+func TestRecordIssues_WorkloadsWithIssues_MultiWorkloadPerNs(t *testing.T) {
+	authWorkload := models.WorkloadNode{
+		ID: "uid-auth", Label: "auth", Namespace: "billing", Type: models.NodeTypeService,
+	}
+	ordersWorkload := models.WorkloadNode{
+		ID: "uid-orders", Label: "orders", Namespace: "billing", Type: models.NodeTypeService,
+	}
+	recorder := New(Config{}, nil)
+	recorder.recordIssues([]models.Issue{
+		{Type: models.PolicyConflicts, Engine: "k8spolicy", Src: &checkoutWorkload, Dst: &paymentsWorkload},
+		{Type: models.PolicyConflicts, Engine: "k8spolicy", Src: &checkoutWorkload, Dst: &authWorkload},
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &ordersWorkload},
+	})
+
+	if got := testutil.ToFloat64(recorder.workloadsWithIssues.WithLabelValues("billing")); got != 3 {
+		t.Errorf("alatyr_workloads_with_issues{namespace=\"billing\"} = %v, want 3 (payments, auth, orders)", got)
+	}
+	if got := testutil.ToFloat64(recorder.workloadsWithIssuesByType.WithLabelValues("billing", string(models.PolicyConflicts))); got != 2 {
+		t.Errorf("alatyr_workloads_with_issues_by_type PolicyConflicts = %v, want 2 (payments, auth)", got)
+	}
+	if got := testutil.ToFloat64(recorder.workloadsWithIssuesByType.WithLabelValues("billing", string(models.NodeLockOut))); got != 1 {
+		t.Errorf("alatyr_workloads_with_issues_by_type NodeLockOut = %v, want 1 (orders)", got)
+	}
+}
+
+// TestRecordIssues_WorkloadsWithIssues_NamespaceIsolation guards that two
+// workloads sharing the same label in different namespaces don't collapse
+// into one set entry. Dedup key must include the namespace, otherwise a
+// cross-namespace naming collision (e.g. "api" in every ns) silently
+// undercounts.
+func TestRecordIssues_WorkloadsWithIssues_NamespaceIsolation(t *testing.T) {
+	apiShop := models.WorkloadNode{
+		ID: "uid-api-shop", Label: "api", Namespace: "shop", Type: models.NodeTypeService,
+	}
+	apiBilling := models.WorkloadNode{
+		ID: "uid-api-billing", Label: "api", Namespace: "billing", Type: models.NodeTypeService,
+	}
+	recorder := New(Config{}, nil)
+	recorder.recordIssues([]models.Issue{
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &apiShop},
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &apiBilling},
+	})
+
+	if got := testutil.ToFloat64(recorder.workloadsWithIssues.WithLabelValues("shop")); got != 1 {
+		t.Errorf("shop distinct = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(recorder.workloadsWithIssues.WithLabelValues("billing")); got != 1 {
+		t.Errorf("billing distinct = %v, want 1", got)
+	}
+}
+
+// TestRecordIssues_WorkloadsWithIssues_FromFixture pins the invariant against
+// the shared fixture: alatyr_issues counts 6 findings, blast-radius reports
+// 1 distinct workload per real namespace + the CIDR sentinel. If someone
+// changes the fixture and this assertion drifts, the workloads_with_issues
+// contract needs an explicit re-review — the two families must not blur.
+func TestRecordIssues_WorkloadsWithIssues_FromFixture(t *testing.T) {
+	recorder := New(Config{}, nil)
+	recorder.recordIssues(issueFixture())
+
+	cases := []struct {
+		namespace string
+		want      float64
+	}{
+		{"billing", 1}, // payments: 4 findings collapse to 1
+		{"shop", 1},    // checkout: 2 findings collapse to 1
+	}
+	for _, testCase := range cases {
+		got := testutil.ToFloat64(recorder.workloadsWithIssues.WithLabelValues(testCase.namespace))
+		if got != testCase.want {
+			t.Errorf("alatyr_workloads_with_issues{namespace=%q} = %v, want %v",
+				testCase.namespace, got, testCase.want)
+		}
+	}
+}
+
+// TestRecordIssues_WorkloadsWithIssues_NotGatedByPolicyBreakdown proves the
+// blast-radius vecs are always on. They live in the base issue-metrics tier,
+// not behind Config.IssuePolicyBreakdown — turning off the culprit-policy
+// breakdown must not accidentally take the blast-radius view down with it.
+func TestRecordIssues_WorkloadsWithIssues_NotGatedByPolicyBreakdown(t *testing.T) {
+	disabled := false
+	recorder := New(Config{IssuePolicyBreakdown: &disabled}, nil)
+	recorder.recordIssues(issueFixture())
+
+	if recorder.issuesByPolicy != nil {
+		t.Fatal("issuesByPolicy registered while breakdown is disabled")
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssues); got == 0 {
+		t.Error("alatyr_workloads_with_issues empty when policy breakdown disabled — vec must be always-on")
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssuesByType); got == 0 {
+		t.Error("alatyr_workloads_with_issues_by_type empty when policy breakdown disabled — vec must be always-on")
+	}
+}
+
+// TestRecordIssues_WorkloadsWithIssues_EmptyWorkloadSkipped covers the guard
+// on the workload label: a finding that resolves to (namespace, "") — no
+// endpoint at all besides namespace attribution — must still populate
+// alatyr_issues, but must not add a bogus "" entry to the distinct-workload
+// set. sumGauge across workloads_with_issues stays bounded to real workloads.
+func TestRecordIssues_WorkloadsWithIssues_EmptyWorkloadSkipped(t *testing.T) {
+	// Construct an endpoint with a namespace but no label so issueLocation
+	// returns ("billing", "").
+	unlabeledInBilling := models.WorkloadNode{
+		ID: "uid-unlabeled", Namespace: "billing", Type: models.NodeTypeService,
+	}
+	recorder := New(Config{}, nil)
+	recorder.recordIssues([]models.Issue{
+		{Type: models.NodeLockOut, Engine: "k8spolicy", Node: &unlabeledInBilling},
+	})
+
+	if got := testutil.ToFloat64(recorder.issues.WithLabelValues("billing", string(models.NodeLockOut))); got != 1 {
+		t.Errorf("alatyr_issues still records the finding: got %v, want 1", got)
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssues); got != 0 {
+		t.Errorf("alatyr_workloads_with_issues series = %d, want 0 (empty workload must not create a series)", got)
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssuesByType); got != 0 {
+		t.Errorf("alatyr_workloads_with_issues_by_type series = %d, want 0", got)
+	}
+}
+
 // TestRecordIssues_ResetClearsStaleSeries covers the Reset-then-repopulate
 // contract: a finding that cleared between cycles must disappear, not linger
 // at its last value. Reset lives in resetIssueVecs, one refactor away from
@@ -273,6 +453,12 @@ func TestRecordIssues_ResetClearsStaleSeries(t *testing.T) {
 	}
 	if total := sumGauge(t, recorder, "alatyr_issues"); total != 1 {
 		t.Errorf("alatyr_issues total after reset = %v, want 1", total)
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssues); got != 1 {
+		t.Errorf("alatyr_workloads_with_issues series after reset = %d, want 1", got)
+	}
+	if got := testutil.CollectAndCount(recorder.workloadsWithIssuesByType); got != 1 {
+		t.Errorf("alatyr_workloads_with_issues_by_type series after reset = %d, want 1", got)
 	}
 }
 
