@@ -55,20 +55,6 @@ spec:
             description: |
               Shared informer for {{`{{ $labels.resource }}`}} has not synced. Cluster reads are missing objects; findings for this resource are confidently wrong.
         {{- end }}
-        {{- if .Values.alerts.rules.mtlsUnknown.enabled }}
-        - alert: AlatyrMtlsUnknown
-          expr: sum(alatyr_mesh_mtls_workloads{mode="unknown"}) > 0
-          for: {{ .Values.alerts.rules.mtlsUnknown.for }}
-          labels:
-            severity: {{ .Values.alerts.rules.mtlsUnknown.severity }}
-            {{- with .Values.alerts.commonLabels }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          annotations:
-            summary: PeerAuthentication fetch failing — mTLS posture is a guess
-            description: |
-              {{`{{ $value }}`}} mesh workload(s) report mTLS mode=unknown, which only happens when a PeerAuthentication fetch failed. Every mTLS finding is a guess until this clears.
-        {{- end }}
     - name: alatyr.findings
       rules:
         {{- if .Values.alerts.rules.workloadsUnpoliced.enabled }}
@@ -81,7 +67,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           annotations:
-            summary: {{`{{ $value }}`}} unpoliced workload(s) in {{`{{ $labels.namespace }}`}}
+            summary: '{{`{{ $value }}`}} unpoliced workload(s) in {{`{{ $labels.namespace }}`}}'
             description: |
               Selected by zero policy engines — default-open. Namespace {{`{{ $labels.namespace }}`}}.
         {{- end }}
