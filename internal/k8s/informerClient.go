@@ -46,6 +46,12 @@ type InformerClient struct {
 	paLister istiolisters.PeerAuthenticationLister  // nil if security.istio.io/v1 absent
 
 	gnpLister calicolisters.GlobalNetworkPolicyLister // nil if projectcalico.org/v3 absent
+
+	// syncedResources is the closed set of GVK strings whose informer cache
+	// completed sync during NewInformerClient. Populated once at startup;
+	// exposed via SyncedResources so the metrics recorder can stamp
+	// alatyr_informer_cache_synced without importing client-go internals.
+	syncedResources []string
 }
 
 // NewInformerClient builds clientsets, starts shared informer factories,
@@ -121,12 +127,14 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 		if !ok {
 			return nil, fmt.Errorf("core informer failed to sync: %v", typ)
 		}
+		c.syncedResources = append(c.syncedResources, typ.String())
 	}
 	if c.istioFactory != nil {
 		for typ, ok := range c.istioFactory.WaitForCacheSync(stopCh) {
 			if !ok {
 				return nil, fmt.Errorf("istio informer failed to sync: %v", typ)
 			}
+			c.syncedResources = append(c.syncedResources, typ.String())
 		}
 	}
 	if c.calicoFactory != nil {
@@ -134,10 +142,22 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 			if !ok {
 				return nil, fmt.Errorf("calico informer failed to sync: %v", typ)
 			}
+			c.syncedResources = append(c.syncedResources, typ.String())
 		}
 	}
 
 	return c, nil
+}
+
+// SyncedResources returns the informer GVK strings that completed sync at
+// startup. NewInformerClient returns an error if any informer fails to sync,
+// so a non-nil client always has every listed resource marked synced —
+// callers still emit per-resource gauges so a future health probe can flip
+// individual entries to 0.
+func (c *InformerClient) SyncedResources() []string {
+	out := make([]string, len(c.syncedResources))
+	copy(out, c.syncedResources)
+	return out
 }
 
 // calicoCRDPresent probes discovery for projectcalico.org/v3 (the aggregated

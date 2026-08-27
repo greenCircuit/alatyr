@@ -19,6 +19,9 @@ include:
     file: pipelines/build.yaml
   - project: home-lab/pipeline-catalog
     file: pipelines/release.yaml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/k8s.yaml
+
 
 release-dry-run:
   extends: .semantic-release-dry-run
@@ -51,6 +54,12 @@ ui-test:
       - ui/node_modules/
   script:
     - cd ui && npm ci && npm run test:coverage
+
+chart-test:
+  stage: test
+  extends: .check-helm
+  variables:
+    CHECK_PATH: "./chart"
 
 # BUILD
 img-base:
@@ -128,7 +137,7 @@ smoke-tests:
   needs:
     - build-binary
   stage: smoke-tests
-  image: registry.dev.local/home-lab/network-policy-visualizer/smoke:0.1.0-3-add-smoke-robot-tests-to-pipeline
+  image: registry.dev.local/home-lab/network-policy-visualizer/smoke:0.1.2-49-metrics-enpoint-and-grafana-dashboard
   variables:
     BACKEND_PORT: "8080"
   script:
@@ -141,9 +150,20 @@ smoke-tests:
     - kwokctl create cluster --name graph-tests --runtime=binary
     - kwokctl get kubeconfig --name graph-tests > $KUBECONFIG
     - kubectl apply -f $ISTIO_CRDS_FILE
+    - kubectl wait --for=condition=Established
+        crd/authorizationpolicies.security.istio.io
+        crd/peerauthentications.security.istio.io
+        --timeout=30s
     - chmod +x ./graph
-    - sleep 10
-    - env -u DEMO_MODE KUBECONFIG=$KUBECONFIG ./graph > tests/results/backend.log 2>&1 &
+    - sleep 20
+    - |
+      cat > tests/results/test-config.yaml <<EOF
+      cacheRefreshSec: 1
+      EOF
+    - env -u DEMO_MODE
+        KUBECONFIG=$KUBECONFIG
+        CONFIG_PATH=$CI_PROJECT_DIR/tests/results/test-config.yaml
+        ./graph > tests/results/backend.log 2>&1 &
     - |
       for i in $(seq 1 30); do
         curl -fsS http://localhost:${BACKEND_PORT}/api/cluster-state >/dev/null 2>&1 && break

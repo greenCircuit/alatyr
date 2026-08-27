@@ -1,0 +1,47 @@
+# podman-compose up -d
+#
+# network_mode: host mirrors the backend devcontainer setup (see
+# scripts/podman-run.sh). Prometheus scrapes localhost:8080/metrics and
+# Grafana serves on localhost:3000
+#
+# Data persistence is intentionally scoped to named volumes rather than bind
+# mounts — losing the tsdb between runs is fine for local dev, and named
+# volumes stay out of the git tree.
+
+services:
+  prometheus:
+    image: docker.io/prom/prometheus:v2.55.1
+    container_name: alatyr-prometheus
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: docker.io/grafana/grafana:11.3.0
+    container_name: alatyr-grafana
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # Local dev only — swap for a real secret before exposing beyond
+      # localhost. Grafana refuses to start with the default admin/admin
+      # combo on 10+, so an explicit value is required.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro,Z
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro,Z
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:

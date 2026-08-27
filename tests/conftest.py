@@ -19,30 +19,34 @@ import pytest
 import requests
 
 from libraries import cluster
+from libraries.cluster.common import POST_APPLY_WAIT
 from libraries.constants import (
     AMBIENT_LABEL_KEY,
     AMBIENT_LABEL_VALUE,
     BACKEND_URL,
+    METRICS_URL,
     NS_MESH,
     POLICY_NAMESPACES,
     ROOT_NS,
     TEST_NAMESPACES,
 )
 
-# Informer cache budgets. Backend WATCH events propagate in ms, but tests can
-# race both the prior test's DELETE and their own CREATE events. Both bounds
-# are polled, so they cap the wait — they aren't sleeps.
-_INFORMER_DRAIN_TIMEOUT = 5.0
-_INFORMER_DRAIN_POLL = 0.05
+# Informer cache budgets. Backend graph reads from a cache rebuilt by
+# RunCacheRefresh on a fixed interval (run.sh drops cacheRefreshSec to 1s
+# for tests). Timeouts must cover several full refresh cycles so a slow tick
+# doesn't surface as a spurious failure. Both bounds are polled, so they cap
+# the wait — they aren't sleeps.
+_INFORMER_DRAIN_TIMEOUT = 20.0
+_INFORMER_DRAIN_POLL = 0.1
 # stable-fetch: return once two consecutive responses are identical. Catches
-# the apply() → get_graph() race where the WATCH ADDED event for a freshly
-# created policy hasn't reached the cache yet.
-_STABLE_FETCH_TIMEOUT = 3.0
-_STABLE_FETCH_POLL = 0.05
+# the apply() → get_graph() race where the just-applied policy hasn't been
+# picked up by the next cache-refresh tick yet.
+_STABLE_FETCH_TIMEOUT = 20.0
+_STABLE_FETCH_POLL = 0.1
 
 
 @pytest.fixture(scope="session")
-def topology():
+def topology(api):
     for namespace in TEST_NAMESPACES:
         cluster.create_namespace(namespace)
         cluster.create_pod(namespace, "frontend", {"app": "frontend"})
@@ -56,9 +60,38 @@ def topology():
     # created here because kwok ships no istio install. create_namespace tolerates
     # 409 so a pre-existing istio-system is fine.
     cluster.create_namespace(ROOT_NS)
+    # Block until backend's cache-refresh cycle has picked up every fixture
+    # workload. Without this the first test in the session races the initial
+    # cache warm and sees a partial NsIndex (see backend cache-refresh loop
+    # since commit fd74c29 — /api/graph reads a snapshot, not on-demand data).
+    _wait_until_all_workloads_visible(api)
     yield
     for namespace in TEST_NAMESPACES + [NS_MESH]:
         cluster.delete_namespace(namespace)
+
+
+# Total workloads created by the topology fixture — 2 pods × 3 TEST_NAMESPACES
+# + 2 pods in NS_MESH. Kept in sync with the fixture body above.
+_TOPOLOGY_WORKLOAD_COUNT = 2 * len(TEST_NAMESPACES) + 2
+
+
+def _wait_until_all_workloads_visible(api: requests.Session) -> None:
+    deadline = time.monotonic() + _INFORMER_DRAIN_TIMEOUT
+    params = {"namespaces": ",".join(TEST_NAMESPACES + [NS_MESH])}
+    last_count = -1
+    while time.monotonic() < deadline:
+        response = api.get(f"{BACKEND_URL}/api/graph", params=params)
+        response.raise_for_status()
+        nodes = response.json().get("nodes") or []
+        workloads = [n for n in nodes if n.get("type") != "namespace"]
+        last_count = len(workloads)
+        if last_count >= _TOPOLOGY_WORKLOAD_COUNT:
+            return
+        time.sleep(_INFORMER_DRAIN_POLL)
+    raise RuntimeError(
+        f"backend cache still shows {last_count}/{_TOPOLOGY_WORKLOAD_COUNT} "
+        f"topology workloads after {_INFORMER_DRAIN_TIMEOUT}s"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +105,11 @@ def policy_wipe(topology, api):
     # so PeerAuthentications don't leak either.
     cluster.delete_all_policies_in(*POLICY_NAMESPACES)
     _wait_until_no_edges(api)
+    # PeerAuthentications don't create graph edges — a lingering PA passes
+    # the edges-empty check while still shifting the mesh mtls verdict away
+    # from the permissive default. Unconditional POST_APPLY_WAIT after the
+    # edges check gives cache-refresh time to observe every PA delete too.
+    time.sleep(POST_APPLY_WAIT)
     yield
 
 
@@ -202,6 +240,20 @@ def get_cluster_metrics(api) -> Callable[[], dict]:
         response = api.get(f"{BACKEND_URL}/api/cluster-metrics")
         response.raise_for_status()
         return response.json()
+    return _get
+
+
+@pytest.fixture
+def get_metrics(api) -> Callable[..., requests.Response]:
+    """Hit the Prometheus scrape endpoint on the separate metrics listener.
+    Returns the raw Response so tests can inspect status, headers, and body.
+    Optional `accept_encoding` lets the gzip path be exercised.
+    """
+    def _get(accept_encoding: str | None = None) -> requests.Response:
+        headers: dict[str, str] = {}
+        if accept_encoding is not None:
+            headers["Accept-Encoding"] = accept_encoding
+        return api.get(f"{METRICS_URL}/metrics", headers=headers)
     return _get
 
 
