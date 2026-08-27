@@ -16,7 +16,13 @@ KWOK_VERSION="${KWOK_VERSION:-v0.6.1}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.22.0}"
 CLUSTER_NAME="${CLUSTER_NAME:-graph-tests}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
-BACKEND_READY_TIMEOUT="${BACKEND_READY_TIMEOUT:-30}"
+METRICS_PORT="${METRICS_PORT:-8085}"
+BACKEND_READY_TIMEOUT="${BACKEND_READY_TIMEOUT:-70}"
+# Cache-refresh interval for the test backend. Ships at 10s by default, which
+# forces every apply() → get_graph() call to wait a full refresh cycle. Tests
+# ping the graph every ~50ms so a 1s cycle keeps the stable-fetch fixture from
+# swallowing a real regression as a timeout.
+TEST_CACHE_REFRESH_SEC="${TEST_CACHE_REFRESH_SEC:-1}"
 
 mkdir -p "$BIN_DIR" "$CACHE_DIR" "$RESULTS_DIR"
 export PATH="$BIN_DIR:$PATH"
@@ -108,6 +114,20 @@ pick_free_port() {
     done
 }
 
+# Same treatment for the metrics listener — a squatted 8085 (e.g. a lingering
+# graph-server from a prior run) would leave scrapes hitting the wrong process.
+pick_free_metrics_port() {
+    local attempts=0
+    while port_in_use "$METRICS_PORT"; do
+        log "metrics port ${METRICS_PORT} in use, trying $((METRICS_PORT + 1))"
+        METRICS_PORT=$((METRICS_PORT + 1))
+        attempts=$((attempts + 1))
+        if (( attempts >= 20 )); then
+            err "no free metrics port found near ${METRICS_PORT}"; exit 1
+        fi
+    done
+}
+
 BACKEND_PID=""
 cleanup() {
     log "cleanup"
@@ -165,13 +185,26 @@ main() {
         crd/authorizationpolicies.security.istio.io \
         crd/peerauthentications.security.istio.io \
         --timeout=30s >/dev/null
-    sleep 10
+    sleep 20
     pick_free_port
-    log "starting backend on port ${BACKEND_PORT}"
+    pick_free_metrics_port
+    # Write a test-only config that overrides the embedded 10s refresh so the
+    # backend rebuilds its cache once per second. Merges on top of the embedded
+    # defaults via viper (see internal/config/loadConfig.go).
+    local test_config="$CACHE_DIR/test-config.yaml"
+    cat > "$test_config" <<YAML
+cacheRefreshSec: ${TEST_CACHE_REFRESH_SEC}
+YAML
+    log "starting backend on port ${BACKEND_PORT} (metrics ${METRICS_PORT}, cacheRefreshSec=${TEST_CACHE_REFRESH_SEC})"
     # Strip DEMO_MODE explicitly — devcontainer shells often export it for
     # local dev, which would bypass the real KUBECONFIG path. BACKEND_PORT is
     # honored by main.go so a busy default port self-heals.
-    env -u DEMO_MODE BACKEND_PORT="$BACKEND_PORT" KUBECONFIG="$KUBECONFIG_FILE" "$CACHE_DIR/graph-server" \
+    env -u DEMO_MODE \
+        BACKEND_PORT="$BACKEND_PORT" \
+        METRICS_PORT="$METRICS_PORT" \
+        KUBECONFIG="$KUBECONFIG_FILE" \
+        CONFIG_PATH="$test_config" \
+        "$CACHE_DIR/graph-server" \
         > "$CACHE_DIR/backend.log" 2>&1 &
     BACKEND_PID=$!
 
@@ -187,6 +220,11 @@ main() {
         fi
         sleep 1
     done
+    # Give informers a few refresh cycles to fully catch up before pytest runs.
+    # The /api/cluster-state readiness probe returns as soon as namespaces are
+    # listable, which fires before pod + policy caches populate — first tests
+    # then race an empty cache. Two refresh cycles + slack absorbs it.
+    sleep $(( TEST_CACHE_REFRESH_SEC * 2 + 3 ))
 
     # --perf swaps the functional suite for the initial-load latency sweep
     # (-m perf overrides the default "-m not perf" in pytest.ini).
@@ -208,6 +246,7 @@ main() {
     (
         cd "$SCRIPT_DIR"
         export BACKEND_URL="http://localhost:${BACKEND_PORT}"
+        export METRICS_URL="http://localhost:${METRICS_PORT}"
         export PERF_RESULTS_DIR="$RESULTS_DIR"
         pytest \
             --html="$RESULTS_DIR/${report_html}" \

@@ -11,10 +11,15 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-# Bounded wait after applying a policy so the backend's informer cache
-# ingests the WATCH ADDED event before the test queries the graph. Single
-# source of truth — every engine's apply helper imports this.
-POST_APPLY_WAIT = 0.25
+# Bounded wait after applying a policy so the backend's cache-refresh loop
+# picks up the WATCH ADDED event before the test queries the graph. Since
+# commit fd74c29 the /api/graph handler serves from a background-refreshed
+# snapshot (interval = cacheRefreshSec, dropped to 1s in run.sh) instead of
+# recomputing on request. A shorter wait lets _stable_get lock in the
+# pre-apply cache as "stable" (two consecutive identical responses) and
+# return with wrong data before the refresh cycle observes the new policy.
+# Single source of truth — every engine's apply helper imports this.
+POST_APPLY_WAIT = 1.5
 
 
 def wait_for_informer() -> None:

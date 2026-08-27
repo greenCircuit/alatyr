@@ -130,6 +130,43 @@ Same detector fires in the Issues drawer, scoped to what you're looking at. Catc
 
 ---
 
+### Prometheus metrics + starter alerts + Grafana dashboard
+
+`/metrics` on a **separate port `:8085`** so scrape traffic bypasses the API
+middleware and cannot self-report on the request-rate dashboard. Every series is
+namespaced `alatyr_*`; Go runtime + process collectors keep their canonical
+names so stock Prometheus dashboards still work.
+
+Ships four things in the chart, all behind values flags:
+
+- **`serviceMonitor.enabled`** — `ServiceMonitor` targeting the metrics port,
+  with the Prometheus discovery label configurable (`promLabel`).
+- **`alerts.enabled`** — `PrometheusRule` covering the two things a policy
+  visualizer must alert on before it can be trusted:
+  - **Staleness** — evaluation loop stalled, per-engine last-success older than
+    threshold, informer cache desynced, PeerAuthentication fetch failing (mTLS
+    posture becomes a guess). Without these, "zero internet-exposed workloads"
+    and "the Calico engine stopped responding" render as the same green panel.
+  - **Findings** — unpoliced workloads (default-open), new bidirectional
+    internet exposure, engines disagree, ambient HBONE port stripped (silent
+    traffic loss), locked egress with no DNS. Every rule has per-instance
+    enabled / threshold / for / severity; namespace allowlisting lives in
+    downstream label matchers.
+- **Grafana dashboard** — `metrics/grafana/dashboards/alatyr-overview.json`,
+  laid out as a port of the in-app Cluster Status page (same scan order: red
+  exposure callout, coverage, node status, mesh rollup, top-risky).
+- **Opt-in per-workload cardinality** — `METRICS_DETAIL=workload` adds
+  `alatyr_workload_status` + `alatyr_workload_issues`. Off by default; on a
+  5,000-pod cluster the status gauge alone is ~65,000 series.
+
+Full catalog with labels + cardinality budget in
+[`docs/METRICS.md`](docs/METRICS.md). Per-metric emission audit in
+[`FEATURES.md`](FEATURES.md#7-prometheus-metrics). `/metrics` is unauthenticated
+and cluster-revealing — treat it like the UI: bind-to-localhost or gate with a
+NetworkPolicy.
+
+---
+
 ## Status badges — what each one means
 
 Computed per workload from the intersection of every selecting policy across every engine. The UI renders both the glyph and the slug (e.g. `WAN⇆ internet-full`) — both come from the same catalog in `ui/src/data/policies.ts`.
@@ -176,7 +213,7 @@ Deferred to later iterations:
 
 - **Operational survival** — cluster-scoped RBAC bundle, response size caps, per-engine failure isolation. Informer-backed cache is wired (`internal/k8s/informerClient.go`), but every `/api/graph` still re-evaluates the full ns set; fine for a few hundred pods, will need debounced snapshotting for thousands.
 - **More policy engines** — Cilium `CiliumNetworkPolicy` / `CiliumClusterwideNetworkPolicy` and `AdminNetworkPolicy` (KEP-2091) are the next high-value additions. Each adds real reachability fidelity on clusters that use it.
-- **Cluster-state trust signals** — data freshness stamp, per-engine last-success timestamps, partial-render banner when an engine fails. The product is silent today when an engine errors.
+- **In-UI cluster-state trust signals** — Prometheus-side timestamps + per-engine last-success shipped, but the UI has no partial-render banner yet: when an engine errors, dashboards catch it, the web UI does not.
 - **Policy hygiene linter** — orphan policies, `0.0.0.0/0` ingress without explicit annotation, AuthorizationPolicy principals referencing non-existent ServiceAccounts, shadowed Istio rules. Shippable from existing data; not built yet.
 - **Snapshot diff** — "what changed in policy state since 5 minutes ago" for incident timelines.
 
@@ -262,6 +299,13 @@ cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api 
 ```
 
 The frontend sends `?namespaces=a,b` and the backend queries only those. Per-namespace fetches run concurrently across every registered engine (`defaultSources` in `internal/store/buildStore.go`; engine identifiers exposed via `Builder.EngineNames()`). Mesh membership + resolved PeerAuthentication mode are computed eagerly during graph build so every workload node ships with its mesh posture attached — cluster-status rollups and the ambient-HBONE detector don't have to re-query. Informers back the k8s / Istio / Calico reads — warm requests skip the API-server roundtrip — but `/api/graph` still re-evaluates every engine per request; see [`docs/informers.md`](docs/informers.md) for the sync + startup-blocking behavior.
+
+Prometheus scrape lives on a **second listener at `:8085`** (`METRICS_PORT`),
+path `/metrics`, unauth. `METRICS_DETAIL=workload` turns on per-workload series
+(off by default — high cardinality). `METRICS_ISSUE_POLICY_BREAKDOWN=false`
+disables the culprit-policy fan-out when a cluster's issue set pushes past the
+scrape budget. Chart-side flags: `serviceMonitor.enabled` +
+`alerts.enabled` in [`chart/values.yaml`](chart/values.yaml).
 
 For architecture detail see the ADRs in [`docs/arch/`](docs/arch/) — in particular [`0003-istio-mesh-membership-and-mtls.md`](docs/arch/0003-istio-mesh-membership-and-mtls.md) for the mesh integration design — and [`docs/status-key-computation.md`](docs/status-key-computation.md). Dev container setup is in [`CLAUDE.md`](CLAUDE.md).
 

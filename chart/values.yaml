@@ -3,10 +3,17 @@ replicaCount: 1
 image:
   repository: registry.dev.local/home-lab/network-policy-visualizer
   pullPolicy: Always
-  tag: "0.0.2-1-add-labels-for-workloads"  # defaults to Chart.appVersion
+  tag: "0.1.2-49-metrics-enpoint-and-grafana-dashboard"  
 
 serviceAccount:
   create: true
+  # Per-engine RBAC toggles. Disable when the CRD is absent from the cluster
+  # or you want to scope the SA away from an engine. The Go engines return
+  # empty results when the CRD is missing, so a 403 from a missing rule is
+  # louder than actual missing-CRD behavior — keep in sync.
+  k8s: true
+  istio: true
+  calico: true
 
 service:
   type: ClusterIP
@@ -36,3 +43,70 @@ securityContext:
   capabilities:
     drop: [ALL]
 
+config:
+  podCIDR: 10.42.0.0/24
+  svcCIDR: 10.43.0.0/24
+  apiServerCIDRs: []
+  dnsNs: kube-system
+  dnsLabels:
+    k8s-app: kube-dns
+  cacheRefreshSec: 10
+
+serviceMonitor:
+  enabled: true
+  metricsPort: 8085
+  promLabel:
+    release: observability-kube-prometheus-stack # label that prometheus uses to find service monitors
+  promNs: observability # ns where deploy service monitor
+  interval: 60s
+  # keep exposed `namespace` label (cluster ns being analyzed) instead of
+  # letting the scrape target's own pod namespace overwrite it
+  honorLabels: true
+
+alerts:
+  enabled: true
+  # namespace / promLabel fall back to serviceMonitor.* when unset — see prometheusRule.yaml.
+  namespace: ""
+  promLabel: {}
+  # Labels stamped on every alert (team, tier, etc.). Merged into each rule's labels block.
+  commonLabels: {}
+  # Extra PrometheusRule groups appended verbatim. Structure: list of {name, rules: [...]}.
+  extraGroups: []
+  rules:
+    evaluationStalled:
+      enabled: true
+      thresholdSeconds: 300
+      for: 5m
+      severity: critical
+    engineStalled:
+      enabled: true
+      thresholdSeconds: 600
+      for: 10m
+      severity: warning
+    informerCacheDesynced:
+      enabled: true
+      for: 5m
+      severity: critical
+    workloadsUnpoliced:
+      enabled: true
+      threshold: 0
+      for: 15m
+      severity: warning
+    newInternetExposure:
+      enabled: true
+      window: 15m
+      for: 0m
+      severity: warning
+    # Generic issue detector. Fires when (namespace, type) count grows past its
+    # value baselineWindow ago, or when a new (namespace, type) series appears.
+    # Pre-existing findings older than baselineWindow stay silent — treat as
+    # accepted baseline. Bump baselineWindow if evaluation is noisy on startup.
+    issuePresent:
+      enabled: true
+      baselineWindow: 1h
+      for: 10m
+      severity: warning
+    hboneBlocked:
+      enabled: true
+      for: 10m
+      severity: warning
