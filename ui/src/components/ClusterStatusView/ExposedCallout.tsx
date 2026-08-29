@@ -69,7 +69,7 @@ export default function ExposedCallout({ nodes, onSeeAll }: ExposedCalloutProps)
               title={`Show ${node.label} details`}
             >
               <span className={s.section}>{node.label}</span>
-              <span className={`${s.dim} ${s.mono} ms-1`}>· {node.namespace}</span>
+              <span className={`${s.dim} ${s.mono} ms-1`}>{node.namespace}</span>
               <span className="ms-2">
                 <StatusBadges keys={internetStatusesOf(node)} />
               </span>

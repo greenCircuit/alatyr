@@ -75,12 +75,12 @@ export function edgeLabel(edge: PolicyEdge): string {
   const scope = edge.aggregatedFrom ? `all ${edge.aggregatedFrom} workloads` : null;
   const parts = [portStr, l7Str, scope].filter(Boolean);
   if (parts.length === 0) return 'all ports';
-  return parts.join(' · ');
+  return parts.join(', ');
 }
 
 // Bundle label when multiple policies collapse onto one arrow. Surface a hint
 // that some policies carry L7 so the user knows clicking will reveal more.
 export function bundleLabel(edges: PolicyEdge[]): string {
   const hasL7 = edges.some((edge) => (edge.l7Matches?.length ?? 0) > 0);
-  return hasL7 ? `${edges.length} policies · L7` : `${edges.length} policies`;
+  return hasL7 ? `${edges.length} policies (L7)` : `${edges.length} policies`;
 }

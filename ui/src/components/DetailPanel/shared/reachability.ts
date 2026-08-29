@@ -77,7 +77,7 @@ export function deriveBlockers(result: ReachabilityResult): Blocker[] {
   for (const [name, meshVerdict] of Object.entries(result.mesh ?? {})) {
     if (meshVerdict.verdict !== 'deny') continue;
     blockers.push({
-      engine:    `mesh · ${name}`,
+      engine:    `mesh/${name}`,
       direction: 'mesh',
       side:      'dst',
       reason:    meshVerdict.reason,

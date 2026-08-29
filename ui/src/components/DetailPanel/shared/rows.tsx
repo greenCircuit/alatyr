@@ -14,7 +14,7 @@ export function PolicyRow({ p }: { p: PolicyEdge }) {
   const isDeny = p.action === 1;
   const ports = realPorts(p.ports);
   // Compact header shape per mockup: ActionIcon + name (section) + EngineChip +
-  // ns · level → YAML on the right. Direction + ports on the second line.
+  // ns + level → YAML on the right. Direction + ports on the second line.
   // Drops the tabular 4-row Engine/Namespace/Direction/Ports grid — visually
   // dense but scan-slow, since each field carried its own label.
   return (
@@ -382,7 +382,7 @@ export function NeighborGroup({ group, nodeIsSource, nodeNamespace }: { group: N
   return (
     <div className={`${s.card} ${stripeClass} ${s.smallText}`}>
       {/* PolicyMetaRow header per mockup: ActionIcon + name + engine + ns +
-          optional cross-ns badge + coverage · YAML. Compact single line. */}
+          optional cross-ns badge + coverage + YAML. Compact single line. */}
       <div className={s.policyMetaRow}>
         <ActionIcon action={isDeny && rule.coverage !== 'unenforced' ? 'deny' : 'allow'} />
         <div className={`d-flex align-items-baseline flex-wrap gap-2 ${s.flexFill}`}>
@@ -469,7 +469,7 @@ function NeighborSection({ title, groups, nodeIsSource, nodeNamespace, tone }: {
   return (
     <div className="mb-2">
       <div className={`${s.eyebrow} ${toneClass} mb-1`}>
-        {title} · {peers.length} peer{peers.length > 1 ? 's' : ''}
+        {title} ({peers.length} peer{peers.length > 1 ? 's' : ''})
       </div>
       <PeerChips peers={peers} />
       {groups.map((group) => <NeighborGroup key={group.key} group={group} nodeIsSource={nodeIsSource} nodeNamespace={nodeNamespace} />)}
@@ -568,7 +568,7 @@ function CalicoPrecedenceChip({ tier, order }: { tier?: string; order?: number |
       className={s.countChip}
       title={`Calico precedence: tier=${tierText}, ${orderText}. Lower order wins within a tier; unset order sorts last.`}
     >
-      {tierText} · {orderText}
+      {tierText} ({orderText})
     </span>
   );
 }

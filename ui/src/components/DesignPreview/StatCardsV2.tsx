@@ -62,9 +62,7 @@ export default function StatCardsV2(props: Props) {
       </div>
       <div className="d-flex align-items-baseline gap-3 fs-12 text-secondary px-1 pt-1">
         <span>Workloads <span className="text-light fw-semibold tnum">{props.workloads}</span></span>
-        <span className="opacity-50">·</span>
         <span>Policies <span className="text-light fw-semibold tnum">{props.policies}</span></span>
-        <span className="opacity-50">·</span>
         <span>Namespaces <span className="text-light fw-semibold tnum">{nsLabel}</span></span>
       </div>
     </div>

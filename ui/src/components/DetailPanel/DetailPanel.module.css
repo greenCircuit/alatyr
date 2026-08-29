@@ -261,7 +261,7 @@
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* ── Policy meta row — flex row for policy card headers.
-   ActionIcon + name section + EngineChip + ns + [badges] · state + [YAML]. */
+   ActionIcon + name section + EngineChip + ns + [badges] + state + [YAML]. */
 .policyMetaRow {
   display: flex;
   align-items: center;
@@ -414,7 +414,7 @@
 }
 
 /* ── Reason chip — cause label on culprit / blocker rows ("explicit deny",
-   "blocked · no matching rule"). Tinted bg + colored ink, prose casing.
+   "blocked (no matching rule)"). Tinted bg + colored ink, prose casing.
    Replaces Bootstrap `bg-danger` / `bg-warning text-dark` badges. */
 .reasonChip {
   display: inline-flex;
@@ -691,6 +691,21 @@ details[open] > .disclosureSummary::before { transform: rotate(90deg); }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   letter-spacing: 0.03em;
+}
+
+/* Severity-coded finding chip — carries urgency in the chip itself (tinted bg
+   + severity text) instead of a leading dot. Hue set via `--sev` inline. */
+.findingKindSev {
+  composes: findingKind;
+  /* Severity hues are dark + saturated (#1864ab, #581c87, #c92a2a) — unreadable
+     as 10px text on a dark panel. Hue goes to the fill + left rule; the label
+     stays near-white so it reads at a glance. */
+  background: color-mix(in srgb, var(--sev, #7a848e) 34%, transparent);
+  border-left: 3px solid var(--sev, #7a848e);
+  border-radius: 0 3px 3px 0;
+  padding-left: 5px;
+  color: #eef2f6;
+  font-weight: 600;
 }
 
 /* ── Type chip — workload/endpoint type (deployment/service/cronjob/etc).

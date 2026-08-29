@@ -68,7 +68,7 @@ export default function ClusterMeshSummary({ metrics }: { metrics: ClusterMetric
             namespaces enrolled ({mesh.nsEnrolled}/{metrics.nsTotal})
             {mesh.nsPartial > 0 && (
               <span className="ms-1" style={{ color: SEVERITY_COLOR.caution }}>
-                · {mesh.nsPartial} partial
+                {mesh.nsPartial} partial
               </span>
             )}
           </div>

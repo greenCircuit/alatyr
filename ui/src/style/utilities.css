@@ -118,3 +118,9 @@
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
 }
+
+/* Mono digits/data. Fixed side-bearing keeps adjacent numbers reading as
+ * separate tokens without a separator glyph. */
+.fmono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
