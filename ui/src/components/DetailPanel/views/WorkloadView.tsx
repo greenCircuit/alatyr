@@ -123,7 +123,7 @@ export function WorkloadView({ node, nodeInfo, nodeInfoLoading, canPin, onPin }:
             <div className={`d-flex flex-column ${s.flexTextMin}`}>
               <div className={`${s.section} text-break`}>{node.label}</div>
               <div className={`${s.dim} ${s.body}`}>
-                {node.namespace ? `${node.namespace} · ${node.type}` : node.type}
+                {node.namespace ? `${node.namespace}/${node.type}` : node.type}
               </div>
             </div>
             {canPin && (

@@ -204,11 +204,11 @@ export default function ClusterStatusView() {
             )}
           </Section>
 
-          <Section title="Rule coverage" hint="informational breakdown · not a filter" link="Open in tables →" onLink={openTables('policies')}>
+          <Section title="Rule coverage" hint="informational breakdown, not a filter" link="Open in tables →" onLink={openTables('policies')}>
             <CoverageBar stats={coverage} />
           </Section>
 
-          <Section title="Node statuses" hint="worst-severity per workload · chips are filters" link="Open in tables →" onLink={openTables('workloads')}>
+          <Section title="Node statuses" hint="worst-severity per workload, chips are filters" link="Open in tables →" onLink={openTables('workloads')}>
             {nodes.length === 0 ? (
               <div className="text-secondary fs-12">No workloads in the current scope.</div>
             ) : (
@@ -239,7 +239,7 @@ export default function ClusterStatusView() {
               <div className={p.meshColHeader}>
                 <span className={p.eyebrow}>Cluster-wide</span>
                 <div className={p.meshColHint}>
-                  every namespace, every workload · filters do NOT apply
+                  every namespace, every workload (filters do NOT apply)
                 </div>
               </div>
               <ClusterMeshSummary metrics={clusterMetrics} />
@@ -250,8 +250,8 @@ export default function ClusterStatusView() {
                 <span className={p.eyebrow}>In current scope</span>
                 <div className={p.meshColHint}>
                   {scopeMatchesCluster
-                    ? 'no filters active · numbers match cluster-wide'
-                    : `${selectedNamespaces.size} of ${availableNamespaces.length} namespaces selected · chips click to filter`}
+                    ? 'no filters active, numbers match cluster-wide'
+                    : `${selectedNamespaces.size} of ${availableNamespaces.length} namespaces selected, chips click to filter`}
                 </div>
               </div>
               <MeshRollup
@@ -268,7 +268,7 @@ export default function ClusterStatusView() {
         <div className={p.grid13}>
           <Section
             title="Top risky workloads"
-            hint="ranked worst-first · click row for detail"
+            hint="ranked worst-first, click row for detail"
             link="Open in tables →"
             onLink={openTables('workloads')}
           >

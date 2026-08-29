@@ -375,7 +375,6 @@ details[open] > .disclosureSummary::before { transform: rotate(90deg); }
   gap: 6px;
   font-size: 12px;
 }
-.metaSep { color: #4a5058; }
 
 /* Label chip — click-to-copy `key=value`. */
 .labelStrip {

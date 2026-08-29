@@ -1,7 +1,6 @@
-/* Engine provenance chip — mockup shape: tinted hue bg (color-mix 18%) + 6px
-   hue dot on the left + brand-logo + name mono. Hue set per-engine via
-   `--engine-color` inline. No border — dot + tinted bg carry the identity.
-   Kills the bordered-white-pill Bootstrap look. */
+/* Engine provenance chip — tinted hue bg (color-mix 18%) + brand-logo + name
+   mono. Hue set per-engine via `--engine-color` inline. No border — logo +
+   tinted bg carry the identity. Kills the bordered-white-pill Bootstrap look. */
 .engineChip {
   display: inline-flex;
   align-items: center;
@@ -14,11 +13,4 @@
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.02em;
-}
-.engineDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--engine-color, #7a848e);
-  flex-shrink: 0;
 }

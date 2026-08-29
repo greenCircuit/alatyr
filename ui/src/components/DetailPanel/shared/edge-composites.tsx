@@ -42,7 +42,7 @@ export function EndpointCard({
 }) {
   const roleUpper = role.toUpperCase() as 'SRC' | 'DST';
   // Namespace-type endpoints have no `namespace` field of their own — show
-  // their kind in that slot so the row reads "ns-foo · namespace" instead of
+  // their kind in that slot so the row reads "ns-foo/namespace" instead of
   // "ns-foo / —" (which looks like missing data).
   const isNs = node?.type === 'namespace';
   const isWildcard = !node && !!coverage && WILDCARD_COVERAGES.includes(coverage);
@@ -60,7 +60,7 @@ export function EndpointCard({
   }
   const subtitle = isNs ? 'namespace' : (node?.namespace || '—');
   // Ordering: RolePill + name (section) → LabelStrip (selector currency) →
-  // ns · type (dim). Labels sit at line-2 because operator's "why does this
+  // ns/type (dim). Labels sit at line-2 because operator's "why does this
   // policy select this workload?" workflow starts on labels. Mockup shape.
   return (
     <div className={`${s.card} ${s.cardFlush} d-flex flex-column gap-1`}>
@@ -69,7 +69,7 @@ export function EndpointCard({
         <span className={`${s.section} text-break`}>{node?.label ?? role}</span>
       </div>
       <LabelStrip labels={node?.labels} collapsible />
-      <div className={`${s.dim} ${s.smallText}`}>{subtitle}{node?.type ? ` · ${node.type}` : ''}</div>
+      <div className={`${s.dim} ${s.smallText}`}>{subtitle}{node?.type ? `/${node.type}` : ''}</div>
     </div>
   );
 }

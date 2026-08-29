@@ -141,7 +141,7 @@ export default function WorkloadsTable({
             className="cursor-pointer"
           >
             <td className={`text-break ${s.section}`}>{node.label}</td>
-            <td className={s.mono}>{node.namespace || '—'}</td>
+            <td className={s.mono}>{node.namespace}</td>
             <td>
               <span className={node.type === 'namespace' ? s.crossNsChip : s.typeChip}>
                 {node.type}
@@ -172,7 +172,8 @@ export default function WorkloadsTable({
 }
 
 function StatusCompact({ keys }: { keys: StatusKey[] }) {
-  if (keys.length === 0) return <span className="text-secondary">—</span>;
+  // Blank, not a placeholder glyph — see LabelChips.
+  if (keys.length === 0) return null;
   return (
     <div className="d-flex flex-column gap-1">
       {keys.map((key) => {
@@ -230,28 +231,31 @@ const TIER_META = [
 export function IssueChip({ issues }: { issues: Issue[] }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
-  if (issues.length === 0) return <span className="text-secondary">—</span>;
+  // Numeric column: a dimmed 0 keeps the digit column continuous and says
+  // "checked, clean" — blank here would read as "not evaluated".
+  if (issues.length === 0) return <span className="text-secondary fmono tnum">0</span>;
   const counts = { blocking: 0, warning: 0, info: 0 };
   for (const issue of issues) counts[issueTier(issue.type)] += 1;
   const tiers = TIER_META.filter(({ tier }) => counts[tier] > 0);
   const hasBlocking = counts.blocking > 0;
-  const summary = tiers.map(({ tier, label }) => `${counts[tier]} ${label}`).join(' · ');
+  const summary = tiers.map(({ tier, label }) => `${counts[tier]} ${label}`).join(', ');
   const open = !!anchor;
   return (
     <>
       <button
         ref={ref}
         type="button"
-        className={`btn btn-sm btn-dark border ${hasBlocking ? 'border-danger' : 'border-secondary'} py-0 px-2 d-inline-flex align-items-center gap-2 fs-11 fw-semibold leading-tight ${open ? 'active' : ''}`}
+        className={`btn btn-sm btn-dark border ${hasBlocking ? 'border-danger' : 'border-secondary'} py-0 px-2 d-inline-flex align-items-center gap-3 fs-11 fw-semibold leading-tight ${open ? 'active' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         title={summary}
         onClick={() => setAnchor(open ? null : ref.current?.getBoundingClientRect() ?? null)}
       >
+        {/* Hue carries severity. No separator glyph — mono + tabular digits have
+            fixed side-bearing, so adjacent counts read as discrete tokens
+            ("3 1 2", not "312"); the wider gap does the rest. */}
         {tiers.map(({ tier, color }) => (
-          <span key={tier} className="d-inline-flex align-items-center gap-1" style={{ color }}>
-            <span aria-hidden="true">●</span>{counts[tier]}
-          </span>
+          <span key={tier} className="fmono tnum" style={{ color }}>{counts[tier]}</span>
         ))}
         <span
           aria-hidden="true"
@@ -286,7 +290,9 @@ function MeshCell({ membership }: { membership: MeshMembership | undefined }) {
 
 function LabelChips({ labels }: { labels: Record<string, string> | null | undefined }) {
   const entries = Object.entries(labels ?? {});
-  if (entries.length === 0) return <span className="text-secondary">—</span>;
+  // Text column: render nothing. A placeholder glyph is ink with no data behind
+  // it, and it lines up into a false column down a long table.
+  if (entries.length === 0) return null;
   const shown = entries.slice(0, 3);
   const hidden = entries.length - shown.length;
   return (

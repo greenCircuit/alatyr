@@ -70,9 +70,9 @@ export default function ExposedCalloutV2({ nodes, onOpenNode, onOpenGraph, onSee
               title={`Show ${node.label} details`}
             >
               <span className="text-light">{node.label}</span>
-              <span className="text-secondary ms-1">· {node.namespace}</span>
+              <span className="text-secondary ms-1">{node.namespace}</span>
               {node.port && (
-                <span className="text-secondary ms-1 tnum">· :{node.port}</span>
+                <span className="text-secondary ms-1 tnum">:{node.port}</span>
               )}
               {node.direction && (
                 <span

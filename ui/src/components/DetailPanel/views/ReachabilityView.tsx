@@ -50,7 +50,7 @@ function SubsystemChip({ engine, kind, status }: { engine: string; kind: 'engine
   return (
     <span className={s.subsystemChip}>
       {kind === 'mesh' ? (
-        <EngineBadge engine={engine} suffix={` · mesh`} />
+        <EngineBadge engine={engine} suffix={`/mesh`} />
       ) : (
         <EngineBadge engine={engine} />
       )}
@@ -253,7 +253,7 @@ function BlockerList({ result, src, dst }: {
   return (
     <div className="mb-3">
       <div className={`${s.eyebrow} ${s.eyebrowDeny} mb-2`}>
-        Blocked on {blockers.length} {blockers.length === 1 ? 'axis' : 'axes'} · all must clear
+        Blocked on {blockers.length} {blockers.length === 1 ? 'axis' : 'axes'} (all must clear)
       </div>
       {blockers.map((blocker, index) => <BlockerRow key={index} blocker={blocker} src={src} dst={dst} />)}
     </div>
@@ -353,7 +353,7 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
     return (
       <div className={`${s.card} ${s.cardWarn}`}>
         <div className="d-flex justify-content-between align-items-center">
-          <span className={s.section}>mesh · {source}</span>
+          <span className={s.section}>mesh/{source}</span>
           <span className={`${s.miniChip} ${s.miniChipWarn}`} title="Backend did not report mesh membership for this workload">
             mesh status unknown
           </span>
@@ -366,7 +366,7 @@ function MeshSideCard({ source, membership }: { source: string; membership: Mesh
   return (
     <div className={s.card}>
       <div className="d-flex justify-content-between align-items-center mb-1">
-        <span className={s.section}>mesh · {source}</span>
+        <span className={s.section}>mesh/{source}</span>
         <div className="d-flex gap-1">
           <span
             className={`${s.miniChip} ${inMesh ? s.miniChipAllow : s.miniChipDim} d-inline-flex align-items-center gap-1`}
@@ -436,7 +436,7 @@ function WorkloadColumn({ node, role, engines, policiesKey, meshSources, mesh }:
           <span className={`${s.section} text-break`}>{node.label}</span>
         </div>
         <div className={`${s.dim} ${s.smallText}`}>
-          {node.namespace ? `${node.namespace} · ${node.type}` : node.type}
+          {node.namespace ? `${node.namespace}/${node.type}` : node.type}
         </div>
       </div>
       <div className="mb-3">
@@ -477,7 +477,7 @@ function MeshCardReach({ name, v }: { name: string; v: MeshVerdict }) {
       style={{ borderLeftColor: color }}
     >
       <div className="d-flex justify-content-between align-items-center mb-1">
-        <span className={s.section}>mesh · {name}</span>
+        <span className={s.section}>mesh/{name}</span>
         <span className={s.verdictChip} style={{ background: color }}>{v.verdict}</span>
       </div>
       <div className={`${s.dim} ${s.smallText}`}>{v.reason}</div>

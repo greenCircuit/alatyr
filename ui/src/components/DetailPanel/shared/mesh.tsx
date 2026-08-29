@@ -88,7 +88,7 @@ export function MeshCard({ source, membership }: { source: string; membership: M
       </div>
       {inMesh && (membership.provider || membership.mode) && (
         <div className={`${s.body} ${s.dim}`}>
-          {membership.provider}{membership.mode ? ` · ${membership.mode}` : ''}
+          {membership.provider}{membership.mode ? `/${membership.mode}` : ''}
         </div>
       )}
       {membership.waypoint && (

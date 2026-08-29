@@ -287,7 +287,7 @@ export interface ClusterMetrics {
 export interface MeshBadgeMeta {
   short:         string; // tight chip label — verdict only, no provider prefix
   long:          string; // mtls verdict phrase, e.g. "mTLS STRICT"
-  providerLabel: string; // "istio · ambient" (or "" when out of mesh)
+  providerLabel: string; // "istio/ambient" (or "" when out of mesh)
   color:         string; // stripe/dot color
   tooltip:       string;
   variant:       'in' | 'out'; // filled (in mesh) vs outlined (not enrolled)
@@ -295,14 +295,14 @@ export interface MeshBadgeMeta {
 
 // providerLabel joins the dataplane facts the operator scans in a hover: which
 // provider owns this workload, which dataplane mode is in play, and (future)
-// whether a waypoint is bound so L7 policy actually runs. Kept as a `·`-joined
-// list so a new segment slots in without changing callers.
+// whether a waypoint is bound so L7 policy actually runs. Kept as a `/`-joined
+// path so a new segment slots in without changing callers.
 function buildProviderLabel(membership: MeshMembership): string {
   const parts: string[] = [];
   if (membership.provider) parts.push(membership.provider);
   if (membership.mode)     parts.push(membership.mode);
   if (membership.waypoint) parts.push('waypoint');
-  return parts.join(' · ');
+  return parts.join('/');
 }
 
 export function meshBadgeMeta(membership: MeshMembership | undefined): MeshBadgeMeta {
