@@ -1,0 +1,1 @@
+{"availableNs":["analytics","storefront","payments","private-net","mesh-conflicts","default","kube-system"],"statusKeys":["internet-ingress","internet-egress","internet-full","lan-ingress","lan-egress","lan-full","api-server-egress","air-gapped","cross-namespace","ns-egress-access","ns-ingress-access","ns-full-access","l7-applied"],"policySources":["k8s","istio","calico"]}
