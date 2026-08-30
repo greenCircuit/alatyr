@@ -3,6 +3,7 @@ variables:
   GITHUB_REPO: "greenCircuit/alatyr"
   GHCR_IMAGE: "ghcr.io/greencircuit/alatyr"
 
+
 stages:
   - semver
   - test
@@ -132,7 +133,33 @@ build-binary:
       - graph
     when: on_success
     expire_in: 10 days
-    
+
+cli-test:
+  needs:
+    - img-base
+    - release-dry-run
+  stage: smoke-tests
+  image:
+    name: $CI_REGISTRY_IMAGE:$IMG_TAG
+    entrypoint: [""]
+  script:
+    - echo "Testing image ${CI_REGISTRY_IMAGE}:${IMG_TAG}"
+    - alatyr -report -f ./test-data/scenarios/01-k8s-baseline -format json -output res.json
+    - test -s res.json
+    - cat res.json
+  artifacts:
+    when: always
+    paths:
+      - res.json
+    expire_in: 10 days
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+      variables:
+        IMG_TAG: "$BUILD_VERSION"
+    - when: on_success
+      variables:
+        IMG_TAG: "$BUILD_VERSION-$CI_COMMIT_BRANCH"
+
 smoke-tests:
   needs:
     - build-binary
