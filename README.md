@@ -11,6 +11,29 @@ Policy is written per-engine and per-namespace, but reachability is *emergent*. 
 
 ---
 
+## At a glance
+
+| Surface | What it answers | Where |
+|---|---|---|
+| **Policy graph** | "Who can talk to whom, under which engine's rules?" Every workload kind, CIDR peer, and namespace as a node; one edge per engine per pair, allow and deny. | [details](#graph-view) |
+| **Edge panel** | "This arrow says allow — is the traffic actually getting through?" Cross-engine verdict per connection, every firing rule with ports and L7. | [details](#edge-panel) |
+| **Reachability check** | "Can A reach B, and who's blocking it?" Pin source, click destination, verdict per layer with the blocking policy named. | [details](#reachability-check) |
+| **Cluster Status metrics** | "Do I have a fire?" Exposure callout, policy-coverage stats, status severity bar, mesh rollup, top-risky workloads, per-namespace drill-down. | [details](#cluster-status-metrics) |
+| **Tables view** | "List every workload with `internet-ingress`." Sortable, filterable workload + policy tables, spreadsheet-ready. | [details](#tables-view) |
+| **Issues** | "What's misconfigured right now?" Eight detectors — cross-engine conflicts, mesh traps, DNS gaps, CIDR mistakes — each with severity and named culprit. | [details](#issues) |
+| **CLI report** | "Fail the PR before this reaches a cluster." Same analysis over a manifest directory — table or JSON, no server, no cluster. | [details](#cli-report) |
+| **Status badges** | "What's exposed?" 13-key vocabulary per workload (`WAN⇆`, `LAN↑`, `⊘`…), intersected across every engine. | [details](#status-badges) |
+
+Three ways to run it:
+
+```bash
+KUBECONFIG=~/.kube/config ./graph           # live cluster  → UI on :8080
+./graph -f ./manifests                      # manifest dir  → UI on :8080, no cluster, 
+./graph -f ./manifests --report             # manifest dir  → report to stdout, exits
+```
+
+---
+
 ## The problem
 
 Modern Kubernetes pod-to-pod security is a layer cake, and the layers do not talk to each other:
@@ -46,17 +69,23 @@ Reading three layers of YAML in three languages and intersecting them in your he
 
 ## What's in the product today
 
-### The graph — every policy, every engine, on one canvas
+### Graph view
 
-Live nodes for every pod, cronjob, and namespace. Edges for everything each policy permits or denies, **tagged by engine** (k8s NetworkPolicy, Istio AuthorizationPolicy, Calico GlobalNetworkPolicy) so each engine renders as its own edge between the same pair. Immediately see when one engine allows what another blocks.
+*Every policy, every engine, on one canvas.*
 
-- Direction-aware arrows (ingress / egress / both) + explicit DENY styling for Istio and Calico deny rules.
-- L7 details (hosts, methods, paths) attached to Istio edges.
-- CIDR peers rendered as first-class nodes — including `ipBlock.except` carve-outs, so "allow 10.0.0.0/8 except 10.0.5.0/24" is visible on the canvas instead of hidden inside the rule.
-- Namespace-rollup view collapses each ns to one node for tenant-isolation checks.
-- Status badges on every workload (table below), computed from the **union of every selecting policy across every engine**, intersected so a workload only earns an "open" badge if every engine permits it.
+Nodes for every workload kind — Deployment, StatefulSet, DaemonSet, CronJob, standalone Job, bare pod — plus CIDR peers and namespaces. Edges for everything each policy permits or denies, **tagged by engine**, so one engine allowing what another blocks is visible at a glance.
 
-### Edge panel — the connection's full truth
+- **Per-engine edges** — k8s NetworkPolicy, Istio AuthorizationPolicy, and Calico GlobalNetworkPolicy each render their own edge between the same pair. No merged, averaged, or invented verdict.
+- **Per-kind silhouettes** — cut-rectangle StatefulSet, pentagon DaemonSet, hexagon CronJob, notched hexagon Job, ellipse for an uncontrolled pod. Decoded in the legend's **Node shapes** block, togglable per kind in the filter panel.
+- **Direction + action styling** — ingress / egress / both arrows, explicit DENY styling for Istio and Calico deny rules.
+- **L7 on the edge** — hosts, methods, paths attached to Istio edges.
+- **CIDR peers as real nodes** — including `ipBlock.except` carve-outs, so "allow 10.0.0.0/8 except 10.0.5.0/24" is on the canvas instead of buried inside the rule.
+- **Namespace rollup** — collapses each ns to one node for tenant-isolation checks.
+- **Status badges per workload** ([vocabulary below](#status-badges)) — computed from every selecting policy across every engine, intersected so a workload only earns an "open" badge if every engine permits it.
+
+### Edge panel
+
+*The connection's full truth — what every engine says about this one arrow.*
 
 Click any arrow. Header states the cross-engine reachability verdict (`→ Reachability: can reach` / `✗ Reachability: cannot reach`) with per-engine badges — `CALICO: ALLOW`, `ISTIO: NOT ENFORCED`, `K8S: ALLOW`, plus `MESH: <mode>`. Below the header: SRC + DST workload cards, then a `POLICY RULES` section listing every rule that fired with its engine, namespace, direction, and ports (L7 matchers when present).
 
@@ -64,7 +93,9 @@ The arrow on canvas is one engine's opinion. The banner is the truth across ever
 
 ![Edge panel — per-engine verdict, SRC/DST, and every firing rule](docs/edgePanel.png)
 
-### Tables view — audit, hygiene, search
+### Tables view
+
+*Audit, hygiene, search — the same data as rows.*
 
 Two sortable, filterable tables sharing the same filters as the graph:
 
@@ -75,7 +106,9 @@ Built for the auditor's question: "show me every workload with `internet-ingress
 
 ![Workloads tab — per-workload status pills, per-engine policy counts, mesh column, issue counts](docs/workloadsTable.png)
 
-### Cluster Status dashboard — the "should I be worried" page
+### Cluster Status metrics
+
+*The "should I be worried" page — cluster-wide numbers, not individual arrows.*
 
 One operator-facing overview scoped by the same filters as the graph. Scan order matches the on-call flow:
 
@@ -88,7 +121,9 @@ One operator-facing overview scoped by the same filters as the graph. Scan order
 
 Nothing here is derived data the graph doesn't have — it's the same evaluation results, reshaped for the "walk in, decide if you have a fire" workflow.
 
-### Issues drawer — cross-cutting conflicts and hygiene, live
+### Issues
+
+*Cross-cutting conflicts and hygiene findings the graph can't draw as one arrow.*
 
 `/api/issues` runs seven detectors over the current evaluation and surfaces findings the graph can't show as a single arrow. Rendered inline as the **Issues** tab in the Tables view and as a scoped list in every workload's detail panel.
 
@@ -101,12 +136,15 @@ Nothing here is derived data the graph doesn't have — it's the same evaluation
 | **No DNS egress** | Locked-down egress with no rule allowing port 53. Two false-positive filters skip: workloads with no egress opinion at all (`ReasonNoOpinion`) and workloads whose matching egress rule already permits every port. | `internal/store/buildIssues.go` |
 | **Partial access** | Selector matches multiple pods but only some are reachable through the intended path — usually a stale label selector or a partial rollout. | `internal/store/buildIssues.go` (`IssuesPartial`) |
 | **CIDR scope mismatch** | Rule targets a CIDR that overlaps but does not fully contain the intended peer's address — an easy miss when copy-pasting CIDR ranges. | `internal/store/buildIssues.go` (`IssuesCidrScope`) |
+| **Fetch failed (posture unknown)** | A PeerAuthentication read failed for the root namespace or a workload namespace. Rather than resolve mTLS mode from partial data and render a verdict that might be wrong, the failure itself is surfaced as a finding naming the namespace and the error. | `internal/mesh/istio/buildMeshMembership.go` |
 
-Each finding names the exact policy / workload / port so the fix is `kubectl edit`, not a scavenger hunt.
+Each finding names the exact policy / workload / port so the fix is `kubectl edit`, not a scavenger hunt. Every finding also carries a `severity` (`critical` / `high` / `warning` / `caution` / `info` / `secure`) stamped from one table — `SeverityForType` in `internal/models/issues.go` — so ranking is identical in the drawer, the tables, and the CLI report. `info` findings are expected layering, not work; counts separate them out as informational.
 
 ![Issues tab — every conflict with cause + fix, filterable by type](docs/issuesTable.png)
 
-### Reachability checks — "can A actually reach B?" answered across all three layers
+### Reachability check
+
+*"Can A actually reach B?" — answered across all three layers.*
 
 Pin a source, click any destination. A side-by-side panel renders the verdict per layer:
 
@@ -120,15 +158,35 @@ The exact PeerAuthentication object that forced the mesh verdict is named.
 
 ### Per-workload issue surfacing
 
+*The same findings, scoped to the workload you clicked.*
+
 Every workload's detail panel replays the subset of `/api/issues` that touches it. The headline example — the ambient HBONE trap:
 
 > **"Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked."**
 
 Same detector fires in the Issues drawer, scoped to what you're looking at. Catches a common ambient rollout failure: a perfectly valid NetworkPolicy and a perfectly valid AuthorizationPolicy that, together, silently null out every packet ztunnel tries to deliver.
 
+### CLI report
+
+*Same analysis, no browser, no cluster — a pre-merge gate.*
+
+`-report` runs one scan over a manifest directory, prints the result, and exits. No server, no UI, no cluster. Same engines, same detectors, same severity table as the web view — a manifest tree gets audited before it ever reaches a cluster.
+
+```bash
+./graph -f ./manifests -report                             # human-readable table on stdout
+./graph -f ./manifests -report -format json                # machine-readable on stdout
+./graph -f ./manifests -report -output scan.json           # table on stdout AND JSON artifact
+```
+
+Table output is a triage surface: coverage totals (with and without global policies counted), a severity summary line, a per-type breakdown, then one row per actionable finding, worst first. Informational findings are counted, not listed.
+
+JSON output is a stable, `jq`-friendly document (`cli/types.go`) — counts and metrics first, per-finding detail last. `-output` writes the JSON file *and* keeps the table on stdout, so one invocation gives a readable CI log and an artifact. Logs go to stderr, so stdout only ever carries the chosen format.
+
+Exit code is `2` on a failure to scan (missing `-f`, unreadable directory, bad `-format`), `0` otherwise. Findings do not currently change the exit code — gate CI on the JSON counts.
+
 ---
 
-## Status badges — what each one means
+## Status badges
 
 Computed per workload from the intersection of every selecting policy across every engine. The UI renders both the glyph and the slug (e.g. `WAN⇆ internet-full`) — both come from the same catalog in `ui/src/data/policies.ts`.
 
@@ -168,7 +226,7 @@ The badge to hunt for in practice: **`WAN⇆` on workloads you did not expect to
 
 ## Status & roadmap
 
-Today's scope: k8s NetworkPolicy + Istio AuthorizationPolicy + Calico GlobalNetworkPolicy + ambient-mesh mTLS, graph view, tables view, cluster-status dashboard, cross-engine issues drawer, click-driven reachability. Stable enough to use against a real cluster.
+Today's scope: k8s NetworkPolicy + Istio AuthorizationPolicy + Calico GlobalNetworkPolicy + ambient-mesh mTLS, graph view, tables view, cluster-status dashboard, cross-engine issues drawer, click-driven reachability, headless `-report` scan of a manifest directory. Stable enough to use against a real cluster.
 
 Deferred to later iterations:
 
@@ -201,7 +259,23 @@ Demo mode (no cluster required):
 DEMO_MODE=true ./graph
 ```
 
-Loads sample data from embedded `test-data/` — a curated mid-size SaaS cluster: public storefront + payments tier on an Istio mesh (`20-storefront.yaml`, `30-payments.yaml`), plain-k8s analytics pipeline (`10-analytics.yaml`), private-network connectivity tier (`40-private-net.yaml`), a mesh-conflicts scenario box (`50-mesh-conflicts.yaml`), and Calico globals (`60-calico-globals.yaml`). One namespace per file, applies directly via `kubectl apply -f test-data/`. See [`test-data/README.md`](test-data/README.md).
+Loads sample data from embedded `test-data/demo/` — a curated mid-size SaaS cluster: public storefront + payments tier on an Istio mesh (`20-storefront.yaml`, `30-payments.yaml`), plain-k8s analytics pipeline (`10-analytics.yaml`), private-network connectivity tier (`40-private-net.yaml`), a mesh-conflicts scenario box (`50-mesh-conflicts.yaml`), and Calico globals (`60-calico-globals.yaml`). One namespace per file, applies directly via `kubectl apply -f test-data/demo/`.
+
+Any manifest directory works as a cluster, no `DEMO_MODE` needed:
+
+```bash
+./graph -f test-data/scenarios/03-mtls-matrix
+```
+
+`test-data/scenarios/` holds small single-purpose clusters (1–3 namespaces) — one per feature area, used for e2e tests. See [`test-data/README.md`](test-data/README.md).
+
+Scan a manifest tree without starting anything:
+
+```bash
+./graph -f test-data/scenarios/03-mtls-matrix -report
+```
+
+See [CLI report](#cli-report) for formats and exit codes.
 
 ## RBAC
 

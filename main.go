@@ -5,19 +5,18 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"graph/cli"
 	"graph/internal/api"
 	"graph/internal/config"
 	"graph/internal/k8s"
 	"graph/internal/logging"
 	"graph/internal/store"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
-	manifestDir := flag.String("f", "", "load manifests from this directory tree instead of a live cluster")
-	flag.Parse()
-
 	logger := logging.New(logging.LevelFromEnv())
 	slog.SetDefault(logger)
 
@@ -32,9 +31,50 @@ func main() {
 	}
 	config.Install(cfg)
 
+	manifestDir := flag.String("f", "", "load manifests from directory instead of live cluster")
+	reportMode := flag.Bool("report", false, "scan the -f directory, print a report to stdout, exit")
+	reportFormat := flag.String("format", "table", "report format: table or json")
+	reportJSONPath := flag.String("output", "", "also write the JSON report to this file")
+	flag.Parse()
+
+	// Report mode never starts the server — one scan, one document, exit.
+	// Logs move to stderr so stdout carries only the JSON report; the default
+	// logger writes to stdout and would corrupt the document.
+	if *reportMode {
+		reportLogger := logging.NewWithWriter(os.Stderr, logging.LevelFromEnv())
+		slog.SetDefault(reportLogger)
+		if *manifestDir == "" {
+			reportLogger.Error("--report requires -f <dir>", slog.String("phase", "startup"))
+			os.Exit(2)
+		}
+		if err := cli.Run(cli.Options{
+			ManifestDir: *manifestDir,
+			Format:      *reportFormat,
+			JSONPath:    *reportJSONPath,
+			Logger:      reportLogger,
+		}); err != nil {
+			reportLogger.Error("report failed",
+				slog.String("phase", "report"),
+				slog.String("dir", *manifestDir),
+				slog.String("error", err.Error()),
+			)
+			os.Exit(2)
+		}
+		return
+	}
+
 	var client k8s.KubernetesClient
-	switch {
-	case *manifestDir != "":
+	if os.Getenv("DEMO_MODE") == "true" {
+		demo, err := k8s.NewDemoClient(demoDataFS, "test-data/demo")
+		if err != nil {
+			logger.Error("demo data load failed",
+				slog.String("phase", "startup"),
+				slog.String("error", err.Error()),
+			)
+			os.Exit(1)
+		}
+		client = demo
+	} else if *manifestDir != "" {
 		demo, err := k8s.NewDemoClient(os.DirFS(*manifestDir), ".")
 		if err != nil {
 			logger.Error("manifest dir load failed",
@@ -45,17 +85,8 @@ func main() {
 			os.Exit(1)
 		}
 		client = demo
-	case os.Getenv("DEMO_MODE") == "true":
-		demo, err := k8s.NewDemoClient(demoDataFS, "test-data")
-		if err != nil {
-			logger.Error("demo data load failed",
-				slog.String("phase", "startup"),
-				slog.String("error", err.Error()),
-			)
-			os.Exit(1)
-		}
-		client = demo
-	default:
+
+	} else {
 		stopCh := make(chan struct{})
 		defer close(stopCh)
 		real, err := k8s.NewInformerClient(os.Getenv("KUBECONFIG"), stopCh)
