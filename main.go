@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log/slog"
 	"os"
 
@@ -14,6 +15,9 @@ import (
 )
 
 func main() {
+	manifestDir := flag.String("f", "", "load manifests from this directory tree instead of a live cluster")
+	flag.Parse()
+
 	logger := logging.New(logging.LevelFromEnv())
 	slog.SetDefault(logger)
 
@@ -29,7 +33,19 @@ func main() {
 	config.Install(cfg)
 
 	var client k8s.KubernetesClient
-	if os.Getenv("DEMO_MODE") == "true" {
+	switch {
+	case *manifestDir != "":
+		demo, err := k8s.NewDemoClient(os.DirFS(*manifestDir), ".")
+		if err != nil {
+			logger.Error("manifest dir load failed",
+				slog.String("phase", "startup"),
+				slog.String("dir", *manifestDir),
+				slog.String("error", err.Error()),
+			)
+			os.Exit(1)
+		}
+		client = demo
+	case os.Getenv("DEMO_MODE") == "true":
 		demo, err := k8s.NewDemoClient(demoDataFS, "test-data")
 		if err != nil {
 			logger.Error("demo data load failed",
@@ -39,7 +55,7 @@ func main() {
 			os.Exit(1)
 		}
 		client = demo
-	} else {
+	default:
 		stopCh := make(chan struct{})
 		defer close(stopCh)
 		real, err := k8s.NewInformerClient(os.Getenv("KUBECONFIG"), stopCh)

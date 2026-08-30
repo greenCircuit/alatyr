@@ -21,6 +21,10 @@ import (
 type DemoClient struct {
 	namespaces            map[string]*corev1.Namespace
 	pods                  map[string][]*corev1.Pod
+	deployments           map[string][]*appsv1.Deployment
+	statefulSets          map[string][]*appsv1.StatefulSet
+	daemonSets            map[string][]*appsv1.DaemonSet
+	jobs                  map[string][]*batchv1.Job
 	policies              map[string][]*networkingv1.NetworkPolicy
 	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
 	peerAuthentications   map[string][]*istiosec.PeerAuthentication
@@ -31,6 +35,10 @@ func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 	c := &DemoClient{
 		namespaces:            map[string]*corev1.Namespace{},
 		pods:                  map[string][]*corev1.Pod{},
+		deployments:           map[string][]*appsv1.Deployment{},
+		statefulSets:          map[string][]*appsv1.StatefulSet{},
+		daemonSets:            map[string][]*appsv1.DaemonSet{},
+		jobs:                  map[string][]*batchv1.Job{},
 		policies:              map[string][]*networkingv1.NetworkPolicy{},
 		authorizationPolicies: map[string][]*istiosec.AuthorizationPolicy{},
 		peerAuthentications:   map[string][]*istiosec.PeerAuthentication{},
@@ -42,7 +50,8 @@ func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+		name := entry.Name()
+		if entry.IsDir() || (!strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml")) {
 			return nil
 		}
 		data, readErr := fs.ReadFile(dataFS, path)
@@ -81,11 +90,45 @@ func (c *DemoClient) parseFile(data []byte) error {
 			c.namespaces[ns.Name] = ns
 
 		case "Deployment":
-			var d *appsv1.Deployment
-			if err := json.Unmarshal(jsonBytes, &d); err != nil {
+			deployment := &appsv1.Deployment{}
+			if err := json.Unmarshal(jsonBytes, deployment); err != nil {
 				return err
 			}
-			c.pods[d.Namespace] = append(c.pods[d.Namespace], deploymentToPod(d))
+			// fixtures rarely carry a UID; node IDs key on it, empty collides
+			if deployment.UID == "" {
+				deployment.UID = types.UID("demo-deployment-" + deployment.Namespace + "-" + deployment.Name)
+			}
+			c.deployments[deployment.Namespace] = append(c.deployments[deployment.Namespace], deployment)
+
+		case "StatefulSet":
+			statefulSet := &appsv1.StatefulSet{}
+			if err := json.Unmarshal(jsonBytes, statefulSet); err != nil {
+				return err
+			}
+			if statefulSet.UID == "" {
+				statefulSet.UID = types.UID("demo-statefulset-" + statefulSet.Namespace + "-" + statefulSet.Name)
+			}
+			c.statefulSets[statefulSet.Namespace] = append(c.statefulSets[statefulSet.Namespace], statefulSet)
+
+		case "DaemonSet":
+			daemonSet := &appsv1.DaemonSet{}
+			if err := json.Unmarshal(jsonBytes, daemonSet); err != nil {
+				return err
+			}
+			if daemonSet.UID == "" {
+				daemonSet.UID = types.UID("demo-daemonset-" + daemonSet.Namespace + "-" + daemonSet.Name)
+			}
+			c.daemonSets[daemonSet.Namespace] = append(c.daemonSets[daemonSet.Namespace], daemonSet)
+
+		case "Job":
+			job := &batchv1.Job{}
+			if err := json.Unmarshal(jsonBytes, job); err != nil {
+				return err
+			}
+			if job.UID == "" {
+				job.UID = types.UID("demo-job-" + job.Namespace + "-" + job.Name)
+			}
+			c.jobs[job.Namespace] = append(c.jobs[job.Namespace], job)
 
 		case "Pod":
 			var pod *corev1.Pod
@@ -141,30 +184,28 @@ func splitYAMLDocs(data []byte) [][]byte {
 	return docs
 }
 
-// deploymentToPod synthesizes a representative pod from a Deployment.
-// Uses a deterministic UID so that multiple pods from the same Deployment
-// collapse into a single workload node via ownerUID deduplication.
-func deploymentToPod(d *appsv1.Deployment) *corev1.Pod {
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      d.Name + "-demo-pod",
-			Namespace: d.Namespace,
-			Labels:    d.Spec.Template.Labels,
-			OwnerReferences: []metav1.OwnerReference{{
-				Kind: "ReplicaSet",
-				Name: d.Name + "-demo-rs",
-				UID:  types.UID("demo-rs-" + d.Namespace + "-" + d.Name),
-			}},
-		},
-	}
-}
-
 func (c *DemoClient) GetPods(ns string) ([]*corev1.Pod, error) {
 	return c.pods[ns], nil
 }
 
 func (c *DemoClient) GetCronJobs(ns string) ([]*batchv1.CronJob, error) {
 	return nil, nil
+}
+
+func (c *DemoClient) GetJobs(ns string) ([]*batchv1.Job, error) {
+	return c.jobs[ns], nil
+}
+
+func (c *DemoClient) GetDeployments(ns string) ([]*appsv1.Deployment, error) {
+	return c.deployments[ns], nil
+}
+
+func (c *DemoClient) GetStatefulSets(ns string) ([]*appsv1.StatefulSet, error) {
+	return c.statefulSets[ns], nil
+}
+
+func (c *DemoClient) GetDaemonSets(ns string) ([]*appsv1.DaemonSet, error) {
+	return c.daemonSets[ns], nil
 }
 
 func (c *DemoClient) GetPolicies(ns string) ([]*networkingv1.NetworkPolicy, error) {

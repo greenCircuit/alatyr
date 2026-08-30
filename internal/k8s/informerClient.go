@@ -3,6 +3,7 @@ package k8s
 import (
 	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -10,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	netlisters "k8s.io/client-go/listers/networking/v1"
@@ -39,8 +41,13 @@ type InformerClient struct {
 
 	podLister corelisters.PodLister
 	cjLister  batchlisters.CronJobLister
+	jobLister batchlisters.JobLister
 	npLister  netlisters.NetworkPolicyLister
 	nsLister  corelisters.NamespaceLister
+
+	deploymentLister  appslisters.DeploymentLister
+	statefulSetLister appslisters.StatefulSetLister
+	daemonSetLister   appslisters.DaemonSetLister
 
 	apLister istiolisters.AuthorizationPolicyLister // nil if security.istio.io/v1 absent
 	paLister istiolisters.PeerAuthenticationLister  // nil if security.istio.io/v1 absent
@@ -74,15 +81,23 @@ func NewInformerClient(kubeconfigPath string, stopCh <-chan struct{}) (*Informer
 	coreFactory := informers.NewSharedInformerFactory(coreCS, 0)
 	podInf := coreFactory.Core().V1().Pods()
 	cjInf := coreFactory.Batch().V1().CronJobs()
+	jobInf := coreFactory.Batch().V1().Jobs()
 	npInf := coreFactory.Networking().V1().NetworkPolicies()
 	nsInf := coreFactory.Core().V1().Namespaces()
+	deploymentInf := coreFactory.Apps().V1().Deployments()
+	statefulSetInf := coreFactory.Apps().V1().StatefulSets()
+	daemonSetInf := coreFactory.Apps().V1().DaemonSets()
 
 	c := &InformerClient{
-		coreFactory: coreFactory,
-		podLister:   podInf.Lister(),
-		cjLister:    cjInf.Lister(),
-		npLister:    npInf.Lister(),
-		nsLister:    nsInf.Lister(),
+		coreFactory:       coreFactory,
+		podLister:         podInf.Lister(),
+		cjLister:          cjInf.Lister(),
+		jobLister:         jobInf.Lister(),
+		npLister:          npInf.Lister(),
+		nsLister:          nsInf.Lister(),
+		deploymentLister:  deploymentInf.Lister(),
+		statefulSetLister: statefulSetInf.Lister(),
+		daemonSetLister:   daemonSetInf.Lister(),
 	}
 
 	istioPresent, err := istioSecurityCRDPresent(coreCS)
@@ -172,8 +187,24 @@ func (c *InformerClient) GetPods(ns string) ([]*corev1.Pod, error) {
 	return c.podLister.Pods(ns).List(labels.Everything())
 }
 
+func (c *InformerClient) GetDeployments(ns string) ([]*appsv1.Deployment, error) {
+	return c.deploymentLister.Deployments(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetStatefulSets(ns string) ([]*appsv1.StatefulSet, error) {
+	return c.statefulSetLister.StatefulSets(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetDaemonSets(ns string) ([]*appsv1.DaemonSet, error) {
+	return c.daemonSetLister.DaemonSets(ns).List(labels.Everything())
+}
+
 func (c *InformerClient) GetCronJobs(ns string) ([]*batchv1.CronJob, error) {
 	return c.cjLister.CronJobs(ns).List(labels.Everything())
+}
+
+func (c *InformerClient) GetJobs(ns string) ([]*batchv1.Job, error) {
+	return c.jobLister.Jobs(ns).List(labels.Everything())
 }
 
 func (c *InformerClient) GetPolicies(ns string) ([]*networkingv1.NetworkPolicy, error) {
@@ -216,7 +247,6 @@ func (c *InformerClient) GetPeerAuthentications(ns string) ([]*istiosec.PeerAuth
 	}
 	return c.paLister.PeerAuthentications(ns).List(labels.Everything())
 }
-
 
 func (c *InformerClient) GetAuthorizationPoliciesByName(ns string, name string) (*istiosec.AuthorizationPolicy, error) {
 	if c.apLister == nil {

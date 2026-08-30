@@ -2,6 +2,10 @@ package graph
 
 import (
 	"graph/internal/models"
+
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
 )
 
 type PolicyEdge struct {
@@ -39,4 +43,15 @@ type Bundle struct {
 type Graph struct {
 	Nodes []models.WorkloadNode `json:"nodes"`
 	Edges []PolicyEdge          `json:"edges"`
+}
+
+// NsResources to build index for one on
+type NsResources struct {
+      Namespace    *corev1.Namespace
+      Pods         []*corev1.Pod
+      CronJobs     []*batchv1.CronJob
+      Jobs         []*batchv1.Job // lookup only — Job nodes come from live pods, not from this list
+      Deployments  []*appsv1.Deployment
+      StatefulSets []*appsv1.StatefulSet
+      DaemonSets   []*appsv1.DaemonSet
 }

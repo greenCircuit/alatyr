@@ -15,13 +15,15 @@ type WorkloadNode struct {
 type NodeType string
 
 const (
-	NodeTypeService    NodeType = "service"    // deployment + ClusterIP service
-	NodeTypeDeployment NodeType = "deployment" // pod/deployment with no service exposure
-	NodeTypeHeadless   NodeType = "headless"   // headless service (direct pod addressing)
-	NodeTypeExternal   NodeType = "external"   // traffic origin outside the cluster
-	NodeTypeNamespace  NodeType = "namespace"  // traffic targets entire ns
-	NodeTypeCronJob    NodeType = "cronjob"    // cronjob — shown when actively running
-	NodeTypeCIDR       NodeType = "cidr"       // synthetic node for a k8s NetworkPolicy ipBlock CIDR peer
+	NodeTypeDeployment      NodeType = "deployment" 
+	NodeTypeDaemonset       NodeType = "daemonset"    
+	NodeTypeStatefullSet    NodeType = "statefulset"  
+	NodeTypePod             NodeType = "pod"    
+	NodeTypeNamespace       NodeType = "namespace"  // traffic targets entire ns
+	NodeTypeCronJob         NodeType = "cronjob"    // cronjob — shown when actively running
+	NodeTypeJob             NodeType = "job"        // standalone Job — not spawned by a CronJob
+	NodeTypeCIDR            NodeType = "cidr"       // synthetic node for a k8s NetworkPolicy ipBlock CIDR peer
+	NodeTypeExternal        NodeType = "external"   // traffic origin outside the cluster
 )
 
 type CidrType string

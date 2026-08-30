@@ -248,11 +248,35 @@ func (b *Builder) fetchNsIndex(ns string) (models.NSIndex, error) {
 	if err != nil {
 		return models.NSIndex{}, err
 	}
+	jobs, err := b.client.GetJobs(ns)
+	if err != nil {
+		return models.NSIndex{}, err
+	}
+	deployments, err := b.client.GetDeployments(ns)
+	if err != nil {
+		return models.NSIndex{}, err
+	}
+	statefulSets, err := b.client.GetStatefulSets(ns)
+	if err != nil {
+		return models.NSIndex{}, err
+	}
+	daemonSets, err := b.client.GetDaemonSets(ns)
+	if err != nil {
+		return models.NSIndex{}, err
+	}
 	nsObj, err := b.client.GetNs(ns)
 	if err != nil {
 		return models.NSIndex{}, err
 	}
-	return graph.AssembleNsIndex(pods, cronJobs, nsObj), nil
+	return graph.AssembleNsIndex(graph.NsResources{
+		Namespace:    nsObj,
+		Pods:         pods,
+		CronJobs:     cronJobs,
+		Jobs:         jobs,
+		Deployments:  deployments,
+		StatefulSets: statefulSets,
+		DaemonSets:   daemonSets,
+	}), nil
 }
 
 func GetByNodeInNs(data *models.Cache, nodeId string, nodeNs string) (models.WorkloadNode, error) {
