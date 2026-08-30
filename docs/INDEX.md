@@ -9,10 +9,14 @@ Grep from the directory to find specific symbols. File-level detail lives in the
 |--------|---------|
 | `main.go` (file) | Wires k8s client (real vs demo), loads config, starts Echo, registers routes |
 | `embed.go` (file) | Embeds built UI + manifests into the Go binary |
+| `e2e_test.go` (file) | End-to-end suite: CLI report mode + server boot against `test-data/scenarios/`, asserts exit codes and issue counts |
 | `internal/` | All backend code (nothing importable from outside module) |
+| `cli/` | Headless report mode (`-report`): scans a manifest dir, renders table to stdout or JSON to stdout/file, exits without starting the server |
 | `scripts/` | Podman dev runner, container re-attach, image build, embed build |
 | `chart/` | Helm chart for cluster deploy |
-| `test-data/`, `tests/` | Fixture manifests + integration tests |
+| `test-data/demo/` | Full curated demo cluster, embedded, served on `DEMO_MODE=true` |
+| `test-data/scenarios/` | Small single-purpose fixture clusters for e2e, loaded with `-f <dir>` |
+| `tests/` | Integration tests |
 | `docs/` | Architecture notes, specs, backlog, reviews, this index |
 
 ## Backend — `internal/`

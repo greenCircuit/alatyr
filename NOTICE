@@ -1,0 +1,22 @@
+network-policy-visualizer
+Copyright 2026 network-policy-visualizer contributors
+
+This product includes software developed at Tigera, Inc.
+(https://github.com/projectcalico/calico).
+
+The Calico label-selector parser was copied into this repository at
+internal/thirdparty/calicoselector/ (selector.go, parser/, tokenizer/, hash/,
+uniquestr/) because the upstream package lives in an unpublished nested Go
+module and cannot be imported directly. The original Apache License 2.0 headers
+and copyright notices are retained in those files unmodified. A copy of the
+upstream license is kept at internal/thirdparty/calicoselector/LICENSE, and
+provenance is documented in internal/thirdparty/calicoselector/README.md.
+
+  Copyright (c) 2016-2023 Tigera, Inc. All rights reserved.
+  Licensed under the Apache License, Version 2.0.
+
+The compiled binary statically links additional third-party Go dependencies —
+including k8s.io/client-go, istio.io/client-go, and github.com/projectcalico/api
+(Apache License 2.0) — and the browser bundle includes frontend dependencies
+such as React and Cytoscape.js (MIT License). Their licenses apply to those
+components and are declared in go.mod / go.sum and ui/package.json.

@@ -116,7 +116,7 @@ describe('edgeLabel', () => {
   it('joins ports + L7 with a separator', () => {
     const l7: L7Match[] = [{ methods: ['GET'] }];
     expect(edgeLabel(edge({ ports: [port(80)], l7Matches: l7 })))
-      .toBe('80 · L7: GET');
+      .toBe('80, L7: GET');
   });
 
   it('omits ports half when only L7 is present', () => {
@@ -130,10 +130,10 @@ describe('bundleLabel', () => {
     expect(bundleLabel([edge(), edge(), edge()])).toBe('3 policies');
   });
 
-  it("appends '· L7' when any edge has L7 matchers", () => {
+  it("appends '(L7)' when any edge has L7 matchers", () => {
     expect(bundleLabel([
       edge(),
       edge({ l7Matches: [{ methods: ['POST'] }] }),
-    ])).toBe('2 policies · L7');
+    ])).toBe('2 policies (L7)');
   });
 });

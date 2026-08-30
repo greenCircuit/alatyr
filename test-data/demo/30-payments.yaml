@@ -7,7 +7,8 @@
 #   payments-api      air-gapped + l7-applied   (Istio ALLOW L7 methods/paths;
 #                                                 Istio DENY from observability;
 #                                                 namespace STRICT mTLS)
-#   ledger-db         lan-full                  (private-CIDR ingress + egress)
+#   ledger-db         lan-full                  (private-CIDR ingress + egress;
+#                                                 StatefulSet — stable postgres identity)
 #   webhook-receiver  ns-egress-access + l7-applied  (egress to kube-system only;
 #                                                 Istio ALLOW L7 POST /webhooks)
 #   payout-worker     internet-egress
@@ -44,12 +45,13 @@ spec:
             - containerPort: 8080
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: ledger-db
   namespace: payments
 spec:
   replicas: 1
+  serviceName: ledger-db
   selector:
     matchLabels:
       app: ledger-db

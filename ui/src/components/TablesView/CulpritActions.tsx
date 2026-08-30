@@ -100,7 +100,7 @@ function PolicyChip({ policy, onOpen, showEngine }: {
         type="button"
         className={`${s.miniChip} ${s.miniChipDim} text-truncate max-w-180`}
         style={{ cursor: 'pointer', border: 0 }}
-        title={`${policy.source} · ${policy.namespace}/${policy.name}`}
+        title={`${policy.source}/${policy.namespace}/${policy.name}`}
         onClick={openPolicyOrManifest}
       >
         <span className="d-inline-flex align-items-center gap-1">
@@ -168,7 +168,7 @@ function CulpritGroup({ direction, culprits, allowed, reason, endpoint, engines,
           the pill would just repeat both. */}
       {!layering && !meshConflict && (
         <span className={`${s.rolePill} ${rolePillClass}`}>
-          {side.role}{endpoint && ` · ${endpoint}`}
+          {side.role}{endpoint && ` (${endpoint})`}
         </span>
       )}
       {permitted ? (

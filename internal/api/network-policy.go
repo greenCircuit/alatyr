@@ -21,12 +21,10 @@ func (s *Server) handleGraph(c echo.Context) error {
 		}
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.store.PopulateCache(s.cache, namespaces); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	g := graph.BuildGraph(s.cache, namespaces)
+	s.mu.RLock()
+	cache := s.cache
+	s.mu.RUnlock()
+	g := graph.BuildGraph(cache, namespaces)
 
 	return c.JSON(http.StatusOK, g)
 }

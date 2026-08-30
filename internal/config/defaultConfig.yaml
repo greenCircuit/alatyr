@@ -6,3 +6,4 @@ apiServerCIDRs: []
 dnsNs: kube-system
 dnsLabels:
   k8s-app: kube-dns
+cacheRefreshSec: 10

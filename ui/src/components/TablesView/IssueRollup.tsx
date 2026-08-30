@@ -80,9 +80,7 @@ export default function IssueRollup({ issues, onToggled, bare = false }: IssueRo
             title={`click to ${active ? 'clear filter' : 'filter to these'}`}
             style={{ border: `1px solid ${color}` }}
           >
-            {ISSUE_ENGINE[type]
-              ? <EngineLogo engine={ISSUE_ENGINE[type]!} size={10} />
-              : <span aria-hidden="true" style={{ color }}>●</span>}
+            {ISSUE_ENGINE[type] && <EngineLogo engine={ISSUE_ENGINE[type]!} size={10} />}
             <span>{ISSUE_TYPE_LABEL[type]}</span>
             <span className="chip-count ms-1">{count}</span>
           </button>

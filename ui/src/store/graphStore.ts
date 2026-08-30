@@ -72,6 +72,10 @@ interface GraphState {
   toggleMeshFilter:            (value: MeshFilterValue) => void;
   setIssuesDrawerOpen:         (open: boolean) => void;
   toggleIssueType:             (type: IssueType) => void;
+  // Whole-set writes used by scenario deep links, which restore a landing state
+  // in one shot rather than replaying individual toggles.
+  setSelectedIssueTypes:       (types: IssueType[]) => void;
+  setSelectedNamespaces:       (namespaces: string[]) => void;
   loadNodeInfo:                (nodeId: string) => Promise<void>;
   toggleNamespace:             (ns: string) => void;
   // Drill-down: replace the namespace filter with a single namespace (cluster
@@ -247,6 +251,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       next.has(type) ? next.delete(type) : next.add(type);
       return { selectedIssueTypes: next };
     }),
+
+  setSelectedIssueTypes: (types) => set({ selectedIssueTypes: new Set(types) }),
+
+  setSelectedNamespaces: (namespaces) =>
+    set({ selectedNamespaces: new Set(namespaces), selectedNode: null, selectedEdges: [] }),
 
   toggleNamespace: (ns) =>
     set((state) => {

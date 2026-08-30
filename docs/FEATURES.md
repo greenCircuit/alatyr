@@ -1,6 +1,15 @@
 # Feature wishlist — next quarter+
 
-Ranked by what pages someone at 3am, not by what demos well. Severity tags inline. Backend gaps cited at `file:line`. Output meant for advisory review — none of this is committed.
+Ranked by what pages someone at 3am, not by what demos well. Severity tags inline. Backend gaps cited at `file:line`. Advisory — items here are not committed unless marked **[shipped]**.
+
+## 0. Shipped since this list was written
+
+- **Calico `GlobalNetworkPolicy` / `NetworkPolicy` engine** — was 5.3. Live + demo, registered in `defaultSources`, selector parser vendored at `internal/thirdparty/calicoselector`.
+- **Manifest-directory mode as a product surface** — `-f <dir>` runs the full analysis against a manifest tree with no cluster. Reverses 6.1: `DemoClient` walking arbitrary trees is now the mechanism behind both `-f` and `-report`, not a maintainer-only shortcut. `test-data/scenarios/` are its fixtures.
+- **Headless scan (`-report`)** — one scan, table or JSON to stdout, `-output` for a JSON artifact, logs to stderr, exit 2 on scan failure. `cli/`. Turns the tool into a pre-merge gate, not just a dashboard.
+- **Severity on every finding** — one table (`SeverityForType`, `internal/models/issues.go`), not per-detector. Same ranking in drawer, tables, and CLI. Actionable vs informational counts split.
+- **All workload kinds as first-class nodes** — Deployment, StatefulSet, DaemonSet, CronJob, standalone Job, bare pod. Each kind gets its own cytoscape silhouette (`ui/src/components/PolicyGraph/parts/styles.ts`), a legend entry, and a filter toggle. `DemoClient` parses `CronJob` too, so `-f` trees behave like the live path. Previously only Deployment/CronJob/CIDR/Namespace were togglable — everything else rendered as an unlabeled rectangle.
+- **Fetch failure surfaced instead of guessed around** — a PeerAuthentication read that fails for the root ns or a workload ns emits a `failed to fetch` finding naming the ns and the error (`internal/mesh/istio/buildMeshMembership.go`) rather than resolving mTLS mode from partial data. Partial payment on 2.2's partial-render banner; the banner itself is still open.
 
 ## 1. Operational survival
 
@@ -19,7 +28,7 @@ Tool needs to not become the outage. Today's data path is single-cluster, single
 Operators believe a tool when it admits what it doesn't know.
 
 1. **Data freshness stamp on every response.** `[trust]` Graph response has no `evaluatedAt`. After point 1.4 lands, surface the snapshot timestamp + per-engine last-success timestamp; UI renders "stale 4m ago" badge when older than threshold.
-2. **Partial-render banner.** `[trust]` Pair with 1.3. UI should say "Istio engine failed: <error>, showing k8s view only" — not silently drop the engine from the filter list.
+2. **Partial-render banner.** `[trust]` Pair with 1.3. Mesh-membership fetch failures already surface as `failed to fetch` findings (see §0) — the gap left is engine-level failure, which still aborts the whole request. UI should say "Istio engine failed: <error>, showing k8s view only" — not silently drop the engine from the filter list.
 3. **Unclassified-CIDR surfacing.** `[trust]` `IsIpBlockLanAccess` at `/app/internal/policy/networkPolicyHelpers.go:40` is the catch-all bucket — anything not `0.0.0.0/0`, not cluster-internal, not API server lands in "LAN". On real clusters that bucket hides cloud-provider metadata IPs, peered VPCs, on-prem ranges. Emit a new status key `cidr-unclassified` with the raw CIDR attached so operators can see what was lumped into LAN.
 4. **Default-deny blast-radius signal.** `[trust]` Today an unselected pod in a default-deny ns looks identical to a pod with explicit allows. Emit a `policy-orphan` status key for pods in a default-deny ns that no policy selects — these are the ones quietly broken in prod.
 5. **Show last-modified on each policy.** `[trust]` Edge panel shows policy name + ns. Add `metadata.resourceVersion` and `creationTimestamp` so on-call can correlate "what changed at 02:47".
@@ -33,7 +42,7 @@ Operators believe a tool when it admits what it doesn't know.
 
 ## 4. Policy hygiene / lint
 
-Ship as a separate `/api/lint` endpoint that returns findings keyed by policy. Not on the hot graph path.
+Ship as a separate `/api/lint` endpoint that returns findings keyed by policy. Not on the hot graph path. These are also the highest-value additions to the `-report` scan — lint findings need no cluster, so they gate a PR the same way they gate a dashboard.
 
 1. **Orphan policies (selecting zero workloads).** `[hygiene]` Common after a Helm rename. Trivial pass over the existing `WorkloadNode` index.
 2. **`0.0.0.0/0` ingress without an explicit annotation.** `[hygiene]` Single highest-signal lint — most prod incidents involving NetPol are "we forgot we left this open". Require an opt-in annotation like `policy.viz/internet-ingress=acknowledged` to silence the warning.
@@ -47,18 +56,20 @@ Ranked by adoption-weighted pain when absent.
 
 1. **Cilium `CiliumNetworkPolicy` + `CiliumClusterwideNetworkPolicy`.** Largest install base after vanilla NetPol. L7 (HTTP/Kafka/DNS) overlaps with Istio's L7 — your existing `L7Match` type extends cleanly. Cluster-wide variant is the one that gets people, since k8s NetPol has no cluster-scoped form.
 2. **`AdminNetworkPolicy` (KEP-2091).** Now GA-track. Cluster-admin overrides everything else; without surfacing it your effective-reachability verdict will lie on any cluster that adopts it. Higher priority than Calico.
-3. **Calico `GlobalNetworkPolicy`.** Important where present, but install base is shrinking relative to Cilium.
+3. ~~**Calico `GlobalNetworkPolicy`.**~~ **[shipped]** — see §0.
 4. **Gateway API `*RoutePolicy` / `BackendTLSPolicy`.** Skip until north-south is in scope. Today's tool is east-west.
 5. **Kyverno / OPA admission.** Skip. Admission policies don't affect runtime reachability — different mental model, different tool.
 
 ## 6. What to cut
 
-1. **`DemoClient` walking arbitrary fixture trees.** `/app/internal/k8s/demo.go:39-50` is useful for the maintainer's local loop, less useful long-term. Cap it at one fixture set per release, treat it as test data not a product mode. Otherwise drift between demo behavior and real behavior becomes a support burden.
+1. ~~**`DemoClient` walking arbitrary fixture trees.**~~ **[reversed — see §0.]** `-f` and `-report` promote it to a product surface, so the drift risk this item warned about is now real and worth guarding: e2e (`e2e_test.go`) runs the CLI against `test-data/scenarios/`, which keeps fixture-path and live-path behavior honest. Keep that suite green or the warning applies again.
 2. **`Statuses` (effective intersection) on `WorkloadNode`.** `/app/internal/graph/renderEngine.go:148` collapses per-engine status into one effective view. On clusters running both NetPol and Istio that intersection is often misleading — one engine says "locked", the other says "no opinion", effective shows "no opinion". Keep `StatusesBySource`, drop the effective roll-up, push the choice of which engine to trust into the UI filter.
 3. **Same-named-policy disambiguation by source in the edge key.** `renderEngine.go:21-28` includes `policySource` in `edgeKey`. Correct, but you'll want to revisit once Cilium L7 lands — three engines emitting overlapping edges on the same pair will clutter the canvas. Plan a per-engine layer toggle before engine #3 ships, not after.
 
 ## Files referenced
 
+- `/app/cli/` (report mode)
+- `/app/internal/models/issues.go`
 - `/app/internal/k8s/k8s.go`
 - `/app/internal/k8s/informerClient.go`
 - `/app/internal/k8s/demo.go`

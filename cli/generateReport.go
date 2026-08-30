@@ -40,7 +40,7 @@ func makeReport(manifestDir string, logger *slog.Logger) (report, error) {
 	}
 
 	builder := store.NewBuilder(client, logger)
-	if err := builder.PopulateCache(cache, namespaces); err != nil {
+	if _, err := builder.PopulateCache(cache, namespaces); err != nil {
 		return report{}, fmt.Errorf("failed to populate gathered manifests: %w", err)
 	}
 

@@ -1,0 +1,182 @@
+# calico-globals — Calico GlobalNetworkPolicy as its own engine: tier/order
+# precedence, ns-selector fan-out, and the cross-engine "cidr scope mismatch"
+# against a narrower k8s NetworkPolicy.
+#
+#   order 100  egress-infra-full     ns=infra          → full egress (exempt)
+#   order 500  egress-corp-range     ns=edge           → 172.20.0.0/16
+#   order 1000 egress-cluster-only   all()             → pod + service CIDR
+#
+#   edge/relay     k8s NP allows only 172.20.5.42/32 inside Calico's /16
+#                  → cidr scope mismatch issue, engines disagree on scope
+#   edge/proxy     k8s NP allows 0.0.0.0/0 egress, Calico order 1000 denies it
+#                  → calico deny badge on an otherwise internet-egress workload
+#   infra/agent    exempt at order 100, no k8s policy → coverage gap under k8s
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge
+  labels:
+    kubernetes.io/metadata.name: edge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+  labels:
+    kubernetes.io/metadata.name: infra
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  namespace: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: relay
+  template:
+    metadata:
+      labels:
+        app: relay
+    spec:
+      containers:
+        - name: relay
+          image: registry.example.com/e2e/relay:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy
+  namespace: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy
+  template:
+    metadata:
+      labels:
+        app: proxy
+    spec:
+      containers:
+        - name: proxy
+          image: registry.example.com/e2e/proxy:1.0.0
+          ports:
+            - containerPort: 443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  namespace: infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+        - name: agent
+          image: registry.example.com/e2e/agent:1.0.0
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-infra-full
+spec:
+  order: 100
+  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name == 'infra'
+  types:
+    - Egress
+  egress:
+    - action: Allow
+---
+# Wider than the paired k8s NP on relay below — the mismatch fixture.
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-corp-range
+spec:
+  order: 500
+  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name == 'edge'
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      destination:
+        nets:
+          - 172.20.0.0/16
+---
+# Baseline lockdown: east-west only. proxy's 0.0.0.0/0 k8s egress lands here.
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: egress-cluster-only
+spec:
+  order: 1000
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Allow
+      destination:
+        nets:
+          - 10.42.0.0/16
+          - 10.43.0.0/16
+---
+# relay: single corp host, inside Calico's /16. -> cidr scope mismatch
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: relay-netpol
+  namespace: edge
+spec:
+  podSelector:
+    matchLabels:
+      app: relay
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.20.5.42/32
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# proxy: k8s says the internet is fine, Calico order 1000 says cluster-only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: proxy-netpol
+  namespace: edge
+spec:
+  podSelector:
+    matchLabels:
+      app: proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

@@ -81,19 +81,45 @@ func (b *Builder) EngineNames() []string {
 	return out
 }
 
+// EngineReport captures a single engine's slice of PopulateCache — its wall
+// clock duration and the error it returned, if any. Consumed by the metrics
+// recorder so per-engine last-success timestamps and error counters get real
+// data instead of the whole-cycle rollup.
+type EngineReport struct {
+	Name     string
+	Duration time.Duration
+	Err      error
+}
+
+// PopulateReport is the per-cycle observability payload PopulateCache emits
+// alongside the cached data. Duration is the full fetch + evaluate wall
+// time; Engines carries one entry per registered PolicySource whether it
+// succeeded or failed. Ordering matches builder.sources.
+type PopulateReport struct {
+	Duration time.Duration
+	Engines  []EngineReport
+}
+
 // PopulateCache fetches NSIndex for every requested namespace in parallel
 // then runs every registered engine over the full selected-ns index set,
 // storing results in cache. Replaces existing entries for the touched
 // namespaces and engines; entries for namespaces outside the request are
-// left untouched.
-func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error {
+// left untouched. Returns a PopulateReport for the metrics recorder; the
+// report is populated for both success and failure paths so partial data
+// (e.g. one engine erroring mid-cycle) is still visible.
+func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) (PopulateReport, error) {
 	started := time.Now()
+	report := PopulateReport{}
 	if cache.NsIndex == nil {
 		cache.NsIndex = map[string]models.NSIndex{}
 	}
 	if cache.EvaluationResults == nil {
 		cache.EvaluationResults = map[string]models.EvaluationResult{}
 	}
+	// Stamp the elapsed time on every return path (success, ns-fetch failure,
+	// engine failure) so the metrics recorder gets duration data for failed
+	// cycles too.
+	defer func() { report.Duration = time.Since(started) }()
 
 	var mu sync.Mutex
 	var firstErr error
@@ -131,7 +157,7 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 	}
 	wg.Wait()
 	if firstErr != nil {
-		return firstErr
+		return report, firstErr
 	}
 	// flatten ns index to flat structure id: node
 	cache.RebuildWorkloadIndex()
@@ -149,13 +175,19 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 			slog.Int("ns_count", len(namespaces)),
 		)
 		result, err := source.Evaluate(context.Background(), namespaces, indexByNS)
+		engineDuration := time.Since(engineStart)
+		report.Engines = append(report.Engines, EngineReport{
+			Name:     source.Name(),
+			Duration: engineDuration,
+			Err:      err,
+		})
 		if err != nil {
 			b.log.Error("engine evaluate failed",
 				slog.String("phase", "engine_evaluate"),
 				slog.String("engine", source.Name()),
 				slog.String("error", err.Error()),
 			)
-			return fmt.Errorf("engine %s: %w", source.Name(), err)
+			return report, fmt.Errorf("engine %s: %w", source.Name(), err)
 		}
 		allowRuleCount, denyRuleCount := 0, 0
 		for _, rules := range result.AllowByNs {
@@ -175,13 +207,20 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 			slog.String("engine", source.Name()),
 			slog.Int("allow_rule_count", allowRuleCount),
 			slog.Int("deny_rule_count", denyRuleCount),
-			slog.Int64("duration_ms", time.Since(engineStart).Milliseconds()),
+			slog.Int64("duration_ms", engineDuration.Milliseconds()),
 		)
 		cache.EvaluationResults[source.Name()] = result
 	}
 	// Engines just produced CIDR peer nodes; fold them into WorkloadByID so
 	// node-info, neighbors, and layering resolve external endpoints.
 	cache.RebuildWorkloadIndex()
+
+	// Stamp effective + per-engine Statuses on every cached workload. Done
+	// here (not lazily in graph.BuildGraph) so the cache is the single source
+	// of truth — /metrics reads cache.NsIndex directly and would otherwise
+	// see empty status slices while BuildGraph's request-scoped copy carried
+	// them.
+	stampStatuses(cache)
 
 	if b.meshSource != nil {
 		meshStart := time.Now()
@@ -197,7 +236,7 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 				slog.String("provider", b.meshSource.Name()),
 				slog.String("error", err.Error()),
 			)
-			return fmt.Errorf("mesh %s: %w", b.meshSource.Name(), err)
+			return report, fmt.Errorf("mesh %s: %w", b.meshSource.Name(), err)
 		}
 		cache.MeshMembership = result.Memberships
 		cache.MeshMetrics = result.Metrics
@@ -236,7 +275,7 @@ func (b *Builder) PopulateCache(cache *models.Cache, namespaces []string) error 
 		slog.Int("engine_count", len(b.sources)),
 		slog.Int64("total_duration_ms", time.Since(started).Milliseconds()),
 	)
-	return nil
+	return report, nil
 }
 
 func (b *Builder) fetchNsIndex(ns string) (models.NSIndex, error) {
@@ -296,6 +335,29 @@ func GetByNodeInNs(data *models.Cache, nodeId string, nodeNs string) (models.Wor
 
 func GetWorkloadMesh(data *models.Cache, nodeId string) models.MeshMembership {
 	return data.MeshMembership[nodeId]
+}
+
+// stampStatuses walks every namespace's Workloads slice and calls
+// graph.UpdateStatusKeys in place. Same routine BuildGraph used to run
+// per-request against a copy; centralised here so cache readers (metrics,
+// future consumers) don't need to re-derive.
+func stampStatuses(cache *models.Cache) {
+	statusBySource := map[string]map[string]models.PolicyStatus{}
+	for engineName, result := range cache.EvaluationResults {
+		for nodeID, status := range result.PolicyStatuses {
+			if statusBySource[nodeID] == nil {
+				statusBySource[nodeID] = map[string]models.PolicyStatus{}
+			}
+			statusBySource[nodeID][engineName] = status
+		}
+	}
+	for ns, nsIndex := range cache.NsIndex {
+		graph.UpdateStatusKeys(nsIndex.Workloads, statusBySource)
+		cache.NsIndex[ns] = nsIndex
+	}
+	// WorkloadByID holds by-value copies of pre-stamp workloads — refresh so
+	// callers (node-info, layering) see the same Statuses metrics do.
+	cache.RebuildWorkloadIndex()
 }
 
 

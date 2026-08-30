@@ -1,3 +1,8 @@
+variables:
+  GITHUB_USER: "greenCircuit"
+  GITHUB_REPO: "greenCircuit/alatyr"
+  GHCR_IMAGE: "ghcr.io/greencircuit/alatyr"
+
 stages:
   - semver
   - test
@@ -14,6 +19,9 @@ include:
     file: pipelines/build.yaml
   - project: home-lab/pipeline-catalog
     file: pipelines/release.yaml
+  - project: home-lab/pipeline-catalog
+    file: pipelines/k8s.yaml
+
 
 release-dry-run:
   extends: .semantic-release-dry-run
@@ -46,6 +54,12 @@ ui-test:
       - ui/node_modules/
   script:
     - cd ui && npm ci && npm run test:coverage
+
+chart-test:
+  stage: test
+  extends: .check-helm
+  variables:
+    CHECK_PATH: "./chart"
 
 # BUILD
 img-base:
@@ -123,7 +137,7 @@ smoke-tests:
   needs:
     - build-binary
   stage: smoke-tests
-  image: registry.dev.local/home-lab/network-policy-visualizer/smoke:0.1.0-3-add-smoke-robot-tests-to-pipeline
+  image: registry.dev.local/home-lab/network-policy-visualizer/smoke:0.1.2-49-metrics-enpoint-and-grafana-dashboard
   variables:
     BACKEND_PORT: "8080"
   script:
@@ -136,9 +150,20 @@ smoke-tests:
     - kwokctl create cluster --name graph-tests --runtime=binary
     - kwokctl get kubeconfig --name graph-tests > $KUBECONFIG
     - kubectl apply -f $ISTIO_CRDS_FILE
+    - kubectl wait --for=condition=Established
+        crd/authorizationpolicies.security.istio.io
+        crd/peerauthentications.security.istio.io
+        --timeout=30s
     - chmod +x ./graph
-    - sleep 10
-    - env -u DEMO_MODE KUBECONFIG=$KUBECONFIG ./graph > tests/results/backend.log 2>&1 &
+    - sleep 20
+    - |
+      cat > tests/results/test-config.yaml <<EOF
+      cacheRefreshSec: 1
+      EOF
+    - env -u DEMO_MODE
+        KUBECONFIG=$KUBECONFIG
+        CONFIG_PATH=$CI_PROJECT_DIR/tests/results/test-config.yaml
+        ./graph > tests/results/backend.log 2>&1 &
     - |
       for i in $(seq 1 30); do
         curl -fsS http://localhost:${BACKEND_PORT}/api/cluster-state >/dev/null 2>&1 && break
@@ -151,6 +176,46 @@ smoke-tests:
       - tests/results/
     reports:
       junit: tests/results/junit.xml
+
+# STATIC DEMO SITE
+# The Go backend never runs on GitHub Pages. It runs here, just long enough for
+# scripts/snapshot-api.py to freeze every /api/* response into ui/public/demo/,
+# then the UI is rebuilt with VITE_DEMO_MODE=true so the frontend reads those
+# files instead of calling the API.
+demo-site:
+  stage: build
+  needs:
+    - build-binary
+  image: docker.io/node:22
+  variables:
+    VITE_DEMO_MODE: "true"
+    VITE_BASE: "/alatyr/"
+  cache:
+    key: ui-npm-$CI_COMMIT_REF_SLUG
+    paths:
+      - ui/node_modules/
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends python3 curl
+    - chmod +x ./graph
+    - DEMO_MODE=true ./graph > demo-backend.log 2>&1 &
+    - |
+      for _ in $(seq 1 30); do
+        curl -fsS http://localhost:8080/api/cluster-state >/dev/null 2>&1 && break
+        sleep 1
+      done
+    # Fail before publishing if a demo scenario stopped producing its finding —
+    # a caption asserting something the panel no longer shows is worse than no
+    # demo. Same registry the UI reads.
+    - python3 scripts/check-scenarios.py
+    - python3 scripts/snapshot-api.py --out ui/public/demo
+    - cd ui && npm ci && npm run build
+    - touch dist/.nojekyll
+  artifacts:
+    paths:
+      - ui/dist
+      - demo-backend.log
+    expire_in: 10 days
+
 
 # Security scans
 semgrep-sast:
@@ -193,3 +258,78 @@ try-image-scan:
 
 create-release:
   extends: .publish-release
+
+# GITHUB MIRROR PUBLISH (manual — smoke test that uploads work)
+# GITHUB_TOKEN: classic PAT, scopes repo + write:packages, masked+protected CI var.
+# Both jobs publish to the throwaway tag $GITHUB_TEST_TAG, overwritten each run.
+github-binary:
+  stage: release
+  needs:
+    - build-binary
+    - release-dry-run
+  # gh preinstalled — the runner is non-root, so `apk add` can't write the apk db
+  image:
+    name: docker.io/maniator/gh:latest
+    entrypoint: [""]
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - export GH_TOKEN="$GITHUB_TOKEN"
+    # tag may not exist on the mirror yet — create release first, fall back to upload
+    - |
+      gh release create "$BUILD_VERSION" \
+        --repo "$GITHUB_REPO" \
+        --title "$CI_COMMIT_TITLE" \
+        --notes "$CI_COMMIT_MESSAGE" \
+        --prerelease graph \
+      || gh release upload "$BUILD_VERSION" graph --repo "$GITHUB_REPO" --clobber
+  rules:
+  - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+github-image:
+  stage: release
+  needs:
+    - img-base
+    - release-dry-run
+  image:
+    name: quay.io/skopeo/stable:latest
+    entrypoint: [""]
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    # internal registry is self-signed, hence src-tls-verify=false
+    - |
+      skopeo copy --all \
+        --src-tls-verify=false \
+        --src-creds "${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}" \
+        --dest-creds "${GITHUB_USER}:${GITHUB_TOKEN}" \
+        "docker://${CI_REGISTRY_IMAGE}:${BUILD_VERSION}" \
+        "docker://${GHCR_IMAGE}:${BUILD_VERSION}"
+  rules:
+  - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Force-pushes the built site to the mirror's gh-pages branch. Pages is
+# configured to serve that branch, so nothing runs on GitHub's side.
+github-pages:
+  stage: release
+  needs:
+    - demo-site
+    - release-dry-run
+  # git preinstalled — the runner is non-root, so `apk add` can't write the apk db
+  image:
+    name: docker.io/alpine/git:latest
+    entrypoint: [""]
+  when: manual
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - cd ui/dist
+    - git init -q .
+    - git config user.email "ci@gitlab.dev.io"
+    - git config user.name "gitlab-ci"
+    - git add -A
+    - git commit -qm "demo site from $CI_COMMIT_SHA (pipeline $CI_PIPELINE_ID)"
+    - git push -q --force "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" HEAD:gh-pages

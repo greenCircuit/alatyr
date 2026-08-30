@@ -1,0 +1,23 @@
+/* Caption card floats over the view, bottom-left: the detail panel owns the
+   right side and the finding must never sit under the card. */
+.card {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 1030;
+  max-width: 26rem;
+  border-left: 3px solid var(--bs-warning);
+}
+
+.headline {
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.body {
+  font-size: 0.8rem;
+}
+
+.cta {
+  font-size: 0.8rem;
+}

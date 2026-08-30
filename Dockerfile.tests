@@ -66,3 +66,4 @@ ENV PATH="/opt/venv/bin:${PATH}"
 ENV GOFLAGS=-buildvcs=false
 
 WORKDIR /workspace
+

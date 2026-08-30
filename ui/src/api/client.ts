@@ -1,4 +1,5 @@
 import type { WorkloadNode, PolicyEdge, StatusKey, NodeDetail, ReachabilityResult, Issue, MeshMembership, ClusterMetrics } from '../data/policies';
+import { DEMO_MODE, demoRequest } from './demo';
 
 export interface Graph {
   nodes: WorkloadNode[];
@@ -16,6 +17,8 @@ export interface ClusterState {
 // names the policy and rule that failed to decode. Falling back to the bare
 // status code hides the only actionable detail the operator has.
 async function getJson<T>(url: string): Promise<T> {
+  if (DEMO_MODE) return demoRequest<T>(url);
+
   const response = await fetch(url);
   if (response.ok) return response.json() as Promise<T>;
 
@@ -56,6 +59,10 @@ export async function fetchManifest(
   kind: string, namespace: string, name: string,
 ): Promise<PolicyManifest> {
   const params = new URLSearchParams({ kind, namespace, name });
+  // demoRequest already throws a DemoHttpError carrying .status, which is the
+  // shape the modal's 404 branch reads.
+  if (DEMO_MODE) return demoRequest<PolicyManifest>(`/api/manifest?${params.toString()}`);
+
   const response = await fetch(`/api/manifest?${params.toString()}`);
   if (!response.ok) {
     let message = `HTTP ${response.status}`;

@@ -60,10 +60,10 @@ export default function DesignPreview() {
         <div className="d-flex align-items-baseline justify-content-between border-bottom border-secondary pb-2">
           <div className="d-flex align-items-baseline gap-2">
             <h5 className="text-light mb-0">Cluster status</h5>
-            <span className="text-secondary fs-12">design preview · mock data</span>
+            <span className="text-secondary fs-12">design preview (mock data)</span>
           </div>
           <span className="text-secondary fs-11">
-            open <code className="text-info">#design-preview</code> · remove hash for real page
+            open <code className="text-info">#design-preview</code>, remove hash for real page
           </span>
         </div>
 
@@ -116,7 +116,7 @@ export default function DesignPreview() {
         <ZoneDivider label="Drilldowns" />
 
         <div className="d-flex flex-column gap-2">
-          <SectionHeader title="Top risky workloads" hint="ranked worst-first · click row for detail" />
+          <SectionHeader title="Top risky workloads" hint="ranked worst-first, click row for detail" />
           <RiskyTableV2 rows={mockRisky} />
         </div>
 

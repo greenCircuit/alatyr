@@ -1,0 +1,245 @@
+# mtls-matrix — PeerAuthentication verdicts and mesh-membership, nothing else.
+# Every mTLS chip the UI renders has exactly one workload here, plus the two
+# misconfiguration issues (duplicate PeerAuth at scope, plaintext→STRICT edge).
+#
+#   mesh/strict-api       mtls-strict      (ns-wide STRICT, plus a duplicate PA
+#                                           at the same scope → "mesh conflict")
+#   mesh/permissive-api   mtls-permissive  (workload PA overrides the ns default)
+#   mesh/plaintext-job    mtls-disable     (DISABLE — talks to strict-api → mismatch)
+#   mesh/inherit-api      mtls-unset       (no PA in scope)
+#   outside/legacy-client out-of-mesh      (ns not labelled for the dataplane)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mesh
+  labels:
+    kubernetes.io/metadata.name: mesh
+    istio.io/dataplane-mode: ambient
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: outside
+  labels:
+    kubernetes.io/metadata.name: outside
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strict-api
+  namespace: mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strict-api
+  template:
+    metadata:
+      labels:
+        app: strict-api
+    spec:
+      containers:
+        - name: strict-api
+          image: registry.example.com/e2e/strict-api:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: permissive-api
+  namespace: mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: permissive-api
+  template:
+    metadata:
+      labels:
+        app: permissive-api
+    spec:
+      containers:
+        - name: permissive-api
+          image: registry.example.com/e2e/permissive-api:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inherit-api
+  namespace: mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inherit-api
+  template:
+    metadata:
+      labels:
+        app: inherit-api
+    spec:
+      containers:
+        - name: inherit-api
+          image: registry.example.com/e2e/inherit-api:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plaintext-job
+  namespace: mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plaintext-job
+  template:
+    metadata:
+      labels:
+        app: plaintext-job
+    spec:
+      containers:
+        - name: plaintext-job
+          image: registry.example.com/e2e/plaintext-job:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-client
+  namespace: outside
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy-client
+  template:
+    metadata:
+      labels:
+        app: legacy-client
+    spec:
+      containers:
+        - name: legacy-client
+          image: registry.example.com/e2e/legacy-client:1.0.0
+---
+# strict-api: workload-scoped STRICT.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: strict-api-strict
+  namespace: mesh
+spec:
+  selector:
+    matchLabels:
+      app: strict-api
+  mtls:
+    mode: STRICT
+---
+# Second PeerAuth at the SAME scope as the one above — duplicate scope is the
+# classic footgun; surfaces as a mesh conflict issue on strict-api.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: strict-api-duplicate
+  namespace: mesh
+spec:
+  selector:
+    matchLabels:
+      app: strict-api
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: permissive-api-permissive
+  namespace: mesh
+spec:
+  selector:
+    matchLabels:
+      app: permissive-api
+  mtls:
+    mode: PERMISSIVE
+---
+# plaintext-job speaks cleartext, then dials STRICT strict-api below.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: plaintext-job-disable
+  namespace: mesh
+spec:
+  selector:
+    matchLabels:
+      app: plaintext-job
+  mtls:
+    mode: DISABLE
+---
+# The mismatched edge: DISABLE client → STRICT server, k8s-allowed. Also has no
+# 15008 (HBONE) port, so ambient transport is not reachable either.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: strict-api-netpol
+  namespace: mesh
+spec:
+  podSelector:
+    matchLabels:
+      app: strict-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: plaintext-job
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plaintext-job-netpol
+  namespace: mesh
+spec:
+  podSelector:
+    matchLabels:
+      app: plaintext-job
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: strict-api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# legacy-client sits outside the dataplane and reaches into the mesh — the
+# out-of-mesh chip plus a cross-namespace arrow into a STRICT workload.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: legacy-client-netpol
+  namespace: outside
+spec:
+  podSelector:
+    matchLabels:
+      app: legacy-client
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mesh
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -205,7 +205,7 @@ function ManifestModal({ kind, namespace, name, highlight, highlightPeer, onClos
             {/* Qualify scope inline so the name row below is copy-paste-safe
                 for `kubectl get`. Previous form `cluster-scoped/name` reused
                 the namespace slot and misled operators into `-n cluster-scoped`. */}
-            {!namespace && <span className={s.dim}> · cluster-scoped</span>}
+            {!namespace && <span className={s.dim}> (cluster-scoped)</span>}
           </span>
           <span className={`${s.dim} ${s.body} ${s.mono}`}>
             {namespace ? `${namespace}/${name}` : name}

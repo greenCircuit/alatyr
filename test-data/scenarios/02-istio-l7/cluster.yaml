@@ -1,0 +1,263 @@
+# istio-l7 — Istio AuthorizationPolicy behaviour on its own: ALLOW with L7
+# (methods/paths/hosts), DENY as a separate edge, root-namespace policy, and a
+# k8s policy underneath so the two-engine intersection is exercised.
+#
+#   clients/caller ─▶ svc/orders  (istio ALLOW, POST /orders — l7-applied)
+#   legacy/rogue   ─▶ svc/orders  (istio DENY from legacy ns — separate deny edge)
+#   istio-system root policy      (applies to every workload in the mesh)
+#
+#   svc/orders      air-gapped (k8s) + l7-applied (istio)
+#   svc/reports     l7-applied via host match, k8s air-gapped
+#   clients/caller  ns-egress-access
+#   legacy/rogue    denied at svc/orders — arrow renders red
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    kubernetes.io/metadata.name: istio-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: svc
+  labels:
+    kubernetes.io/metadata.name: svc
+    istio.io/dataplane-mode: ambient
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clients
+  labels:
+    kubernetes.io/metadata.name: clients
+    istio.io/dataplane-mode: ambient
+---
+# legacy: outside the mesh dataplane on purpose — its traffic is what the DENY
+# on svc/orders targets.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: legacy
+  labels:
+    kubernetes.io/metadata.name: legacy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: svc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          image: registry.example.com/e2e/orders:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reports
+  namespace: svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reports
+  template:
+    metadata:
+      labels:
+        app: reports
+    spec:
+      containers:
+        - name: reports
+          image: registry.example.com/e2e/reports:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caller
+  namespace: clients
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caller
+  template:
+    metadata:
+      labels:
+        app: caller
+    spec:
+      containers:
+        - name: caller
+          image: registry.example.com/e2e/caller:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rogue
+  namespace: legacy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rogue
+  template:
+    metadata:
+      labels:
+        app: rogue
+    spec:
+      containers:
+        - name: rogue
+          image: registry.example.com/e2e/rogue:1.0.0
+---
+# orders: L7 ALLOW gated on method + path, sourced from the clients ns.
+# The engine expands source.namespaces only, so peers are ns-level.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: orders-allow-l7
+  namespace: svc
+spec:
+  selector:
+    matchLabels:
+      app: orders
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [clients]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/orders"]
+            ports: ["8080"]
+---
+# orders: DENY sourced from the legacy namespace — its own deny-styled edge
+# next to the ALLOW, so precedence rendering is testable in one view.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: orders-deny-legacy
+  namespace: svc
+spec:
+  selector:
+    matchLabels:
+      app: orders
+  action: DENY
+  rules:
+    - from:
+        - source:
+            namespaces: [legacy]
+---
+# reports: host-based L7 match, no method/path. -> l7-applied
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: reports-allow-host
+  namespace: svc
+spec:
+  selector:
+    matchLabels:
+      app: reports
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [clients]
+      to:
+        - operation:
+            hosts: ["reports.svc.example.com"]
+            ports: ["8080"]
+---
+# Root-namespace policy: lives in istio-system, applies mesh-wide. Exercises
+# the per-ns + root-ns fetch path in the istio engine.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: mesh-deny-legacy-port
+  namespace: istio-system
+spec:
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            ports: ["8081"]
+---
+# k8s side of the intersection: orders is fully scoped so the istio ALLOW does
+# not get masked by an open egress path. -> air-gapped
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orders-netpol
+  namespace: svc
+spec:
+  podSelector:
+    matchLabels:
+      app: orders
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: clients
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reports-netpol
+  namespace: svc
+spec:
+  podSelector:
+    matchLabels:
+      app: reports
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: clients
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# caller: egress into the svc namespace only. -> ns-egress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: caller-netpol
+  namespace: clients
+spec:
+  podSelector:
+    matchLabels:
+      app: caller
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: svc
+      ports:
+        - protocol: TCP
+          port: 8080

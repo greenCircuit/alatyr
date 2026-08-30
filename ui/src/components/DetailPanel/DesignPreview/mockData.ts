@@ -384,7 +384,7 @@ export const MOCK_COMPARE = {
   src: { ...MOCK_EDGE.src, mesh: MESH_SRC as MeshInfo | undefined },
   dst: { ...MOCK_EDGE.dst, mesh: MESH_DST as MeshInfo | undefined },
   verdict: 'deny' as const,
-  reason: 'Blocked on 2 axes · all must clear',
+  reason: 'Blocked on 2 axes (all must clear)',
   reachablePorts: [] as { port: number; protocol: string }[],
   // `reverseError: true` renders "⚠ reverse unavailable" — surfaces a failed
   // reverse fetch instead of quietly showing forward-only. Silent-lie surface.

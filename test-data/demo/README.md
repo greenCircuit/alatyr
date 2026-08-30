@@ -62,9 +62,26 @@ Not covered by fixtures alone:
 - **`api-server-egress`** — derives only when `apiServerCIDRs` is set in config
   (empty in `defaultConfig.yaml`); an egress rule to that CIDR otherwise
   classifies as `lan-egress`. Set a cluster CIDR in config to light it up.
-- **CronJob node type** — `DemoClient.parseFile` does not parse `CronJob`, so no
-  fixture exercises the cronjob node type. Add a `CronJob` case to
-  `internal/k8s/demo.go` to light it up.
+
+## Node type coverage
+
+One fixture per workload node type the UI can filter on:
+
+| Node type | Fixture |
+|---|---|
+| `deployment` | most workloads (`storefront/web`, `analytics/ingest`, …) |
+| `statefulset` | `payments/ledger-db` (postgres, stable identity) |
+| `daemonset` | `private-net/telemetry-shipper` (one shipper per node) |
+| `job` | `analytics/nightly-rollup` — standalone Job + its live pod |
+| `pod` | `analytics/adhoc-query` — bare pod, no controller |
+| `cidr` | ipBlock peers in `private-net`, `payments`, `storefront` |
+| `namespace` | every ns node |
+| `cronjob` | `analytics/retention-sweeper` (node from the CronJob object) |
+
+Job and bare-pod nodes come from live Pods, not controller objects
+(`AssembleNsIndex` reads the Jobs list for owner lookup only), so both fixtures
+spell out a Pod with an explicit `metadata.uid` — DemoClient does not synthesize
+pod UIDs, and node IDs key on that UID.
 
 ## Istio scenarios
 

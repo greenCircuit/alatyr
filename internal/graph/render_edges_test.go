@@ -126,8 +126,12 @@ func TestRenderEdges_EdgeIgnoresProtocol(t *testing.T) {
 //   - a rule whose peer differs is a separate group, never merged in
 func TestRenderEdges_CollapsesUniformNamespaceFanOut(t *testing.T) {
 	nodes := []models.WorkloadNode{
+		{ID: "a1", Namespace: "ns-a", Type: models.NodeTypeDeployment},
+		{ID: "a2", Namespace: "ns-a", Type: models.NodeTypeDeployment},
 		{ID: "a3", Namespace: "ns-a", Type: models.NodeTypeDeployment},
 		{ID: "ns-ns-a", Namespace: "ns-a", Type: models.NodeTypeNamespace},
+		{ID: "b1", Namespace: "ns-b", Type: models.NodeTypeDeployment},
+		{ID: "b2", Namespace: "ns-b", Type: models.NodeTypeDeployment},
 		{ID: "ns-ns-b", Namespace: "ns-b", Type: models.NodeTypeNamespace},
 		{ID: models.CIDRIDPrefix + "10.0.0.0/8", Type: models.NodeTypeCIDR},
 		{ID: models.CIDRIDPrefix + "0.0.0.0/0", Type: models.NodeTypeCIDR},
@@ -188,7 +192,7 @@ func TestRenderEdges_CollapsesUniformNamespaceFanOut(t *testing.T) {
 // trades node precision for no reduction in arrows.
 func TestRenderEdges_KeepsSingleWorkloadNamespace(t *testing.T) {
 	nodes := []models.WorkloadNode{
-		{ID: "only", Namespace: "ns-a", Type: models.NodeTypeService},
+		{ID: "only", Namespace: "ns-a", Type: models.NodeTypeDeployment},
 		{ID: "ns-ns-a", Namespace: "ns-a", Type: models.NodeTypeNamespace},
 		{ID: models.CIDRIDPrefix + "10.0.0.0/8", Type: models.NodeTypeCIDR},
 	}

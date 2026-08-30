@@ -19,7 +19,7 @@ export const REASON_META: Record<DirectionReason, { label: string; tone: ReasonT
   'default-deny':    { label: 'default-deny',                tone: 'deny'  },
   // Warn, not deny: the block is real but there is no deny object to delete.
   'carved-out':      { label: 'carved out of allow',         tone: 'warn'  },
-  'locked-no-match': { label: 'blocked · no matching rule',  tone: 'warn'  },
+  'locked-no-match': { label: 'blocked (no matching rule)',  tone: 'warn'  },
 };
 
 // Selecting-policy chip accent per join state. Green opens the path, red blocks

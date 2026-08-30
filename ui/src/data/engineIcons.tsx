@@ -79,8 +79,8 @@ export function EngineLogo({ engine, size = 14 }: { engine: string; size?: numbe
   return <FallbackLogo color={color} size={size} letter={engine.charAt(0).toUpperCase()} />;
 }
 
-// Engine provenance chip — brand hue tinted bg + hue dot + logo + name mono.
-// Mockup shape: dot + tinted-bg carry engine identity; no border, no white pill.
+// Engine provenance chip — brand hue tinted bg + logo + name mono.
+// Logo + tinted-bg carry engine identity; no border, no white pill.
 // `suffix` appends after the name (e.g. ": 3" for the workloads count rollup).
 export function EngineBadge({ engine, size = 12, suffix }: { engine: string; size?: number; suffix?: ReactNode }) {
   const { label, color, short } = engineMeta(engine);
@@ -90,7 +90,6 @@ export function EngineBadge({ engine, size = 12, suffix }: { engine: string; siz
       title={label}
       style={{ ['--engine-color' as never]: color }}
     >
-      <span className={styles.engineDot} />
       <EngineLogo engine={engine} size={size} /> {short ?? engine}{suffix}
     </span>
   );

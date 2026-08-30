@@ -139,7 +139,7 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
           >
             <td colSpan={3} className="text-secondary fs-12 py-2">
               <span className="me-2">{showInfo ? '▾' : '▸'}</span>
-              <span className="chip-mini me-2">Expected layering · {infoRows.length}</span>
+              <span className="chip-mini me-2">Expected layering ({infoRows.length})</span>
               ns-level allows narrowed by pod-level baselines — working as designed, nothing to fix
             </td>
           </tr>
@@ -161,19 +161,14 @@ function IssueBadge({ issueType, severity }: { issueType: IssueType; severity: S
   const severityTitle = isHigh ? 'Blocking'
     : SEVERITY_RANK[severity] >= SEVERITY_RANK.warning ? 'Warning'
     : 'Informational — expected behavior';
-  // Peripheral color rule (STYLEGUIDE §3): severity ● dot signals severity,
-  // finding kind is a neutral mono chip. No wall-of-color across rows.
+  // Chip itself is severity-coded — tinted bg + text hue, no leading dot.
   return (
     <span
-      className="d-inline-flex align-items-center gap-1"
+      className={s.findingKindSev}
+      style={{ '--sev': SEVERITY_COLOR[severity] } as unknown as CSSProperties}
       title={severityTitle}
     >
-      <span
-        className={s.sevDot}
-        style={{ '--sev': SEVERITY_COLOR[severity] } as unknown as CSSProperties}
-        aria-hidden="true"
-      />
-      <span className={s.findingKind}>{ISSUE_TYPE_LABEL[issueType]}</span>
+      {ISSUE_TYPE_LABEL[issueType]}
     </span>
   );
 }

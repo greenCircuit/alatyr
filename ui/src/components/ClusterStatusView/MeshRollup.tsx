@@ -8,7 +8,6 @@ import { useMemo } from 'react';
 import type { MeshMembership, WorkloadNode, MtlsScope } from '../../data/policies';
 import { meshBadgeMeta, MTLS_COLOR } from '../../data/policies';
 import type { MeshFilterValue } from '../../store/filters';
-import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
 import r from '../../components/TablesView/Rollup.module.css';
 import p from './Panel.module.css';
 
@@ -16,8 +15,8 @@ const NEUTRAL = '#868e96';
 
 type Verdict = 'strict' | 'permissive' | 'disable' | 'unset';
 
-// Membership buckets carry a plain colored dot; mTLS buckets carry an
-// MtlsChip dot keyed by verdict scope. `scope` set = render via MtlsChip.
+// `scope` marks mTLS-verdict buckets (vs membership buckets) — it selects the
+// verdict label styling and keys the stacked-bar segments.
 interface Bucket {
   value: MeshFilterValue;
   label: string;
@@ -106,9 +105,7 @@ export default function MeshRollup({
         title={disabled ? 'No workloads in this bucket' : `${bucket.count} workload${bucket.count === 1 ? '' : 's'}`}
         style={{ border: `1px solid ${bucket.color}` }}
       >
-        {bucket.scope
-          ? <MtlsChip scope={bucket.scope} variant="dot" size="xs" muted={disabled} />
-          : <span aria-hidden="true" style={{ color: bucket.color }}>●</span>}
+        {/* No marker glyph — the chip border already carries the bucket hue. */}
         <span className={`text-truncate ${bucket.scope ? p.verdictLabel : ''}`}>{bucket.label}</span>
         <span className="chip-count ms-1">{bucket.count}</span>
       </button>

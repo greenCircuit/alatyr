@@ -1,0 +1,123 @@
+{{- if .Values.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "alatyr.fullname" . }}
+  namespace: {{ .Values.alerts.namespace | default .Values.serviceMonitor.promNs }}
+  labels:
+    {{- include "alatyr.labels" . | nindent 4 }}
+    {{- with .Values.alerts.promLabel | default .Values.serviceMonitor.promLabel }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: alatyr.staleness
+      rules:
+        {{- if .Values.alerts.rules.evaluationStalled.enabled }}
+        - alert: AlatyrEvaluationStalled
+          expr: time() - alatyr_evaluation_timestamp_seconds > {{ .Values.alerts.rules.evaluationStalled.thresholdSeconds }}
+          for: {{ .Values.alerts.rules.evaluationStalled.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.evaluationStalled.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: alatyr evaluation loop has stopped
+            description: |
+              No completed evaluation for {{`{{ $value | humanizeDuration }}`}}. Every finding served is stale — dashboards and other alerts here are lying by omission until this clears.
+        {{- end }}
+        {{- if .Values.alerts.rules.engineStalled.enabled }}
+        - alert: AlatyrEngineStalled
+          expr: alatyr_engine_enabled == 1 and time() - alatyr_engine_last_success_timestamp_seconds > {{ .Values.alerts.rules.engineStalled.thresholdSeconds }}
+          for: {{ .Values.alerts.rules.engineStalled.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.engineStalled.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: alatyr engine {{`{{ $labels.engine }}`}} not evaluating
+            description: |
+              Engine {{`{{ $labels.engine }}`}} last succeeded {{`{{ $value | humanizeDuration }}`}} ago while the process is otherwise healthy. Intersection view now silently reflects only the other engines.
+        {{- end }}
+        {{- if .Values.alerts.rules.informerCacheDesynced.enabled }}
+        - alert: AlatyrInformerCacheDesynced
+          expr: alatyr_informer_cache_synced == 0
+          for: {{ .Values.alerts.rules.informerCacheDesynced.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.informerCacheDesynced.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: alatyr informer cache desynced ({{`{{ $labels.resource }}`}})
+            description: |
+              Shared informer for {{`{{ $labels.resource }}`}} has not synced. Cluster reads are missing objects; findings for this resource are confidently wrong.
+        {{- end }}
+    - name: alatyr.findings
+      rules:
+        {{- if .Values.alerts.rules.workloadsUnpoliced.enabled }}
+        - alert: AlatyrWorkloadsUnpoliced
+          expr: alatyr_workloads_unpoliced > {{ .Values.alerts.rules.workloadsUnpoliced.threshold }}
+          for: {{ .Values.alerts.rules.workloadsUnpoliced.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.workloadsUnpoliced.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: '{{`{{ $value }}`}} unpoliced workload(s) in {{`{{ $labels.namespace }}`}}'
+            description: |
+              Selected by zero policy engines — default-open. Namespace {{`{{ $labels.namespace }}`}}.
+        {{- end }}
+        {{- if .Values.alerts.rules.newInternetExposure.enabled }}
+        - alert: AlatyrNewInternetExposure
+          expr: increase(alatyr_workloads_internet_reachable{direction="both"}[{{ .Values.alerts.rules.newInternetExposure.window }}]) > 0
+          for: {{ .Values.alerts.rules.newInternetExposure.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.newInternetExposure.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: new bidirectional internet exposure in {{`{{ $labels.namespace }}`}}
+            description: |
+              A workload gained direction=both internet reachability in the last {{ .Values.alerts.rules.newInternetExposure.window }} in namespace {{`{{ $labels.namespace }}`}}.
+        {{- end }}
+        {{- if .Values.alerts.rules.issuePresent.enabled }}
+        - alert: AlatyrIssuePresent
+          expr: |
+            (alatyr_issues > (alatyr_issues offset {{ .Values.alerts.rules.issuePresent.baselineWindow }}))
+            or
+            (alatyr_issues unless alatyr_issues offset {{ .Values.alerts.rules.issuePresent.baselineWindow }})
+          for: {{ .Values.alerts.rules.issuePresent.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.issuePresent.severity }}
+            issue_type: '{{`{{ $labels.type }}`}}'
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: new "{{`{{ $labels.type }}`}}" issue(s) in {{`{{ $labels.namespace }}`}}
+            description: |
+              {{`{{ $value }}`}} issue(s) of type "{{`{{ $labels.type }}`}}" in {{`{{ $labels.namespace }}`}} exceed the count from {{ .Values.alerts.rules.issuePresent.baselineWindow }} ago (or the (namespace,type) series is new). Pre-existing baseline issues stay silent.
+        {{- end }}
+        {{- if .Values.alerts.rules.hboneBlocked.enabled }}
+        - alert: AlatyrHboneBlocked
+          expr: alatyr_mesh_hbone_blocked_workloads > 0
+          for: {{ .Values.alerts.rules.hboneBlocked.for }}
+          labels:
+            severity: {{ .Values.alerts.rules.hboneBlocked.severity }}
+            {{- with .Values.alerts.commonLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: ambient HBONE traffic silently dropped in {{`{{ $labels.namespace }}`}}
+            description: |
+              {{`{{ $value }}`}} ambient workload(s) in {{`{{ $labels.namespace }}`}} have policy stripping port 15008 — traffic vanishes with no L7 error.
+        {{- end }}
+    {{- with .Values.alerts.extraGroups }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

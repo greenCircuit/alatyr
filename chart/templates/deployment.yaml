@@ -1,38 +1,55 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "netpol-viz.fullname" . }}
+  name: {{ include "alatyr.fullname" . }}
   labels:
-    {{- include "netpol-viz.labels" . | nindent 4 }}
+    {{- include "alatyr.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "netpol-viz.selectorLabels" . | nindent 6 }}
+      {{- include "alatyr.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "netpol-viz.selectorLabels" . | nindent 8 }}
+        {{- include "alatyr.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.podAnnotations }}
       annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/cm.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
-      serviceAccountName: {{ include "netpol-viz.serviceAccountName" . }}
+      serviceAccountName: {{ include "alatyr.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ include "netpol-viz.image" . }}
+          image: {{ include "alatyr.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: CONFIG_PATH
+              value: /etc/alatyr/config.yaml
+            - name: METRICS_PORT
+              value: {{ .Values.serviceMonitor.metricsPort | quote }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.serviceMonitor.metricsPort }}
+              protocol: TCP
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alatyr
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "alatyr.fullname" . }}

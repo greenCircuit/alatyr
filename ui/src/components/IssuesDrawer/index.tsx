@@ -101,7 +101,7 @@ export default function IssuesDrawer() {
             {/* node-scoped: the message is the headline, node id is context */}
             <div className={styles.node}>{issue.message}</div>
             <div className={styles.endpointNs}>
-              {endpointLabel(issue.node)}{nodeNs ? ` · ${nodeNs}` : ''}
+              {nodeNs ? `${nodeNs}/` : ''}{endpointLabel(issue.node)}
             </div>
           </>
         )}
@@ -123,7 +123,7 @@ export default function IssuesDrawer() {
                 blocking.length > 0 && `${blocking.length} blocking`,
                 warnings.length > 0 && `${warnings.length} warn`,
                 informational.length > 0 && `${informational.length} info`,
-              ].filter(Boolean).join(' · ')}
+              ].filter(Boolean).join(', ')}
             >
               {blocking.length > 0 && (
                 <span className="d-inline-flex align-items-center gap-1" style={{ color: SEVERITY_COLOR.high }}>
@@ -171,20 +171,20 @@ export default function IssuesDrawer() {
           <>
             {blocking.length > 0 && (
               <>
-                <div className={styles.sectionHead}>Blocking · {blocking.length}</div>
+                <div className={styles.sectionHead}>Blocking ({blocking.length})</div>
                 {blocking.map(renderIssue)}
               </>
             )}
             {warnings.length > 0 && (
               <>
-                <div className={styles.sectionHead}>Warnings · {warnings.length}</div>
+                <div className={styles.sectionHead}>Warnings ({warnings.length})</div>
                 {warnings.map(renderIssue)}
               </>
             )}
             {informational.length > 0 && (
               <>
                 <div className={styles.sectionHead} title="Expected behavior — ns-level allows narrowed by pod-level baselines. Nothing to fix.">
-                  Informational · {informational.length}
+                  Informational ({informational.length})
                 </div>
                 {informational.map(renderIssue)}
               </>

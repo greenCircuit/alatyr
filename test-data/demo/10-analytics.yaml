@@ -2,11 +2,16 @@
 # label, no Istio policies, no HBONE). Proves the tool reads a plain-Kubernetes
 # shop, not just a mesh. Clean top-to-bottom pipeline; every arrow is intra-ns.
 #
-#   internet(0.0.0.0/0) ─▶ ingest ─▶ enrich ─▶ warehouse
+#   internet(0.0.0.0/0) ─▶ ingest ─▶ enrich ─▶ warehouse ◀─ nightly-rollup
+#                                                        ◀─ adhoc-query
+#                                                        ◀─ retention-sweeper
 #
-#   ingest     internet-ingress   (public collection endpoint on 443)
-#   enrich     ns-ingress-access  (reached only by ingest)
-#   warehouse  air-gapped         (ingress from enrich only; egress denied)
+#   ingest          internet-ingress   (public collection endpoint on 443)
+#   enrich          ns-ingress-access  (reached only by ingest)
+#   warehouse       air-gapped         (ingress from enrich + batch readers; egress denied)
+#   nightly-rollup  job node type      (standalone Job, node emitted from its live pod)
+#   adhoc-query     pod node type      (bare pod, no controller above it)
+#   retention-sweeper cronjob node type (node comes from the CronJob object)
 ---
 apiVersion: v1
 kind: Namespace
@@ -138,7 +143,8 @@ spec:
         - protocol: TCP
           port: 5432
 ---
-# warehouse: written to by enrich only; no egress at all. -> air-gapped
+# warehouse: written to by enrich, plus the batch/adhoc readers; no egress at
+# all. -> air-gapped
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -156,6 +162,162 @@ spec:
         - podSelector:
             matchLabels:
               app: enrich
+        - podSelector:
+            matchLabels:
+              app: nightly-rollup
+        - podSelector:
+            matchLabels:
+              app: adhoc-query
+        - podSelector:
+            matchLabels:
+              app: retention-sweeper
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# nightly-rollup: standalone Job (not CronJob-spawned) — exercises the `job`
+# node type. Node comes from the live pod, so the Job's pod is spelled out with
+# a controller ownerRef back to the Job UID.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-rollup
+  namespace: analytics
+  uid: demo-job-analytics-nightly-rollup
+spec:
+  template:
+    metadata:
+      labels:
+        app: nightly-rollup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rollup
+          image: registry.example.com/analytics/rollup:1.4.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nightly-rollup-x7k2p
+  namespace: analytics
+  uid: demo-pod-analytics-nightly-rollup
+  labels:
+    app: nightly-rollup
+    job-name: nightly-rollup
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: Job
+      name: nightly-rollup
+      uid: demo-job-analytics-nightly-rollup
+      controller: true
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - name: rollup
+      image: registry.example.com/analytics/rollup:1.4.0
+status:
+  phase: Running
+---
+# adhoc-query: bare pod, no controller above it — exercises the `pod` node type.
+# The on-call analyst's scratch pod that outlived its shift.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: adhoc-query
+  namespace: analytics
+  uid: demo-pod-analytics-adhoc-query
+  labels:
+    app: adhoc-query
+spec:
+  containers:
+    - name: psql
+      image: docker.io/library/postgres:16-alpine
+status:
+  phase: Running
+---
+# nightly-rollup reads the warehouse, writes nowhere else. -> ns-egress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nightly-rollup-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: nightly-rollup
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: warehouse
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# adhoc-query: human scratch pod, ingress denied, egress only to warehouse.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: adhoc-query-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: adhoc-query
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: warehouse
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# retention-sweeper: CronJob — node comes from the CronJob object itself, so no
+# pod fixture needed. Its job template labels are what policy selects on.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention-sweeper
+  namespace: analytics
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: retention-sweeper
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sweeper
+              image: registry.example.com/analytics/retention-sweeper:1.4.0
+---
+# retention-sweeper: prunes expired partitions in the warehouse nightly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: retention-sweeper-netpol
+  namespace: analytics
+spec:
+  podSelector:
+    matchLabels:
+      app: retention-sweeper
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: warehouse
       ports:
         - protocol: TCP
           port: 5432

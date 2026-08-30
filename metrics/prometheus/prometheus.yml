@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: alatyr-local
+
+scrape_configs:
+  # Alatyr backend. network_mode: host means the container reaches the
+  # backend on localhost — matches how the devcontainer exposes it.
+  - job_name: alatyr
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - localhost:8085
+
+  # Prometheus scrapes itself so the tsdb-health panels have data.
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090

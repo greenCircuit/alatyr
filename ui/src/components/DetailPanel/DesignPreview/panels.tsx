@@ -159,7 +159,7 @@ function LabelStrip({ labels }: { labels: Array<[string, string]> }) {
   const selector = labels.map(([key, value]) => `${key}=${value}`).join(',');
   const copyAll = () => navigator.clipboard?.writeText(selector);
   return (
-    <div className={t.labelStrip} title="Click any chip to copy `key=value` · click `copy selector` to copy the full `k1=v1,k2=v2` selector for `kubectl -l`">
+    <div className={t.labelStrip} title="Click any chip to copy `key=value`, click `copy selector` to copy the full `k1=v1,k2=v2` selector for `kubectl -l`">
       {labels.map(([key, value]) => <LabelChip key={key} k={key} v={value} />)}
       <button
         type="button"
@@ -392,7 +392,7 @@ function PolicyCard({ policy, workloadNs }: { policy: SelectingPolicy; workloadN
         // Make it explicit so operator can trust the panel.
         <div className={t.l4Only} title="Policy operates at L4 (TCP/port only). No host/method/path constraint is enforced.">
           <span>L4 only</span>
-          <span className={t.dim}>· no host / method / path constraint</span>
+          <span className={t.dim}>no host / method / path constraint</span>
         </div>
       ) : null}
     </div>
@@ -455,7 +455,7 @@ function MeshBlock({ mesh }: { mesh: MeshInfo }) {
     return (
       <div className={t.tier1}>
         <div className={t.policyMetaRow}>
-          <div className={t.eyebrow} style={{ flex: 1 }}>Mesh · {mesh.provider}</div>
+          <div className={t.eyebrow} style={{ flex: 1 }}>Mesh/{mesh.provider}</div>
           <span className={t.notEnrolled} title="Namespace is mesh-tracked but this workload has no sidecar. Istio AuthorizationPolicies cannot enforce on this workload — plaintext callers reach it directly.">
             not enrolled
           </span>
@@ -474,7 +474,7 @@ function MeshBlock({ mesh }: { mesh: MeshInfo }) {
   return (
     <div className={t.tier1}>
       <div className={t.policyMetaRow}>
-        <div className={t.eyebrow} style={{ flex: 1 }}>Mesh · {mesh.provider}</div>
+        <div className={t.eyebrow} style={{ flex: 1 }}>Mesh/{mesh.provider}</div>
         {!mesh.sidecarInjected && (
           <span className={t.policyCrossNs} title="No sidecar injected — this workload is not in the mesh">
             no sidecar
@@ -499,7 +499,6 @@ function MeshBlock({ mesh }: { mesh: MeshInfo }) {
         >{mesh.mtlsMode}</span>
         {mesh.revision && (
           <>
-            <span className={t.metaSep}>·</span>
             <span className={t.selectorLabel}>revision</span>
             <span className={`${t.body} ${t.mono}`}>{mesh.revision}</span>
           </>
@@ -613,7 +612,7 @@ function EndpointCard({ role, endpoint }: { role: 'SRC' | 'DST'; endpoint: Endpo
         <span className={t.section}>{endpoint.label}</span>
       </div>
       <LabelStrip labels={selectorLabels} />
-      <div className={`${t.body} ${t.dim}`}>{endpoint.namespace} · {endpoint.type}</div>
+      <div className={`${t.body} ${t.dim}`}>{endpoint.namespace}/{endpoint.type}</div>
       <div className={t.body}>
         <span className={t.dim}>listens: </span>
         {endpoint.listensOn.map((p) => `${p.port}/${p.protocol}`).join(', ')}
@@ -662,9 +661,9 @@ export function NodePanelV2() {
   const findingCount = node.issues.length;
   const findingLabel = `${findingCount} finding${findingCount === 1 ? '' : 's'}`;
   const heroText = anyEngineBlocks
-    ? `✗ Blocked by ${denyEngines.map((e) => e.name).join(', ')}${findingCount ? ` · ${findingLabel}` : ''}`
+    ? `✗ Blocked by ${denyEngines.map((e) => e.name).join(', ')}${findingCount ? ` (${findingLabel})` : ''}`
     : (worstStatus === 'high' || worstStatus === 'critical')
-      ? `⚠ At risk${findingCount ? ` · ${findingLabel}` : ''}`
+      ? `⚠ At risk${findingCount ? ` (${findingLabel})` : ''}`
       : (worstStatus === 'warning' || findingCount > 0)
         ? `⚠ ${findingLabel}`
         : '✓ Healthy';
@@ -712,7 +711,7 @@ export function NodePanelV2() {
                   callout below so operator's eye lands on the answer first. */}
               <div className={t.section}>{node.label}</div>
               <div className={`${t.body} ${t.dim}`} style={{ marginTop: 2 }}>
-                {node.namespace} · {node.type}
+                {node.namespace}/{node.type}
               </div>
             </div>
             <button className={t.primaryButton} type="button">Pin as source</button>
@@ -861,7 +860,7 @@ export function NodePanelV2() {
                       {deny.length > 0 && (
                         <>
                           <div className={t.eyebrow} style={{ marginTop: 2, color: 'var(--deny)' }}>
-                            ⛔ Denied by policy ({deny.length}{denyPeerCount > 0 ? ` · ${denyPeerCount} peer${denyPeerCount === 1 ? '' : 's'}` : ''})
+                            ⛔ Denied by policy ({deny.length}{denyPeerCount > 0 ? `, ${denyPeerCount} peer${denyPeerCount === 1 ? '' : 's'}` : ''})
                           </div>
                           {deny.map((policy) => (
                             <PolicyCard
@@ -875,7 +874,7 @@ export function NodePanelV2() {
                       {allow.length > 0 && (
                         <>
                           <div className={t.eyebrow} style={{ marginTop: 2, color: 'var(--allow)' }}>
-                            ✓ Allowed by policy ({allow.length}{allowPeerCount > 0 ? ` · ${allowPeerCount} peer${allowPeerCount === 1 ? '' : 's'}` : ''})
+                            ✓ Allowed by policy ({allow.length}{allowPeerCount > 0 ? `, ${allowPeerCount} peer${allowPeerCount === 1 ? '' : 's'}` : ''})
                           </div>
                           {allow.map((policy) => (
                             <PolicyCard
@@ -890,7 +889,7 @@ export function NodePanelV2() {
                   );
                 })()}
                 <div className={`${t.body} ${t.dim}`} style={{ marginTop: 4 }}>
-                  {engine.inbound} inbound peers · {engine.outbound} outbound peers
+                  {engine.inbound} inbound peers, {engine.outbound} outbound peers
                 </div>
               </div>
             </details>
@@ -940,11 +939,10 @@ export function EdgePanelV2() {
               {isDeny ? '✗ blocked' : '✓ reachable'}
             </span>
             <div className={t.metaStrip}>
-              {edge.engines.map((engine, index) => (
+              {edge.engines.map((engine) => (
                 <span key={engine.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <EngineChip name={engine.name} />
                   <ActionIcon action={engine.status} />
-                  {index < edge.engines.length - 1 && <span className={t.metaSep} style={{ marginLeft: 2 }}>·</span>}
                 </span>
               ))}
             </div>
@@ -1013,7 +1011,7 @@ export function EdgePanelV2() {
                   <div className={t.body} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <ActionIcon action={policy.action} />
                     <span className={t.section}>{policy.name}</span>
-                    <span className={t.dim}>· {policy.namespace}</span>
+                    <span className={t.dim}>{policy.namespace}</span>
                   </div>
                   <div className={t.metaStrip}>
                     <EngineChip name={policy.source} />
@@ -1085,7 +1083,6 @@ function MeshSideCard({ side, mesh }: { side: 'SRC' | 'DST'; mesh: MeshInfo }) {
         >{mesh.mtlsMode}</span>
         {mesh.revision && (
           <>
-            <span className={t.metaSep}>·</span>
             <span className={t.selectorLabel}>rev</span>
             <span className={`${t.body} ${t.mono}`}>{mesh.revision}</span>
           </>
@@ -1374,11 +1371,10 @@ export function ComparePanelV2() {
             </span>
           </div>
           <div className={t.metaStrip}>
-            {cmp.engines.map((engine, index) => (
+            {cmp.engines.map((engine) => (
               <span key={engine.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <EngineChip name={engine.name} />
                 <ActionIcon action={engine.verdict} />
-                {index < cmp.engines.length - 1 && <span className={t.metaSep} style={{ marginLeft: 2 }}>·</span>}
               </span>
             ))}
           </div>

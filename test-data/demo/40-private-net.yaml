@@ -7,6 +7,7 @@
 #   192.168.0.0/16  ─▶ ldap-proxy          lan-ingress  (directory reached from the LAN)
 #   backup-agent    ─▶ 172.16.0.0/12       lan-egress   (ships backups off to private DC)
 #   telemetry-shipper ─▶ 0.0.0.0/0  except pod+svc CIDR internet-egress with cluster loopback carved out
+#                                                       (DaemonSet — one shipper per node)
 #   metrics-relay   ─▶ 172.20.5.42/32      lan-egress   (paired with calico GNP allowing the whole
 #                                                       172.20.0.0/16 corp metrics range → renders
 #                                                       "cidr scope mismatch" issue: engines disagree
@@ -81,12 +82,11 @@ spec:
           image: registry.example.com/netops/backup-agent:3.2.0
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: telemetry-shipper
   namespace: private-net
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: telemetry-shipper

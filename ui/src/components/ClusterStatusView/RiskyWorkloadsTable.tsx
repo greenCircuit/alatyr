@@ -8,7 +8,6 @@
 // key(s) muted → issues (tabular, red when nonzero) → edges → always-visible
 // `graph →` action.
 
-import { type CSSProperties } from 'react';
 import type { WorkloadNode } from '../../data/policies';
 import { STATUS_CFG, SEVERITY_COLOR } from '../../data/policies';
 import type { RiskyRow } from '../../store/clusterStats';
@@ -53,14 +52,9 @@ export default function RiskyWorkloadsTable({ rows, onShowNode, onOpenGraph }: R
               <td className={`${s.section} ${s.mono}`}>{row.node.label}</td>
               <td className={`${s.dim} ${s.mono}`}>{row.node.namespace}</td>
               <td>
-                <span className="d-inline-flex align-items-center gap-1">
-                  <span
-                    className={s.sevDot}
-                    style={{ '--sev': color } as unknown as CSSProperties}
-                    aria-hidden="true"
-                  />
-                  <span className={s.section}>{row.worstSeverity}</span>
-                </span>
+                {/* No dot — the row's left stripe already carries severity hue;
+                    the word takes the color so the cell still reads alone. */}
+                <span className={s.section} style={{ color }}>{row.worstSeverity}</span>
                 {row.worstStatuses.length > 0 && (
                   <span className="ms-2 d-inline-flex flex-wrap gap-1">
                     {row.worstStatuses.map((key) => (

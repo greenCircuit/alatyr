@@ -1,0 +1,275 @@
+# workload-kinds — one workload of every node type the graph renders, in a
+# single namespace, with one policy each so nothing reads as a coverage gap.
+# Exists so node-type filters, shapes, and the detail panel can be asserted
+# without the full demo cluster.
+#
+#   web        deployment
+#   ledger     statefulset
+#   shipper    daemonset
+#   sweeper    cronjob      (node comes from the CronJob object)
+#   rollup     job          (standalone Job, node comes from its live pod)
+#   scratch    pod          (bare pod, no controller)
+#   10.0.0.0/8 cidr         (ipBlock peer node)
+#   kinds      namespace    (ns node)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kinds
+  labels:
+    kubernetes.io/metadata.name: kinds
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: kinds
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: registry.example.com/e2e/web:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ledger
+  namespace: kinds
+spec:
+  replicas: 1
+  serviceName: ledger
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: shipper
+  namespace: kinds
+spec:
+  selector:
+    matchLabels:
+      app: shipper
+  template:
+    metadata:
+      labels:
+        app: shipper
+    spec:
+      containers:
+        - name: shipper
+          image: registry.example.com/e2e/shipper:1.0.0
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sweeper
+  namespace: kinds
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: sweeper
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sweeper
+              image: registry.example.com/e2e/sweeper:1.0.0
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rollup
+  namespace: kinds
+  uid: e2e-job-kinds-rollup
+spec:
+  template:
+    metadata:
+      labels:
+        app: rollup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rollup
+          image: registry.example.com/e2e/rollup:1.0.0
+---
+# Job-owned pod — the job node is emitted from here, not from the Job object.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rollup-2m8qd
+  namespace: kinds
+  uid: e2e-pod-kinds-rollup
+  labels:
+    app: rollup
+    job-name: rollup
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: Job
+      name: rollup
+      uid: e2e-job-kinds-rollup
+      controller: true
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - name: rollup
+      image: registry.example.com/e2e/rollup:1.0.0
+status:
+  phase: Running
+---
+# Bare pod: no ownerReferences, so it stands on its own as a `pod` node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: scratch
+  namespace: kinds
+  uid: e2e-pod-kinds-scratch
+  labels:
+    app: scratch
+spec:
+  containers:
+    - name: shell
+      image: docker.io/library/busybox:1.36
+status:
+  phase: Running
+---
+# Succeeded pod: must NOT render — AssembleNsIndex drops terminal pods.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: finished
+  namespace: kinds
+  uid: e2e-pod-kinds-finished
+  labels:
+    app: finished
+spec:
+  containers:
+    - name: shell
+      image: docker.io/library/busybox:1.36
+status:
+  phase: Succeeded
+---
+# One policy per workload, all intra-namespace except shipper's LAN egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-netpol
+  namespace: kinds
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ledger
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ledger-netpol
+  namespace: kinds
+spec:
+  podSelector:
+    matchLabels:
+      app: ledger
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+        - podSelector:
+            matchLabels:
+              app: rollup
+        - podSelector:
+            matchLabels:
+              app: sweeper
+        - podSelector:
+            matchLabels:
+              app: scratch
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shipper-netpol
+  namespace: kinds
+spec:
+  podSelector:
+    matchLabels:
+      app: shipper
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 9100
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: batch-readers-netpol
+  namespace: kinds
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [rollup, sweeper, scratch]
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ledger
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "netpol-viz.fullname" . }}
+  name: {{ include "alatyr.fullname" . }}
   labels:
-    {{- include "netpol-viz.labels" . | nindent 4 }}
+    {{- include "alatyr.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -11,5 +11,9 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ .Values.serviceMonitor.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
   selector:
-    {{- include "netpol-viz.selectorLabels" . | nindent 4 }}
+    {{- include "alatyr.selectorLabels" . | nindent 4 }}

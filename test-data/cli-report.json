@@ -1,0 +1,3427 @@
+{
+  "target": "test-data/demo/",
+  "counts": {
+    "workloads": 26,
+    "manifests": 7,
+    "coverageWithGlobal": 26,
+    "coverageWithoutGlobal": 24,
+    "noPolicyWithGlobals": 0,
+    "noPolicyWithoutGlobals": 2
+  },
+  "breakingIssuesCount": {
+    "totalIssues": 56,
+    "totalIssuesBreaking": 56,
+    "byType": {
+      "cidr scope mismatch": 2,
+      "failed to fetch": 0,
+      "mesh conflict": 2,
+      "mesh policy": 0,
+      "mesh transport blocked": 5,
+      "no dns": 30,
+      "node lockout": 0,
+      "partial access": 0,
+      "policy conflict": 17
+    },
+    "bySeverity": {
+      "caution": 0,
+      "critical": 0,
+      "high": 24,
+      "info": 0,
+      "secure": 0,
+      "warning": 32
+    }
+  },
+  "issuesCount": {
+    "totalIssues": 88,
+    "totalIssuesBreaking": 56,
+    "byType": {
+      "cidr scope mismatch": 2,
+      "failed to fetch": 0,
+      "mesh conflict": 2,
+      "mesh policy": 2,
+      "mesh transport blocked": 5,
+      "no dns": 30,
+      "node lockout": 0,
+      "partial access": 30,
+      "policy conflict": 17
+    },
+    "bySeverity": {
+      "caution": 0,
+      "critical": 0,
+      "high": 24,
+      "info": 32,
+      "secure": 0,
+      "warning": 32
+    }
+  },
+  "meshCount": {
+    "nsEnrolled": 3,
+    "nsPartial": 0,
+    "workloadsEnrolled": 14,
+    "mtlsStrict": 6,
+    "mtlsPermissive": 7,
+    "mtlsDisabled": 1,
+    "mtlsUnset": 0,
+    "mtlsUnknown": 0
+  },
+  "issues": [
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.0.0.0/8",
+        "label": "10.0.0.0/8",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "cidr scope mismatch",
+      "severity": "warning",
+      "message": "calico only allows 172.20.0.0/16 inside the 172.16.0.0/12 this node represents — confirm the narrower mask is deliberate least-privilege, not a typo",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "k8s",
+          "name": "backup-agent-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:172.16.0.0/12",
+        "label": "172.16.0.0/12",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "lan CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-daemonset-private-net-telemetry-shipper",
+        "label": "telemetry-shipper",
+        "namespace": "private-net",
+        "type": "daemonset",
+        "labels": {
+          "app": "telemetry-shipper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:0.0.0.0/0",
+        "label": "0.0.0.0/0",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "wan CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "plaintext-client-egress",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "k8s",
+          "name": "dual-verdict-allow",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-mesh-conflicts-dual-verdict-api",
+        "label": "dual-verdict-api",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "dual-verdict-api"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh conflict",
+      "severity": "high",
+      "message": "mesh blocks a permitted path: dst requires STRICT mTLS but src mTLS is disabled",
+      "ingressCulprits": [
+        {
+          "source": "pa",
+          "name": "strict-server-strict",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "engine": "istio",
+      "src": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-mesh-conflicts-strict-server",
+        "label": "strict-server",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "strict-server"
+        },
+        "cidrType": ""
+      },
+      "srcMembership": {
+        "inMesh": true,
+        "provider": "istio",
+        "mode": "ambient",
+        "mtls": {
+          "verdict": "disable",
+          "effectiveSource": {
+            "namespace": "mesh-conflicts",
+            "name": "plaintext-client-disable"
+          },
+          "sources": [
+            {
+              "namespace": "mesh-conflicts",
+              "name": "plaintext-client-disable",
+              "meshScope": "disable",
+              "meshSource": "workload"
+            }
+          ]
+        }
+      },
+      "dstMembership": {
+        "inMesh": true,
+        "provider": "istio",
+        "mode": "ambient",
+        "mtls": {
+          "verdict": "strict",
+          "effectiveSource": {
+            "namespace": "mesh-conflicts",
+            "name": "strict-server-strict"
+          },
+          "sources": [
+            {
+              "namespace": "mesh-conflicts",
+              "name": "strict-server-strict",
+              "meshScope": "strict",
+              "meshSource": "workload"
+            },
+            {
+              "namespace": "mesh-conflicts",
+              "name": "strict-server-duplicate",
+              "meshScope": "permissive",
+              "meshSource": "workload"
+            }
+          ],
+          "issues": [
+            {
+              "message": "duplicate at scope: two policies at the workload level — mesh-conflicts/strict-server-strict is older and is the one Istio uses. These are silently ignored: [mesh-conflicts/strict-server-duplicate]. Delete the unused ones or merge their settings into the winning policy.",
+              "refs": [
+                {
+                  "source": "pa",
+                  "name": "strict-server-strict",
+                  "namespace": "mesh-conflicts"
+                },
+                {
+                  "source": "pa",
+                  "name": "strict-server-duplicate",
+                  "namespace": "mesh-conflicts"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-web",
+        "label": "web",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "web",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "checkout-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "k8s",
+          "name": "orders-api-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-web",
+        "label": "web",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "web",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "checkout-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "k8s",
+          "name": "sessions-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "ns-storefront",
+        "label": "storefront",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "istio.io/dataplane-mode": "ambient",
+          "kubernetes.io/metadata.name": "storefront"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-redis-cache",
+        "label": "redis-cache",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "redis-cache"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "webhook-receiver-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "k8s",
+          "name": "payments-api-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-webhook-receiver",
+        "label": "webhook-receiver",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "webhook-receiver",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-payments-payments-api",
+        "label": "payments-api",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "payments-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-statefulset-payments-ledger-db",
+        "label": "ledger-db",
+        "namespace": "payments",
+        "type": "statefulset",
+        "labels": {
+          "app": "ledger-db"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.0.0.0/8",
+        "label": "10.0.0.0/8",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "mesh conflict",
+      "severity": "high",
+      "message": "mesh blocks a permitted path: dst requires STRICT mTLS but src is not in mesh",
+      "ingressCulprits": [
+        {
+          "source": "pa",
+          "name": "payments-strict",
+          "namespace": "payments"
+        }
+      ],
+      "engine": "istio",
+      "src": {
+        "id": "cidr:10.0.0.0/8",
+        "label": "10.0.0.0/8",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      },
+      "dst": {
+        "id": "demo-statefulset-payments-ledger-db",
+        "label": "ledger-db",
+        "namespace": "payments",
+        "type": "statefulset",
+        "labels": {
+          "app": "ledger-db"
+        },
+        "cidrType": ""
+      },
+      "srcMembership": {
+        "inMesh": false
+      },
+      "dstMembership": {
+        "inMesh": true,
+        "provider": "istio",
+        "mode": "ambient",
+        "mtls": {
+          "verdict": "strict",
+          "effectiveSource": {
+            "namespace": "payments",
+            "name": "payments-strict"
+          },
+          "sources": [
+            {
+              "namespace": "payments",
+              "name": "payments-strict",
+              "meshScope": "strict",
+              "meshSource": "ns"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-payments-payout-worker",
+        "label": "payout-worker",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "payout-worker"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:0.0.0.0/0",
+        "label": "0.0.0.0/0",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "wan CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-payments-fraud-check",
+        "label": "fraud-check",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "fraud-check"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:0.0.0.0/0",
+        "label": "0.0.0.0/0",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "wan CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "webhook-receiver-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "ingressReason": "default-deny",
+      "egressReason": "no-opinion",
+      "engine": "k8s",
+      "src": {
+        "id": "ns-payments",
+        "label": "payments",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "istio.io/dataplane-mode": "ambient",
+          "kubernetes.io/metadata.name": "payments"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-payments-webhook-receiver",
+        "label": "webhook-receiver",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "webhook-receiver",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "orders-api-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "locked-no-match",
+      "egressReason": "no-opinion",
+      "engine": "k8s",
+      "src": {
+        "id": "ns-storefront",
+        "label": "storefront",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "istio.io/dataplane-mode": "ambient",
+          "kubernetes.io/metadata.name": "storefront"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "calico blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "ingressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "permitted",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "ns-storefront",
+        "label": "storefront",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "istio.io/dataplane-mode": "ambient",
+          "kubernetes.io/metadata.name": "storefront"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-daemonset-private-net-telemetry-shipper",
+        "label": "telemetry-shipper",
+        "namespace": "private-net",
+        "type": "daemonset",
+        "labels": {
+          "app": "telemetry-shipper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-daemonset-private-net-telemetry-shipper",
+        "label": "telemetry-shipper",
+        "namespace": "private-net",
+        "type": "daemonset",
+        "labels": {
+          "app": "telemetry-shipper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "vpn-gw-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:172.20.0.0/16",
+        "label": "172.20.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "lan CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "policy conflict",
+      "severity": "high",
+      "message": "k8s blocks a permitted path",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ldap-proxy-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:172.20.0.0/16",
+        "label": "172.20.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "lan CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ldap-proxy-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ldap-proxy-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "backup-agent-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "backup-agent-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "cidr scope mismatch",
+      "severity": "warning",
+      "message": "k8s only allows 172.20.5.42/32 inside the 172.20.0.0/16 this node represents — confirm the narrower mask is deliberate least-privilege, not a typo",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "metrics-relay-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:172.20.0.0/16",
+        "label": "172.20.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "lan CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "metrics-relay-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "metrics-relay-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "ns-private-net",
+        "label": "private-net",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "kubernetes.io/metadata.name": "private-net"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "calico has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressAllowed": [
+        {
+          "source": "calico",
+          "name": "egress-cluster-only",
+          "namespace": "",
+          "order": 1000,
+          "tier": "default"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "ns-private-net",
+        "label": "private-net",
+        "namespace": "",
+        "type": "namespace",
+        "labels": {
+          "kubernetes.io/metadata.name": "private-net"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "plaintext-client-egress",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "plaintext-client-egress",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "checkout-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "checkout-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "redis-open-namespace",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-redis-cache",
+        "label": "redis-cache",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "redis-cache"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "redis-open-namespace",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-redis-cache",
+        "label": "redis-cache",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "redis-cache"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "sessions-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "sessions-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "webhook-receiver-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-webhook-receiver",
+        "label": "webhook-receiver",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "webhook-receiver",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.42.0.0/16",
+        "label": "10.42.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "pod CIDR"
+      }
+    },
+    {
+      "type": "partial access",
+      "severity": "info",
+      "message": "k8s has no rule naming this cluster range — it targets pods and namespaces, not CIDRs",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "webhook-receiver-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "ingressReason": "no-opinion",
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-webhook-receiver",
+        "label": "webhook-receiver",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "webhook-receiver",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "cidr:10.43.0.0/16",
+        "label": "10.43.0.0/16",
+        "namespace": "",
+        "type": "cidr",
+        "labels": null,
+        "cidrType": "scv CIDR"
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "web-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-web",
+        "label": "web",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "web",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-web",
+        "label": "web",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "web",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-checkout",
+        "label": "checkout",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "checkout",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-catalog",
+        "label": "catalog",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "catalog",
+          "tier": "frontend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "redis-open-namespace",
+          "namespace": "storefront"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-redis-cache",
+        "label": "redis-cache",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "redis-cache"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-redis-cache",
+        "label": "redis-cache",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "redis-cache"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-orders-api",
+        "label": "orders-api",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "orders-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: default-deny",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "sessions-netpol",
+          "namespace": "storefront"
+        }
+      ],
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-https-only",
+          "namespace": "",
+          "order": 500,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-storefront-sessions",
+        "label": "sessions",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "sessions"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "plaintext-client-egress",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ledger-db-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-statefulset-payments-ledger-db",
+        "label": "ledger-db",
+        "namespace": "payments",
+        "type": "statefulset",
+        "labels": {
+          "app": "ledger-db"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "payments-api-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-payments-api",
+        "label": "payments-api",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "payments-api",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "payout-worker-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-payout-worker",
+        "label": "payout-worker",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "payout-worker"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "fraud-check-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-payments-fraud-check",
+        "label": "fraud-check",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "fraud-check"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "retention-sweeper-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-cronjob-analytics-retention-sweeper",
+        "label": "retention-sweeper",
+        "namespace": "analytics",
+        "type": "cronjob",
+        "labels": {
+          "app": "retention-sweeper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ingest-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-analytics-ingest",
+        "label": "ingest",
+        "namespace": "analytics",
+        "type": "deployment",
+        "labels": {
+          "app": "ingest"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "enrich-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-analytics-enrich",
+        "label": "enrich",
+        "namespace": "analytics",
+        "type": "deployment",
+        "labels": {
+          "app": "enrich"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: default-deny",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "warehouse-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-analytics-warehouse",
+        "label": "warehouse",
+        "namespace": "analytics",
+        "type": "deployment",
+        "labels": {
+          "app": "warehouse"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "nightly-rollup-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-job-analytics-nightly-rollup",
+        "label": "nightly-rollup",
+        "namespace": "analytics",
+        "type": "job",
+        "labels": {
+          "app": "nightly-rollup",
+          "job-name": "nightly-rollup"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "adhoc-query-netpol",
+          "namespace": "analytics"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-pod-analytics-adhoc-query",
+        "label": "adhoc-query",
+        "namespace": "analytics",
+        "type": "pod",
+        "labels": {
+          "app": "adhoc-query"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-daemonset-private-net-telemetry-shipper",
+        "label": "telemetry-shipper",
+        "namespace": "private-net",
+        "type": "daemonset",
+        "labels": {
+          "app": "telemetry-shipper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: carved-out",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "telemetry-shipper-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressReason": "carved-out",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-daemonset-private-net-telemetry-shipper",
+        "label": "telemetry-shipper",
+        "namespace": "private-net",
+        "type": "daemonset",
+        "labels": {
+          "app": "telemetry-shipper"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: egress to DNS allowed but not on port 53",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "vpn-gw-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressReason": "permitted",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-vpn-gw",
+        "label": "vpn-gw",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "vpn-gw"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: default-deny",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "ldap-proxy-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressReason": "default-deny",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-ldap-proxy",
+        "label": "ldap-proxy",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "ldap-proxy"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "backup-agent-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-backup-agent",
+        "label": "backup-agent",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "backup-agent"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: explicit-deny",
+      "egressCulprits": [
+        {
+          "source": "calico",
+          "name": "egress-corp-metrics-lan",
+          "namespace": "",
+          "order": 900,
+          "tier": "default"
+        }
+      ],
+      "egressReason": "explicit-deny",
+      "engine": "calico",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "no dns",
+      "severity": "warning",
+      "message": "cluster DNS blocked: locked-no-match",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "metrics-relay-netpol",
+          "namespace": "private-net"
+        }
+      ],
+      "egressReason": "locked-no-match",
+      "engine": "k8s",
+      "src": {
+        "id": "demo-deployment-private-net-metrics-relay",
+        "label": "metrics-relay",
+        "namespace": "private-net",
+        "type": "deployment",
+        "labels": {
+          "app": "metrics-relay"
+        },
+        "cidrType": ""
+      },
+      "dst": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh policy",
+      "severity": "info",
+      "message": "all peer authentications are set to Unset: every matching policy is set to UNSET, so Istio falls back to the install default (permissive). Set an explicit mode (STRICT, PERMISSIVE, or DISABLE) on at least one policy if you wanted specific behavior.",
+      "engine": "istio",
+      "node": {
+        "id": "demo-deployment-mesh-conflicts-dual-verdict-api",
+        "label": "dual-verdict-api",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "dual-verdict-api"
+        },
+        "cidrType": ""
+      },
+      "culprits": [
+        {
+          "source": "pa",
+          "name": "dual-verdict-unset",
+          "namespace": "mesh-conflicts"
+        }
+      ]
+    },
+    {
+      "type": "mesh policy",
+      "severity": "info",
+      "message": "duplicate at scope: two policies at the workload level — mesh-conflicts/strict-server-strict is older and is the one Istio uses. These are silently ignored: [mesh-conflicts/strict-server-duplicate]. Delete the unused ones or merge their settings into the winning policy.",
+      "engine": "istio",
+      "node": {
+        "id": "demo-deployment-mesh-conflicts-strict-server",
+        "label": "strict-server",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "strict-server"
+        },
+        "cidrType": ""
+      },
+      "culprits": [
+        {
+          "source": "pa",
+          "name": "strict-server-strict",
+          "namespace": "mesh-conflicts"
+        },
+        {
+          "source": "pa",
+          "name": "strict-server-duplicate",
+          "namespace": "mesh-conflicts"
+        }
+      ]
+    },
+    {
+      "type": "mesh transport blocked",
+      "severity": "high",
+      "message": "Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "payments-api-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "engine": "k8s",
+      "node": {
+        "id": "demo-deployment-payments-webhook-receiver",
+        "label": "webhook-receiver",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "webhook-receiver",
+          "tier": "backend"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh transport blocked",
+      "severity": "high",
+      "message": "Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "dual-verdict-allow",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "engine": "k8s",
+      "node": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh transport blocked",
+      "severity": "high",
+      "message": "Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "client-to-server-allow",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "engine": "k8s",
+      "node": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh transport blocked",
+      "severity": "high",
+      "message": "Policy does not allow ztunnel HBONE port 15008; ambient egress traffic is blocked",
+      "egressCulprits": [
+        {
+          "source": "k8s",
+          "name": "plaintext-client-egress",
+          "namespace": "mesh-conflicts"
+        }
+      ],
+      "engine": "k8s",
+      "node": {
+        "id": "demo-deployment-mesh-conflicts-plaintext-client",
+        "label": "plaintext-client",
+        "namespace": "mesh-conflicts",
+        "type": "deployment",
+        "labels": {
+          "app": "plaintext-client"
+        },
+        "cidrType": ""
+      }
+    },
+    {
+      "type": "mesh transport blocked",
+      "severity": "high",
+      "message": "Policy does not allow ztunnel HBONE port 15008; ambient ingress traffic is blocked",
+      "ingressCulprits": [
+        {
+          "source": "k8s",
+          "name": "payments-api-netpol",
+          "namespace": "payments"
+        }
+      ],
+      "engine": "k8s",
+      "node": {
+        "id": "demo-deployment-payments-payout-worker",
+        "label": "payout-worker",
+        "namespace": "payments",
+        "type": "deployment",
+        "labels": {
+          "app": "payout-worker"
+        },
+        "cidrType": ""
+      }
+    }
+  ],
+  "noCoverageWithoutGlobals": [
+    {
+      "node": {
+        "id": "demo-deployment-kube-system-coredns",
+        "label": "coredns",
+        "namespace": "kube-system",
+        "type": "deployment",
+        "labels": {
+          "k8s-app": "kube-dns"
+        },
+        "statuses": [
+          "internet-full"
+        ],
+        "cidrType": "",
+        "statusesBySource": {
+          "calico": [
+            "internet-full"
+          ],
+          "istio": [
+            "internet-full"
+          ],
+          "k8s": [
+            "internet-full"
+          ]
+        }
+      }
+    },
+    {
+      "node": {
+        "id": "demo-deployment-storefront-catalog",
+        "label": "catalog",
+        "namespace": "storefront",
+        "type": "deployment",
+        "labels": {
+          "app": "catalog",
+          "tier": "frontend"
+        },
+        "statuses": [
+          "internet-full",
+          "lan-egress"
+        ],
+        "cidrType": "",
+        "statusesBySource": {
+          "calico": [
+            "internet-full",
+            "lan-egress"
+          ],
+          "istio": [
+            "internet-full"
+          ],
+          "k8s": [
+            "internet-full"
+          ]
+        }
+      }
+    }
+  ]
+}

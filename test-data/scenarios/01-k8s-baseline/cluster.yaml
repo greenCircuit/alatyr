@@ -1,0 +1,233 @@
+# k8s-baseline — plain NetworkPolicy only. No mesh, no Calico. Two namespaces,
+# five workloads, one cross-namespace arrow. Every k8s-engine badge that does
+# not need config lives here.
+#
+#   internet(0.0.0.0/0) ─▶ front/gateway ─▶ back/api ─▶ back/db
+#                          front/scratch  (no policy at all → coverage gap)
+#                          back/exporter ─▶ 10.0.0.0/8
+#
+#   front/gateway   internet-ingress + cross-namespace
+#   front/scratch   internet-full        (the gap — selected by nothing)
+#   back/api        ns-ingress-access    (reached from front only)
+#   back/db         air-gapped
+#   back/exporter   lan-egress
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: front
+  labels:
+    kubernetes.io/metadata.name: front
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: back
+  labels:
+    kubernetes.io/metadata.name: back
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: front
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: registry.example.com/e2e/gateway:1.0.0
+          ports:
+            - containerPort: 443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scratch
+  namespace: front
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scratch
+  template:
+    metadata:
+      labels:
+        app: scratch
+    spec:
+      containers:
+        - name: scratch
+          image: registry.example.com/e2e/scratch:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: back
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: registry.example.com/e2e/api:1.0.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: back
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exporter
+  namespace: back
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: exporter
+  template:
+    metadata:
+      labels:
+        app: exporter
+    spec:
+      containers:
+        - name: exporter
+          image: registry.example.com/e2e/exporter:1.0.0
+---
+# gateway: public on 443, dials the back tier. -> internet-ingress + cross-namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-netpol
+  namespace: front
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: back
+          podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# api: reachable from the front namespace only, writes to db. -> ns-ingress-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-netpol
+  namespace: back
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: front
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: db
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# db: ingress from api only, no egress. -> air-gapped
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-netpol
+  namespace: back
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# exporter: ships metrics to the corporate LAN. -> lan-egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: exporter-netpol
+  namespace: back
+spec:
+  podSelector:
+    matchLabels:
+      app: exporter
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 9100
