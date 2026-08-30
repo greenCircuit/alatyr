@@ -52,6 +52,32 @@ const MESH_LEGEND: {
   { filter: 'out-of-mesh',     short: 'no-mesh', outline: true,       desc: 'not enrolled in the mesh dataplane' },
 ];
 
+// Node silhouettes — mirror the cytoscape shapes in styles.ts. Points are in a
+// 20x14 viewBox so every glyph lines up on the same baseline.
+const SHAPE_LEGEND: { label: string; points?: string; ellipse?: boolean }[] = [
+  { label: 'Deployment' },
+  { label: 'StatefulSet', points: '3,0 17,0 20,3 20,11 17,14 3,14 0,11 0,3' },
+  { label: 'DaemonSet',   points: '10,0 20,5 16,14 4,14 0,5' },
+  { label: 'CronJob',     points: '5,0 15,0 20,7 15,14 5,14 0,7' },
+  { label: 'Job',         points: '5,0 15,0 20,7 15,14 5,14 0,7 4,7' },
+  { label: 'Pod',         ellipse: true },
+  { label: 'CIDR range',  points: '2,0 18,0 20,7 18,14 2,14 0,7' },
+];
+
+function ShapeMark({ shape }: { shape: typeof SHAPE_LEGEND[number] }) {
+  const fill = 'none';
+  const stroke = '#adb5bd';
+  return (
+    <svg width="20" height="14" viewBox="0 0 20 14" aria-hidden="true">
+      {shape.ellipse
+        ? <ellipse cx="10" cy="7" rx="9.5" ry="6.5" fill={fill} stroke={stroke} />
+        : shape.points
+          ? <polygon points={shape.points} fill={fill} stroke={stroke} />
+          : <rect x="0.5" y="0.5" width="19" height="13" fill={fill} stroke={stroke} />}
+    </svg>
+  );
+}
+
 export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { selectedStatuses, toggleStatus, selectedMeshFilters, toggleMeshFilter } = useGraphStore();
 
@@ -112,6 +138,16 @@ export function Legend({ open, onToggle }: { open: boolean; onToggle: () => void
               </span>
             );
           })}
+
+          <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
+            Node shapes
+          </div>
+          {SHAPE_LEGEND.map((shape) => (
+            <span key={shape.label} className="d-flex align-items-center gap-1">
+              <ShapeMark shape={shape} />
+              <span className="fs-9">{shape.label}</span>
+            </span>
+          ))}
 
           <div className={`mt-1 pt-1 border-top border-secondary ${s.legendEyebrow}`}>
             Mesh (mTLS)

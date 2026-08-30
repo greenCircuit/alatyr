@@ -168,7 +168,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 		rulesMatrix = append(rulesMatrix, rule)
 	}
 
-	for ruleIndex, rule := range rules {
+	for _, rule := range rules {
 		var matchWorkloads []models.WorkloadNode
 		nsFrom := []string{}
 		for _, fromBlock := range rule.From {
@@ -185,7 +185,6 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 			Source:    sourceName,
 			Name:      authzPolicy.Name,
 			Namespace: authzPolicy.Namespace,
-			RuleIndex: ruleIndex,
 			CreatedAt: creationTime(authzPolicy),
 		}
 

@@ -7,7 +7,7 @@ import type { Issue, IssueType, Severity, WorkloadNode } from '../../data/polici
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
-import { ISSUE_TYPE_LABEL, TYPE_SEVERITY } from '../FilterPanel/parts/constants';
+import { ISSUE_TYPE_LABEL, issueSeverity } from '../FilterPanel/parts/constants';
 import { CulpritActions } from './CulpritActions';
 import s from '../DetailPanel/DetailPanel.module.css';
 
@@ -38,7 +38,7 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
     // row carrying both fix groups before sorting.
     const list = mergeIssuesByPair(issues).map((issue) => ({
       issue,
-      severity: TYPE_SEVERITY[issue.type],
+      severity: issueSeverity(issue),
       isEdge: !!(issue.src && issue.dst),
     }));
     if (sort.col) {

@@ -128,7 +128,7 @@ export default function ClusterStatusView() {
   // Info-tier findings (partial access) are expected layering, not problems —
   // the headline counts only actionable rows. The chips still list all types.
   const actionableIssues = useMemo(
-    () => mergedIssues.filter((issue) => issueTier(issue.type) !== 'info'),
+    () => mergedIssues.filter((issue) => issueTierOf(issue) !== 'info'),
     [mergedIssues],
   );
 
@@ -177,7 +177,7 @@ export default function ClusterStatusView() {
           namespacesSelected={selectedNamespaces.size}
           namespacesTotal={availableNamespaces.length}
           issues={actionableIssues.length}
-          issuesBlocking={actionableIssues.filter((issue) => issueTier(issue.type) === 'blocking').length}
+          issuesBlocking={actionableIssues.filter((issue) => issueTierOf(issue) === 'blocking').length}
           exposedCount={exposedNodes.length}
           exposedNamespaces={new Set(exposedNodes.map((node) => node.namespace)).size}
         />

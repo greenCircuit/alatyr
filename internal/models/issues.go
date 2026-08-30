@@ -18,9 +18,43 @@ const (
 	IssuesFailedToFetch   IssueType=  "failed to fetch"         // no has all egress/ingress deny all policy so it can't really talk to anyone
 )
 
+type IssueSeverity string
+
+const (
+	IssueSeverityCritical IssueSeverity = "critical"
+	IssueSeverityHigh     IssueSeverity = "high"
+	IssueSeverityWarning  IssueSeverity = "warning"
+	IssueSeverityCaution  IssueSeverity = "caution"
+	IssueSeverityInfo     IssueSeverity = "info"
+	IssueSeveritySecure   IssueSeverity = "secure"
+)
+
+// mapping issue types to severity levels
+var SeverityByType = map[IssueType]IssueSeverity{
+	NodeLockOut:          IssueSeverityHigh,
+	PolicyConflicts:      IssueSeverityHigh,
+	MeshConflicts:        IssueSeverityHigh,
+	MeshTransportBlocked: IssueSeverityHigh,
+	IssuesFailedToFetch:  IssueSeverityHigh,
+	// warning
+	NoDNSEgress:          IssueSeverityWarning,
+	IssuesCidrScope:      IssueSeverityWarning,
+	// info
+	IssuesPartial:        IssueSeverityInfo,
+	MeshMisconfig:        IssueSeverityInfo,
+}
+
+func SeverityForType(issueType IssueType) IssueSeverity {
+	if severity, ok := SeverityByType[issueType]; ok {
+		return severity
+	}
+	return IssueSeverityHigh
+}
+
 type Issue struct {
-	Type    IssueType     `json:"type"`
-	Message string        `json:"message"`
+	Type     IssueType     `json:"type"`
+	Severity IssueSeverity `json:"severity"`
+	Message  string        `json:"message"`
 	IngressCulprits 	  []PolicyRef `json:"ingressCulprits,omitempty"`
 	EgressCulprits  	  []PolicyRef `json:"egressCulprits,omitempty"`
 	IngressAllowed  	  []PolicyRef `json:"ingressAllowed,omitempty"`

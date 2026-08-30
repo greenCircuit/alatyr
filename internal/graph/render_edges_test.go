@@ -20,7 +20,7 @@ func TestRenderEdges_ActionSplitAndL7Dedup(t *testing.T) {
 	}
 
 	l7 := &models.L7Match{Methods: []string{"GET"}, Paths: []string{"/api"}}
-	ref := models.PolicyRef{Source: "istio", Name: "p1", Namespace: "ns-a", RuleIndex: 0}
+	ref := models.PolicyRef{Source: "istio", Name: "p1", Namespace: "ns-a"}
 
 	// Two allow rules sharing the same L7 (fan-out per port) — should fold
 	// into one edge with ports {8080, 9090} and a single L7Match entry.
@@ -126,17 +126,13 @@ func TestRenderEdges_EdgeIgnoresProtocol(t *testing.T) {
 //   - a rule whose peer differs is a separate group, never merged in
 func TestRenderEdges_CollapsesUniformNamespaceFanOut(t *testing.T) {
 	nodes := []models.WorkloadNode{
-		{ID: "a1", Namespace: "ns-a", Type: models.NodeTypeService},
-		{ID: "a2", Namespace: "ns-a", Type: models.NodeTypeService},
 		{ID: "a3", Namespace: "ns-a", Type: models.NodeTypeDeployment},
 		{ID: "ns-ns-a", Namespace: "ns-a", Type: models.NodeTypeNamespace},
-		{ID: "b1", Namespace: "ns-b", Type: models.NodeTypeService},
-		{ID: "b2", Namespace: "ns-b", Type: models.NodeTypeService},
 		{ID: "ns-ns-b", Namespace: "ns-b", Type: models.NodeTypeNamespace},
 		{ID: models.CIDRIDPrefix + "10.0.0.0/8", Type: models.NodeTypeCIDR},
 		{ID: models.CIDRIDPrefix + "0.0.0.0/0", Type: models.NodeTypeCIDR},
 	}
-	ref := models.PolicyRef{Source: "calico", Name: "egress-lan", RuleIndex: 0}
+	ref := models.PolicyRef{Source: "calico", Name: "egress-lan"}
 
 	lanRule := func(workloadID string) models.Rule {
 		return models.Rule{

@@ -12,7 +12,7 @@ import type { WorkloadNode, PolicyEdge, Issue, Coverage, Severity, StatusKey } f
 import { mergeIssuesByPair, STATUS_CFG } from '../data/policies';
 import type { CovType } from '../components/PolicyGraph/parts/coverage';
 import { computeCoverage } from '../components/PolicyGraph/parts/coverage';
-import { issueTier } from '../components/FilterPanel/parts/constants';
+import { issueTierOf } from '../components/FilterPanel/parts/constants';
 
 // Display order: locked-down first, open postures in the middle, no-ops last.
 export const COVERAGE_CLASSES: Coverage[] = [
@@ -165,7 +165,7 @@ export function namespaceStats(
   for (const issue of mergeIssuesByPair(issues)) {
     // Info-tier findings (partial access) are expected policy layering, not
     // problems — counting them as "issues" per namespace inflates the column.
-    if (issueTier(issue.type) === 'info') continue;
+    if (issueTierOf(issue) === 'info') continue;
     // one increment per namespace per issue, even when src+dst share a ns
     const touched = new Set(
       [issue.src?.namespace, issue.dst?.namespace, issue.node?.namespace]
@@ -279,7 +279,7 @@ export function topRiskyWorkloads(
 
   const issueCountByNode = new Map<string, number>();
   for (const issue of issues) {
-    if (issueTier(issue.type) === 'info') continue;
+    if (issueTierOf(issue) === 'info') continue;
     const touched = new Set(
       [issue.src?.id, issue.dst?.id, issue.node?.id].filter((id): id is string => Boolean(id)),
     );

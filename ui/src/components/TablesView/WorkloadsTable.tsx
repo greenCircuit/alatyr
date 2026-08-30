@@ -35,7 +35,7 @@ const TIER_WEIGHT: Record<IssueTier, number> = { blocking: 1_000_000, warning: 1
 
 function issueSortKey(issues: Issue[]): number {
   let key = 0;
-  for (const issue of issues) key += TIER_WEIGHT[issueTier(issue.type)];
+  for (const issue of issues) key += TIER_WEIGHT[issueTierOf(issue)];
   return key;
 }
 
@@ -44,7 +44,7 @@ function issueSortKey(issues: Issue[]): number {
 const TIER_ORDER: Record<IssueTier, number> = { blocking: 0, warning: 1, info: 2 };
 
 function sortIssuesBySeverity(issues: Issue[]): Issue[] {
-  return [...issues].sort((a, b) => TIER_ORDER[issueTier(a.type)] - TIER_ORDER[issueTier(b.type)]);
+  return [...issues].sort((a, b) => TIER_ORDER[issueTierOf(a)] - TIER_ORDER[issueTierOf(b)]);
 }
 
 export default function WorkloadsTable({
@@ -232,7 +232,7 @@ export function IssueChip({ issues }: { issues: Issue[] }) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   if (issues.length === 0) return <span className="text-secondary">—</span>;
   const counts = { blocking: 0, warning: 0, info: 0 };
-  for (const issue of issues) counts[issueTier(issue.type)] += 1;
+  for (const issue of issues) counts[issueTierOf(issue)] += 1;
   const tiers = TIER_META.filter(({ tier }) => counts[tier] > 0);
   const hasBlocking = counts.blocking > 0;
   const summary = tiers.map(({ tier, label }) => `${counts[tier]} ${label}`).join(' · ');

@@ -52,7 +52,6 @@ type PolicyRef struct {
 	Source    string     `json:"source"`
 	Name      string     `json:"name"`
 	Namespace string     `json:"namespace"`
-	RuleIndex int        `json:"ruleIndex"`
 	Action    string     `json:"action,omitempty"` // "allow" | "deny" | "" (unknown / k8s allow-style)
 	Direction Direction  `json:"direction,omitempty"`
 	Order     *float64   `json:"order,omitempty"`     // Calico precedence; nil = unset (0 is a valid order)

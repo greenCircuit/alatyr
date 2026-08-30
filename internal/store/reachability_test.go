@@ -471,14 +471,12 @@ func TestIsNodesReachable_DirectionReasons(t *testing.T) {
 
 func TestIsNodesReachable_CulpritsDedupToPolicy(t *testing.T) {
 	// Two egress allow rules from the SAME policy, both pointing elsewhere. The
-	// near-miss culprits must collapse to one policy — RuleIndex is not identity.
+	// near-miss culprits must collapse to one policy.
 	policy := models.PolicyRef{Source: "k8s", Name: "web-netpol", Namespace: srcNs}
 	firstRule := egressTo(otherDstID)
 	firstRule.Contributor = policy
-	firstRule.Contributor.RuleIndex = 0
 	secondRule := egressTo("dst-ns/third-pod")
 	secondRule.Contributor = policy
-	secondRule.Contributor.RuleIndex = 1
 
 	cache := buildCache("k8s", firstRule, secondRule)
 	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)

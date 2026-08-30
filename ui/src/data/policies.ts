@@ -85,12 +85,16 @@ export interface WorkloadNode {
   id: string;
   label: string;
   namespace: string;
-  // service    = deployment + ClusterIP service (most workloads)
-  // deployment = pod/deployment with no service exposure
-  // headless   = headless service (direct pod addressing, no ClusterIP)
-  // external   = traffic origin outside the cluster
-  // cidr       = synthetic node for a k8s NetworkPolicy ipBlock CIDR peer
-  type: 'service' | 'deployment' | 'headless' | 'external' | 'cronjob' | 'namespace' | 'cidr';
+  // service     = deployment + ClusterIP service (most workloads)
+  // deployment  = pod/deployment with no service exposure
+  // statefulset / daemonset = controller-owned workloads, own node each
+  // job         = standalone Job, not spawned by a CronJob
+  // pod         = bare pod, no controller node above it
+  // headless    = headless service (direct pod addressing, no ClusterIP)
+  // external    = traffic origin outside the cluster
+  // cidr        = synthetic node for a k8s NetworkPolicy ipBlock CIDR peer
+  type: 'service' | 'deployment' | 'statefulset' | 'daemonset' | 'headless'
+      | 'external' | 'cronjob' | 'job' | 'pod' | 'namespace' | 'cidr';
   labels: Record<string, string>;
 
   // set only when type === 'cidr' — backend-computed classification of the
@@ -127,7 +131,6 @@ export interface PolicyRef {
   source:     string;
   name:       string;
   namespace:  string;
-  ruleIndex:  number;
   action?:    'allow' | 'deny';    // set for selecting-policy refs, omitted for rule contributors
   direction?: string;    // "ingress" | "egress" | "both"
   order?:     number | null;       // Calico precedence; nil = unset. Absent for non-Calico engines.
@@ -353,13 +356,18 @@ export type IssueType =
   | 'partial access'
   | 'mesh conflict'
   | 'node lockout'
-  | 'cidr scope mismatch';
+  | 'cidr scope mismatch'
+  | 'failed to fetch';
 
 // Issue mirrors models.Issue — one whole-cluster conflict finding. Edge-scoped
 // issues (policy conflict) carry src+dst so the UI can open the reachability
 // panel; node-scoped issues (lockout) carry node.
 export interface Issue {
   type:    IssueType;
+  // Severity comes from the backend (models.SeverityByType) — the UI renders
+  // it, never derives it. Optional only so test fixtures can omit it; read it
+  // through issueSeverity() so the fallback stays in one place.
+  severity?: Severity;
   message: string;
   // Culprit policies that broke the path, split by direction so the UI knows
   // which side to send the operator to: egress → edit src's egress policy,

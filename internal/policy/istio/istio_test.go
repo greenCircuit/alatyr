@@ -160,31 +160,28 @@ func TestBuildRules_RuleIndexAndL7Attachment(t *testing.T) {
 		t.Fatalf("got %d rules, want 2", len(rules))
 	}
 
-	byIndex := map[int]models.Rule{}
+	// Split by L7-ness rather than by source rule ordinal — the L4 block and
+	// the L7 block are the two distinct outputs the expansion must produce.
+	var l4Rules, l7Rules []models.Rule
 	for _, rule := range rules {
 		if rule.Contributor.Name == "" {
 			t.Fatalf("rule missing contributor: %+v", rule)
 		}
-		byIndex[rule.Contributor.RuleIndex] = rule
+		if rule.L7Match == nil {
+			l4Rules = append(l4Rules, rule)
+			continue
+		}
+		l7Rules = append(l7Rules, rule)
 	}
 
-	rule0, ok := byIndex[0]
-	if !ok {
-		t.Fatalf("missing rule with RuleIndex=0")
+	if len(l4Rules) != 1 || len(l7Rules) != 1 {
+		t.Fatalf("got %d L4 / %d L7 rules, want 1 each: %+v", len(l4Rules), len(l7Rules), rules)
 	}
-	if rule0.L7Match != nil {
-		t.Errorf("rule 0 L7Match = %+v, want nil (L4 only)", rule0.L7Match)
+	if len(l4Rules[0].Ports) != 1 || l4Rules[0].Ports[0].Port != 8080 {
+		t.Errorf("L4 rule Ports = %+v, want [{Port: 8080}]", l4Rules[0].Ports)
 	}
-	if len(rule0.Ports) != 1 || rule0.Ports[0].Port != 8080 {
-		t.Errorf("rule 0 Ports = %+v, want [{Port: 8080}]", rule0.Ports)
-	}
-
-	rule1, ok := byIndex[1]
-	if !ok {
-		t.Fatalf("missing rule with RuleIndex=1")
-	}
-	if rule1.L7Match == nil || !reflect.DeepEqual(rule1.L7Match.Paths, []string{"/v1"}) {
-		t.Errorf("rule 1 L7Match = %+v, want Paths=[/v1]", rule1.L7Match)
+	if !reflect.DeepEqual(l7Rules[0].L7Match.Paths, []string{"/v1"}) {
+		t.Errorf("L7 rule L7Match = %+v, want Paths=[/v1]", l7Rules[0].L7Match)
 	}
 }
 

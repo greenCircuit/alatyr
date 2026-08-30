@@ -159,7 +159,7 @@ func expandEgressRules(networkPolicy *networkingv1.NetworkPolicy, index map[stri
 				Ports:       ports,
 				AllPorts:    len(ports) == 0,
 				AllL7:       true,
-				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex, CreatedAt: creationTime(networkPolicy)},
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, CreatedAt: creationTime(networkPolicy)},
 			})
 			continue
 		}
@@ -214,7 +214,7 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 				Ports:       ports,
 				AllPorts:    len(ports) == 0,
 				AllL7:       true,
-				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, RuleIndex: ruleIndex, CreatedAt: creationTime(networkPolicy)},
+				Contributor: models.PolicyRef{Source: sourceName, Name: networkPolicy.Name, Namespace: networkPolicy.Namespace, CreatedAt: creationTime(networkPolicy)},
 			})
 			continue
 		}
@@ -331,7 +331,6 @@ func expandPeerRules(networkPolicy *networkingv1.NetworkPolicy, ruleIndex int, d
 		Source:    sourceName,
 		Name:      networkPolicy.Name,
 		Namespace: networkPolicy.Namespace,
-		RuleIndex: ruleIndex,
 		CreatedAt: creationTime(networkPolicy),
 	}
 

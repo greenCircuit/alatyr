@@ -24,7 +24,12 @@ func GetIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshSour
 	// Mesh hygiene + transport-blocked issues were computed once during
 	// PopulateCache and parked on the cache — no re-walk here.
 	issues = append(issues, data.MeshIssues...)
-	return  issues
+	// Severity stamped once here, not per detector — detectors only decide
+	// what fires, the type→severity table decides how loud it is.
+	for index := range issues {
+		issues[index].Severity = models.SeverityForType(issues[index].Type)
+	}
+	return issues
 }
 
 

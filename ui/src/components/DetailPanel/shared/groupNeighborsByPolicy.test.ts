@@ -18,7 +18,7 @@ const ref = (peerId: string, rule: Partial<Rule> = {}): NeighborRef => ({
     ports:     [],
     direction: 'ingress',
     action:    0,
-    contributor: { source: 'k8s', namespace: 'observability', name: 'prometheus-ingress', ruleIndex: 0 },
+    contributor: { source: 'k8s', namespace: 'observability', name: 'prometheus-ingress' },
     ...rule,
   },
 });
@@ -39,7 +39,7 @@ describe('groupNeighborsByPolicy', () => {
   it('splits by policy, ports, and L7 so unlike rules never share a header', () => {
     const groups = groupNeighborsByPolicy([
       ref('a'),
-      ref('b', { contributor: { source: 'k8s', namespace: 'observability', name: 'other', ruleIndex: 0 } }),
+      ref('b', { contributor: { source: 'k8s', namespace: 'observability', name: 'other' } }),
       ref('c', { ports: [{ port: 9090, protocol: 'TCP' }] }),
       ref('d', { l7Match: { methods: ['GET'] } }),
     ]);
@@ -60,7 +60,7 @@ describe('distinctPeers', () => {
     // web-app admitted by two policies → two groups, one distinct peer.
     const groups = groupNeighborsByPolicy([
       ref('web-app'),
-      ref('web-app', { contributor: { source: 'k8s', namespace: 'observability', name: 'other', ruleIndex: 0 } }),
+      ref('web-app', { contributor: { source: 'k8s', namespace: 'observability', name: 'other' } }),
       ref('grafana'),
     ]);
     const peers = distinctPeers(groups, false);
@@ -75,7 +75,7 @@ describe('groupNodeRulesByPolicy', () => {
     ports:     [],
     direction: 'egress',
     action:    0,
-    contributor: { source: 'calico', namespace: '', name: 'egress-enroll-namespaces', ruleIndex: 0 },
+    contributor: { source: 'calico', namespace: '', name: 'egress-enroll-namespaces' },
     ...over,
   });
 

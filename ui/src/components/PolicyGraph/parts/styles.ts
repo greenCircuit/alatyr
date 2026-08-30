@@ -99,6 +99,26 @@ export const STYLE: any[] = [
     selector: 'node[wtype = "cronjob"]',
     style: { 'shape': 'hexagon' },
   },
+  // job: cronjob's hexagon, notched — same family, one-shot run
+  {
+    selector: 'node[wtype = "job"]',
+    style: { 'shape': 'concave-hexagon' },
+  },
+  // statefulset: cut corners read as "pinned identity", not interchangeable replicas
+  {
+    selector: 'node[wtype = "statefulset"]',
+    style: { 'shape': 'cut-rectangle' },
+  },
+  // daemonset: pentagon — one per node, distinct silhouette from deployment
+  {
+    selector: 'node[wtype = "daemonset"]',
+    style: { 'shape': 'pentagon' },
+  },
+  // bare pod (no controller): ellipse — nothing reschedules it
+  {
+    selector: 'node[wtype = "pod"]',
+    style: { 'shape': 'ellipse' },
+  },
   // CIDR peer node: synthetic node for a k8s NetworkPolicy ipBlock. Barrel
   // shape reads as a network segment / pipe — nothing else in the graph
   // uses it, so silhouette alone is enough to tell it from a workload at

@@ -6,7 +6,7 @@
 import type { CSSProperties } from 'react';
 import type { Issue, IssueType } from '../../../data/policies';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../../data/policies';
-import { TYPE_SEVERITY, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, issueTier } from '../../FilterPanel/parts/constants';
+import { issueSeverity, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES, issueTierOf } from '../../FilterPanel/parts/constants';
 import { CulpritActions } from '../../TablesView/CulpritActions';
 import { useGraphStore } from '../../../store/graphStore';
 import s from '../DetailPanel.module.css';
@@ -37,11 +37,13 @@ function IssueRow({ issue }: { issue: Issue }) {
 // One type bucket: header (sev dot + type label + count) + body.
 // Always expanded — collapse hides signal the operator came here for.
 function IssueGroup({ type, issues }: { type: IssueType; issues: Issue[] }) {
-  const color = SEVERITY_COLOR[TYPE_SEVERITY[type]];
+  // Same type per group, so the first finding's backend severity speaks for all.
+  const severity = issueSeverity(issues[0]);
+  const color = SEVERITY_COLOR[severity];
   return (
     <div className={s.issueGroup}>
       <div className={s.issueGroupSummary}>
-        <span className={s.sevDot} style={{ '--sev': color } as unknown as CSSProperties} aria-label={TYPE_SEVERITY[type]} />
+        <span className={s.sevDot} style={{ '--sev': color } as unknown as CSSProperties} aria-label={severity} />
         <span className={s.findingKind}>{ISSUE_TYPE_LABEL[type] ?? type}</span>
         <span className={s.issueGroupCount}>{issues.length}</span>
       </div>
@@ -103,7 +105,7 @@ function useScopedNodeIssues(nodeId: string): Issue[] {
 // counting them lights the workload verdict as "warnings" when nothing is
 // actually wrong. Blocking + warning only for the badge/count.
 export function useNodeIssueCount(nodeId: string): number {
-  return useScopedNodeIssues(nodeId).filter((issue) => issueTier(issue.type) !== 'info').length;
+  return useScopedNodeIssues(nodeId).filter((issue) => issueTierOf(issue) !== 'info').length;
 }
 
 export function NodeIssues({ nodeId }: { nodeId: string }) {

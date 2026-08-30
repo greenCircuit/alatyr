@@ -25,6 +25,7 @@ type DemoClient struct {
 	statefulSets          map[string][]*appsv1.StatefulSet
 	daemonSets            map[string][]*appsv1.DaemonSet
 	jobs                  map[string][]*batchv1.Job
+	cronJobs              map[string][]*batchv1.CronJob
 	policies              map[string][]*networkingv1.NetworkPolicy
 	authorizationPolicies map[string][]*istiosec.AuthorizationPolicy
 	peerAuthentications   map[string][]*istiosec.PeerAuthentication
@@ -39,6 +40,7 @@ func NewDemoClient(dataFS fs.FS, dir string) (*DemoClient, error) {
 		statefulSets:          map[string][]*appsv1.StatefulSet{},
 		daemonSets:            map[string][]*appsv1.DaemonSet{},
 		jobs:                  map[string][]*batchv1.Job{},
+		cronJobs:              map[string][]*batchv1.CronJob{},
 		policies:              map[string][]*networkingv1.NetworkPolicy{},
 		authorizationPolicies: map[string][]*istiosec.AuthorizationPolicy{},
 		peerAuthentications:   map[string][]*istiosec.PeerAuthentication{},
@@ -130,6 +132,16 @@ func (c *DemoClient) parseFile(data []byte) error {
 			}
 			c.jobs[job.Namespace] = append(c.jobs[job.Namespace], job)
 
+		case "CronJob":
+			cronJob := &batchv1.CronJob{}
+			if err := json.Unmarshal(jsonBytes, cronJob); err != nil {
+				return err
+			}
+			if cronJob.UID == "" {
+				cronJob.UID = types.UID("demo-cronjob-" + cronJob.Namespace + "-" + cronJob.Name)
+			}
+			c.cronJobs[cronJob.Namespace] = append(c.cronJobs[cronJob.Namespace], cronJob)
+
 		case "Pod":
 			var pod *corev1.Pod
 			if err := json.Unmarshal(jsonBytes, &pod); err != nil {
@@ -189,7 +201,7 @@ func (c *DemoClient) GetPods(ns string) ([]*corev1.Pod, error) {
 }
 
 func (c *DemoClient) GetCronJobs(ns string) ([]*batchv1.CronJob, error) {
-	return nil, nil
+	return c.cronJobs[ns], nil
 }
 
 func (c *DemoClient) GetJobs(ns string) ([]*batchv1.Job, error) {

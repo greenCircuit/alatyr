@@ -10,7 +10,7 @@ import { SEVERITY_COLOR } from '../../data/policies';
 import type { Issue, WorkloadNode } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import { CulpritActions } from './CulpritActions';
-import { TYPE_SEVERITY, ISSUE_TYPE_LABEL } from '../FilterPanel/parts/constants';
+import { issueSeverity, ISSUE_TYPE_LABEL } from '../FilterPanel/parts/constants';
 import { EngineBadge } from '../../data/engineIcons';
 import styles from './IssuesPopover.module.css';
 
@@ -114,7 +114,7 @@ export function IssuesPopover({ anchor, issues, onClose }: {
       </div>
       <div className={styles.list}>
         {issues.map((issue, index) => {
-          const severity = TYPE_SEVERITY[issue.type];
+          const severity = issueSeverity(issue);
           const isEdge = !!(issue.src && issue.dst);
           const primaryLabel = isEdge ? 'Open reachability' : 'Open workload';
           return (

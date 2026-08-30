@@ -8,7 +8,7 @@
 import { useGraphStore } from '../../store/graphStore';
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import type { Issue, WorkloadNode } from '../../data/policies';
-import { TYPE_SEVERITY, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from '../FilterPanel/parts/constants';
+import { issueSeverity, issueTierOf, ISSUE_TYPE_LABEL, ALL_ISSUE_TYPES } from '../FilterPanel/parts/constants';
 import { EngineBadge } from '../../data/engineIcons';
 import styles from './IssuesDrawer.module.css';
 
@@ -43,12 +43,11 @@ export default function IssuesDrawer() {
       if (typeDelta !== 0) return typeDelta;
       return endpointKey(left).localeCompare(endpointKey(right));
     });
-  const blocking = sortBucket(merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'high'));
-  const warnings = sortBucket(merged.filter((issue) => TYPE_SEVERITY[issue.type] === 'warning'));
-  const informational = sortBucket(merged.filter((issue) => {
-    const severity = TYPE_SEVERITY[issue.type];
-    return severity !== 'high' && severity !== 'warning';
-  }));
+  // Bucket by tier, not by a literal severity pair — 'critical'/'caution' must
+  // land in blocking/warning, not fall through to informational.
+  const blocking = sortBucket(merged.filter((issue) => issueTierOf(issue) === 'blocking'));
+  const warnings = sortBucket(merged.filter((issue) => issueTierOf(issue) === 'warning'));
+  const informational = sortBucket(merged.filter((issue) => issueTierOf(issue) === 'info'));
 
   // Edge-scoped issues (src+dst) open the reachability panel so the operator
   // sees which engine + rule broke the path. Node-scoped issues select the node.
@@ -61,7 +60,7 @@ export default function IssuesDrawer() {
   };
 
   const renderIssue = (issue: Issue, index: number) => {
-    const severity = TYPE_SEVERITY[issue.type];
+    const severity = issueSeverity(issue);
     const isEdge = !!(issue.src && issue.dst);
     const srcNs = issue.src?.namespace;
     const dstNs = issue.dst?.namespace;

@@ -100,7 +100,7 @@ func buildBucketCandidates(policies []globalPolicy, direction models.Direction, 
 	for _, bucket := range buckets {
 		var candidates []bucketCandidate
 		for _, gp := range policies {
-			for ruleIndex, rule := range rulesFor(gp, direction) {
+			for _, rule := range rulesFor(gp, direction) {
 				if !rule.covers(bucket.peer) {
 					continue
 				}
@@ -111,7 +111,6 @@ func buildBucketCandidates(policies []globalPolicy, direction models.Direction, 
 					break
 				}
 				ref := gp.ref
-				ref.RuleIndex = ruleIndex
 				candidates = append(candidates, bucketCandidate{
 					winner:        ref,
 					action:        rule.action,

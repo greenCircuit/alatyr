@@ -1,12 +1,13 @@
 // Label vocabularies + layout option list shared across FilterPanel dropdowns.
 // Kept here so dropdown bodies stay focused on form structure.
 
-import type { StatusKey, IssueType, Severity } from '../../../data/policies';
+import type { StatusKey, Issue, IssueType, Severity } from '../../../data/policies';
 import type { MeshFilterValue } from '../../../store/filters';
 
-// Single source of truth for issue-type → severity. Drives badge/accent color
-// and danger-first sort across every issue surface (table, popover, rollup,
-// drawer). Colors are always the same per type, so this lives in one place.
+// Fallback type → severity, mirroring backend models.SeverityByType. Live
+// issues carry their own severity on the wire — use issueSeverity() for those.
+// This table only covers type-only surfaces (filter lists, legends) that
+// render a type with no issue instance behind it.
 export const TYPE_SEVERITY: Record<IssueType, Severity> = {
   'policy conflict':        'high',
   'partial access':         'info',
@@ -19,7 +20,11 @@ export const TYPE_SEVERITY: Record<IssueType, Severity> = {
   // common wherever Calico global rules sit alongside per-ns ipBlock policies —
   // at 'high' it would drown the real deny-vs-allow conflicts.
   'cidr scope mismatch':    'warning',
+  'failed to fetch':        'high',
 };
+
+// Severity of one finding — backend value wins, table is the fallback.
+export const issueSeverity = (issue: Issue): Severity => issue.severity ?? TYPE_SEVERITY[issue.type];
 
 // Three-tier fold of the six-value severity scale — the triage granularity
 // issue chips and graph markers count at: Blocking (fires), Warning, Info
@@ -34,6 +39,9 @@ export const SEVERITY_TIER: Record<Severity, IssueTier> = {
 
 export const issueTier = (type: IssueType): IssueTier => SEVERITY_TIER[TYPE_SEVERITY[type]];
 
+// Tier of one finding — folds the backend severity, not the type table.
+export const issueTierOf = (issue: Issue): IssueTier => SEVERITY_TIER[issueSeverity(issue)];
+
 export const ISSUE_TYPE_LABEL: Record<IssueType, string> = {
   'no dns':                 'No DNS egress',
   'mesh policy':            'Mesh policy hygiene',
@@ -43,6 +51,7 @@ export const ISSUE_TYPE_LABEL: Record<IssueType, string> = {
   'mesh conflict':          'Mesh conflict',
   'node lockout':           'Node lockout',
   'cidr scope mismatch':    'CIDR scope mismatch',
+  'failed to fetch':        'Fetch failed (posture unknown)',
 };
 
 export const ALL_ISSUE_TYPES: IssueType[] = [
@@ -51,6 +60,7 @@ export const ALL_ISSUE_TYPES: IssueType[] = [
   'mesh transport blocked',
   'node lockout',
   'cidr scope mismatch',
+  'failed to fetch',
   'mesh policy',
   'no dns',
   'partial access',
@@ -86,15 +96,22 @@ export const ACTION_LABEL: Record<number, string> = { 0: 'Allow', 1: 'Deny' };
 
 // Togglable node types the backend actually emits. `namespace` toggles the
 // namespace-type nodes in filteredNodes (compound parent boxes in the graph
-// are derived from workload.namespace and unaffected). Service/headless/
-// external are defined in models/node.go but never produced yet.
-export const ALL_NODE_TYPES = ['deployment', 'cronjob', 'cidr', 'namespace'] as const;
+// are derived from workload.namespace and unaffected). `pod` = bare pod, no
+// controller node. `job` = standalone Job, not CronJob-spawned. Service/
+// headless/external are defined in models/node.go but never produced yet.
+export const ALL_NODE_TYPES = [
+  'deployment', 'statefulset', 'daemonset', 'cronjob', 'job', 'pod', 'cidr', 'namespace',
+] as const;
 
 export const NODE_TYPE_LABEL: Record<string, string> = {
-  deployment: 'Deployment',
-  cronjob:    'CronJob',
-  cidr:       'CIDR',
-  namespace:  'Namespace',
+  deployment:  'Deployment',
+  statefulset: 'StatefulSet',
+  daemonset:   'DaemonSet',
+  cronjob:     'CronJob',
+  job:         'Job',
+  pod:         'Pod',
+  cidr:        'CIDR',
+  namespace:   'Namespace',
 };
 
 export const DIRECTION_LABEL: Record<string, string> = { ingress: 'Ingress', egress: 'Egress' };

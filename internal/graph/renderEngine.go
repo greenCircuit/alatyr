@@ -72,9 +72,9 @@ func uniformRuleKey(rule models.Rule, membership nsMembership) (key, namespace, 
 		return "", "", "", ""
 	}
 	// peer|side|ns|direction|action|coverage|policy identity|ports|l7|selectors
-	key = fmt.Sprintf("%s|%s|%s|%s|%d|%s|%s/%s/%s/%d|%v|%t|%t|%v|%v|%v",
+	key = fmt.Sprintf("%s|%s|%s|%s|%d|%s|%s/%s/%s|%v|%t|%t|%v|%v|%v",
 		key, side, namespace, rule.Direction, rule.Action, rule.Coverage,
-		rule.Contributor.Source, rule.Contributor.Namespace, rule.Contributor.Name, rule.Contributor.RuleIndex,
+		rule.Contributor.Source, rule.Contributor.Namespace, rule.Contributor.Name,
 		rule.Ports, rule.AllPorts, rule.AllL7, rule.L7Match, rule.SrcSelector, rule.DstSelector)
 	return key, namespace, workloadID, side
 }

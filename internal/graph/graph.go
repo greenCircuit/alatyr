@@ -50,7 +50,7 @@ type NsResources struct {
       Namespace    *corev1.Namespace
       Pods         []*corev1.Pod
       CronJobs     []*batchv1.CronJob
-      Jobs         []*batchv1.Job // lookup only — Job nodes come from live pods, not from this list
+      Jobs         []*batchv1.Job // live pods, not from this list
       Deployments  []*appsv1.Deployment
       StatefulSets []*appsv1.StatefulSet
       DaemonSets   []*appsv1.DaemonSet
