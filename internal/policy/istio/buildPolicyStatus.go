@@ -1,9 +1,9 @@
 package istio
 
 import (
-	"graph/internal/models"
-	"graph/internal/policy"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
+	"alatyr/internal/utils"
 
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -259,7 +259,6 @@ func buildPolicyStatus(policies []*istiosec.AuthorizationPolicy) models.PolicySt
 
 	return status
 }
-
 
 // combinePolicySignals takes everything ALLOW policies granted minus everything
 // DENY policies block, returns the effective signals that survive. Caller

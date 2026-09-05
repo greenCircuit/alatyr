@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Tests for PolicyIssues — the whole-cluster conflict scan. A "policy conflict"

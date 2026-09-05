@@ -1,8 +1,8 @@
 package calico
 
 import (
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 )
 
 // resolvedEdge — winner of the first-match walk for one (workload, direction,

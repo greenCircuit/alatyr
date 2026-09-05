@@ -1,6 +1,6 @@
 package metrics
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // recordRulMetrics records rule-derived metrics in one pass over every
 // engine's AllowByNs + DenyByNs.

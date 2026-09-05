@@ -15,7 +15,7 @@ import {
   SEVERITY_TIERS,
 } from '../../store/clusterStats';
 import { mergeIssuesByPair, SEVERITY_COLOR } from '../../data/policies';
-import { issueTier } from '../FilterPanel/parts/constants';
+import { issueTierOf } from '../FilterPanel/parts/constants';
 import StatusRollup from '../TablesView/StatusRollup';
 import IssueRollup from '../TablesView/IssueRollup';
 import EngineRollup from '../TablesView/EngineRollup';

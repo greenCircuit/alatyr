@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Fixture endpoint shapes. Synthetic peers (CIDR, external) carry an empty

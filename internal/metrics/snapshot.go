@@ -3,7 +3,7 @@ package metrics
 import (
 	"time"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // RecordSnapshot rebuilds every gauge derived from a completed cache from

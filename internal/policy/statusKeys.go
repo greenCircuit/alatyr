@@ -1,6 +1,6 @@
 package policy
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // DeriveStatusKeys derives status badges from accumulated PolicyStatus signals.
 // Default derivation shared across L3/L4 selector-based policy engines

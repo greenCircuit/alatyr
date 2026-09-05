@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Membership: workload-level dataplane-mode label overrides ns label.
@@ -41,7 +41,6 @@ func (s *source) ResolveMtls(ctx context.Context, workload models.WorkloadNode, 
 	}
 	return resolveMtls(workload, nsPAs, rootPAs), nil
 }
-
 
 // CanReach denies when dst requires STRICT mTLS on the queried port and src
 // cannot speak mTLS. portLevelMtls override wins over the workload verdict;
@@ -242,8 +241,8 @@ func hboneIssue(workload models.WorkloadNode, entry hboneRuleEntry, direction mo
 	issue := models.Issue{
 		Type:    models.MeshTransportBlocked,
 		Message: fmt.Sprintf("Policy does not allow ztunnel HBONE port %d; ambient %s traffic is blocked", ZtunnelHBONEPort, sideLabel),
-		Engine: entry.engine,
-		Node:   &workload,
+		Engine:  entry.engine,
+		Node:    &workload,
 	}
 	culprit := []models.PolicyRef{entry.rule.Contributor}
 	if direction == models.DirectionIngress {

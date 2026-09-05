@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"graph/internal/k8s"
-	"graph/internal/models"
+	"alatyr/internal/k8s"
+	"alatyr/internal/models"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -58,7 +58,7 @@ func (s *source) getPolicies(namespaces []string) (map[string][]*networkingv1.Ne
 			policiesByNS[ns] = nsPolicies
 			mu.Unlock()
 
-		} (ns)
+		}(ns)
 	}
 	wg.Wait()
 
@@ -95,7 +95,6 @@ func (s *source) Evaluate(_ context.Context, namespaces []string, index map[stri
 		Nodes:          cidrNodes,
 	}, nil
 }
-
 
 func isCatchAll(matchLabels map[string]string, nExpressions int) bool {
 	return len(matchLabels) == 0 && nExpressions == 0

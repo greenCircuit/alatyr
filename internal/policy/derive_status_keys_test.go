@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Covers: new HasL7 → StatusL7Applied derivation branch added for istio L7.

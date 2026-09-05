@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"alatyr/internal/graph"
+
 	"github.com/labstack/echo/v4"
-	"graph/internal/graph"
 )
 
 // return full graph

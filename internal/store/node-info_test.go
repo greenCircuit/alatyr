@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // GetNodeData feeds the click-on-node detail panel: per-engine outbound rules

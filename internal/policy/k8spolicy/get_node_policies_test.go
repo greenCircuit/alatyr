@@ -3,7 +3,7 @@ package k8spolicy
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

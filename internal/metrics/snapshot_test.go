@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // snapshotFixtureCache assembles a cache that exercises every recordX branch
@@ -152,8 +152,8 @@ func TestRecordMesh_EnrollmentBreakdown(t *testing.T) {
 		MeshMetrics: models.MeshMetrics{NsPartial: 2},
 		MeshIssues: []models.Issue{
 			{Type: models.MeshTransportBlocked, Node: &shopEnrolled},
-			{Type: models.MeshTransportBlocked, Node: &shopEnrolled},          // dedup by ns key: two findings, one workload — count of findings is 2
-			{Type: models.PolicyConflicts, Node: &shopEnrolled},                // wrong type, must not count
+			{Type: models.MeshTransportBlocked, Node: &shopEnrolled}, // dedup by ns key: two findings, one workload — count of findings is 2
+			{Type: models.PolicyConflicts, Node: &shopEnrolled},      // wrong type, must not count
 		},
 	}
 	recorder := newTestRecorder(t)

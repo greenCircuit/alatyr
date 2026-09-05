@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // BuildMeshMembership resolves MeshMembership for every workload in the given

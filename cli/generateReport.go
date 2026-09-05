@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"graph/internal/graph"
-	"graph/internal/k8s"
-	"graph/internal/logging"
-	"graph/internal/models"
-	"graph/internal/store"
+	"alatyr/internal/graph"
+	"alatyr/internal/k8s"
+	"alatyr/internal/logging"
+	"alatyr/internal/models"
+	"alatyr/internal/store"
 )
 
 // globalEngine is the cluster-scoped engine. Coverage is reported twice — with
@@ -58,6 +58,7 @@ func makeReport(manifestDir string, logger *slog.Logger) (report, error) {
 		Issues:    store.GetIssues(ctx, cache, builder.MeshSource()),
 	}
 	out.Counts = countCoverage(cache, built.Nodes, manifests, &out)
+	out.InternetExposure = countInternetExposure(built.Nodes)
 	out.IssuesCount = countIssues(out.Issues)
 
 	// Same tally over the actionable subset — CI gates read this one, so info
@@ -118,6 +119,30 @@ func countCoverage(cache *models.Cache, nodes []models.WorkloadNode, manifests i
 			out.NoCoverageWithoutGlobals = append(out.NoCoverageWithoutGlobals, missingCoverage{Node: node})
 		}
 	}
+	return counts
+}
+
+// countInternetExposure tallies workloads whose effective status keys say they
+// can reach or be reached from the internet. Synthetic nodes are skipped — a
+// CIDR or namespace node is not a workload someone can go harden.
+func countInternetExposure(nodes []models.WorkloadNode) exposureCount {
+	counts := exposureCount{}
+	for _, node := range nodes {
+		if node.Type == models.NodeTypeNamespace || node.Type == models.NodeTypeCIDR || node.Type == models.NodeTypeExternal {
+			continue
+		}
+		for _, status := range node.Statuses {
+			switch status {
+			case models.StatusInternetFull:
+				counts.Full++
+			case models.StatusInternetIngress:
+				counts.Ingress++
+			case models.StatusInternetEgress:
+				counts.Egress++
+			}
+		}
+	}
+	counts.Total = counts.Full + counts.Ingress + counts.Egress
 	return counts
 }
 

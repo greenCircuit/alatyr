@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 
 	"github.com/labstack/echo/v4"
 )
@@ -12,9 +12,9 @@ import (
 // get what ns, polices are available on cluster without needing it graph object for it.
 // Allows viewing this right away without waiting for graph to come up
 type ClusterState struct {
-	AvailableNs    []string           `json:"availableNs"`
-	StatusKeys     []models.StatusKey `json:"statusKeys"`
-	PolicySources  []string           `json:"policySources"`
+	AvailableNs   []string           `json:"availableNs"`
+	StatusKeys    []models.StatusKey `json:"statusKeys"`
+	PolicySources []string           `json:"policySources"`
 }
 
 func (s *Server) handleClusterState(c echo.Context) error {

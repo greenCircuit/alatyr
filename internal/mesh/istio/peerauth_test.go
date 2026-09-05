@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istioapitype "istio.io/api/type/v1beta1"

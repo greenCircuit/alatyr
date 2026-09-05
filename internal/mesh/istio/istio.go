@@ -14,12 +14,11 @@ import (
 	//istioapi "istio.io/api/security/v1beta1"
 	//istiosec "istio.io/client-go/pkg/apis/security/v1"
 
-	"graph/internal/k8s"
-	//"graph/internal/models"
+	"alatyr/internal/k8s"
+	//"alatyr/internal/models"
 )
 
 const SourceName = "istio"
-
 
 // Label keys + sentinel values used to detect mesh membership and waypoint
 const (
@@ -31,30 +30,28 @@ const (
 	// DataplaneModeAmbient = workload participates in ambient mesh (ztunnel
 	// handles L4 + mTLS; optional waypoint for L7).
 	AmbientEnrollmentValue = "ambient"
-	AmbientSkipValue = "none"
+	AmbientSkipValue       = "none"
 
 	// LabelUseWaypoint binds a workload / ServiceAccount / namespace to a
 	// waypoint Gateway. Value is the waypoint name (or "<ns>/<name>" for
 	// cross-ns). Special value WaypointNone opts out at the label's scope.
-	WaypointLabelKey = "istio.io/use-waypoint"
+	WaypointLabelKey  = "istio.io/use-waypoint"
 	WaypointSkipValue = "none"
 
-	RootNamespace = "istio-system"
+	RootNamespace    = "istio-system"
 	IngressNamespace = "istio-ingress"
 	ZtunnelHBONEPort = 15008
 
 	// istio components labels
-	istioSelector = "app"  // key for finding all istio resources
-	gatewayVal = "istio-ingress"
-	istiodVal = "istiod"
-	ztunelVal = "ztunnel"
+	istioSelector = "app" // key for finding all istio resources
+	gatewayVal    = "istio-ingress"
+	istiodVal     = "istiod"
+	ztunelVal     = "ztunnel"
 
 	// istio cni selectors
 	istioCniKey = "k8s-app"
 	istioCniVal = "istio-cni"
 )
-
-
 
 type source struct {
 	client k8s.KubernetesClient

@@ -17,7 +17,7 @@ COPY . .
 COPY --from=ui-builder /ui/dist ./ui/dist
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -tags embed -trimpath -ldflags="-s -w" -o /netpol-viz .
+    go build -tags embed -trimpath -ldflags="-s -w" -o /alatyr .
 
 # ── Stage 3: Final image ──────────────────────────────────────────────────────
 FROM alpine:3.22
@@ -25,10 +25,10 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata && \
     addgroup -S app && adduser -S -G app app
 
-COPY --from=go-builder --chown=app:app /netpol-viz /usr/local/bin/netpol-viz
+COPY --from=go-builder --chown=app:app /alatyr /usr/local/bin/alatyr
 
 USER app
 
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/local/bin/netpol-viz"]
+ENTRYPOINT ["/usr/local/bin/alatyr"]

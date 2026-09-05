@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"graph/internal/thirdparty/calicoselector/parser"
+	"alatyr/internal/thirdparty/calicoselector/parser"
 )
 
 // NoMatch is a pre-calculated selector that always evaluates to false.

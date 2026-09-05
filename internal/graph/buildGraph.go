@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // BuildGraph assembles the final Graph from a populated Cache.

@@ -21,8 +21,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"graph/internal/thirdparty/calicoselector/uniquestr"
-	"graph/internal/thirdparty/calicoselector/tokenizer"
+	"alatyr/internal/thirdparty/calicoselector/tokenizer"
+	"alatyr/internal/thirdparty/calicoselector/uniquestr"
 )
 
 const parserDebug = false

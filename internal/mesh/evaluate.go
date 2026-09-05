@@ -9,7 +9,7 @@ package mesh
 import (
 	"context"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // MeshSource is implemented by each mesh provider. Today only istio is wired.
@@ -40,4 +40,3 @@ type MeshSource interface {
 
 	Name() string
 }
-

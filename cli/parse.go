@@ -30,9 +30,13 @@ func Run(options Options) error {
 		if err != nil {
 			return fmt.Errorf("create %s: %w", options.JSONPath, err)
 		}
-		defer file.Close()
 		if err := writeJSON(file, out); err != nil {
+			_ = file.Close()
 			return err
+		}
+		// Close is checked — a short write on the report file surfaces here.
+		if err := file.Close(); err != nil {
+			return fmt.Errorf("close %s: %w", options.JSONPath, err)
 		}
 	}
 

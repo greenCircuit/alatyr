@@ -1,4 +1,5 @@
 /graph
+/alatyr
 ui/dist/*
 !ui/dist/.gitkeep
 

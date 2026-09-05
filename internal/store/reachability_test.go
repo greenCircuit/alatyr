@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"graph/internal/config"
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/config"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 )
 
 // Focused tests on IsNodesReachable against the reason-enum model. "Locked" /

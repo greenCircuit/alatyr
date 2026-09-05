@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"graph/internal/mesh"
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/mesh"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 )
 
 // cidrNodeCoversPeer reports whether a rule whose peer endpoint is the synthetic
@@ -64,7 +64,6 @@ func policiesAllowingPeerSpecifically(
 	}
 	return allowing
 }
-
 
 // collectToSide sorts the src's egress rules (its pod bucket + ns-node bucket)
 // into the DirectionVerdict slices by whether each rule targets the dst peer,
@@ -326,17 +325,17 @@ func PoliciesCanReach(ctx context.Context, data *models.Cache, srcNodeId, srcNod
 		}
 
 		switch {
-			case egressEval.Reason == ReasonNoOpinion && ingressEval.Reason == ReasonNoOpinion:
-				engineVerdict.Status = "not enforced"
-			case egressOK && ingressOK:
-				engineVerdict.Status = "allow"
-			default:
-				engineVerdict.Status = "deny"
-				if blockedBy == "" {
-					blockedBy = engineName
-				} else {
-					blockedBy = blockedBy + ", " + engineName
-				}
+		case egressEval.Reason == ReasonNoOpinion && ingressEval.Reason == ReasonNoOpinion:
+			engineVerdict.Status = "not enforced"
+		case egressOK && ingressOK:
+			engineVerdict.Status = "allow"
+		default:
+			engineVerdict.Status = "deny"
+			if blockedBy == "" {
+				blockedBy = engineName
+			} else {
+				blockedBy = blockedBy + ", " + engineName
+			}
 		}
 		result.Engines[engineName] = engineVerdict
 	}
@@ -351,7 +350,6 @@ func PoliciesCanReach(ctx context.Context, data *models.Cache, srcNodeId, srcNod
 	}
 	return result
 }
-
 
 // IsEndpointsReachable is the endpoint-facing answer: policy-layer verdict
 // fused with the mesh transport verdict. Mesh runs only for workload

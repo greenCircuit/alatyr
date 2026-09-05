@@ -3,7 +3,7 @@ package graph
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Covers: action splitting, L7 fold + dedup, edge level inference. One

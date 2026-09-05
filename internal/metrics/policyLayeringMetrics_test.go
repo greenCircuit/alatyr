@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // TestRecordPolicyLayering_NoLayeringSilentlyDropped mirrors the equivalent

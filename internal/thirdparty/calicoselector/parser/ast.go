@@ -24,8 +24,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"graph/internal/thirdparty/calicoselector/uniquestr"
-	"graph/internal/thirdparty/calicoselector/hash"
+	"alatyr/internal/thirdparty/calicoselector/hash"
+	"alatyr/internal/thirdparty/calicoselector/uniquestr"
 )
 
 // Labels defines the interface of labels that can be used by selector

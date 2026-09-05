@@ -3,8 +3,9 @@ package policy
 import (
 	"testing"
 
-	"graph/internal/config"
-	"graph/internal/models"
+	"alatyr/internal/config"
+	"alatyr/internal/models"
+
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
@@ -105,12 +106,12 @@ func TestIsIpBlockLanAccess_ExcludesClusterAndApiServer(t *testing.T) {
 		cidr string
 		want bool
 	}{
-		{"192.168.5.0/24", true},  // generic LAN
-		{"172.16.0.0/12", true},   // RFC1918
-		{"10.42.0.0/24", false},   // pod CIDR
-		{"10.43.0.0/24", false},   // svc CIDR
+		{"192.168.5.0/24", true},   // generic LAN
+		{"172.16.0.0/12", true},    // RFC1918
+		{"10.42.0.0/24", false},    // pod CIDR
+		{"10.43.0.0/24", false},    // svc CIDR
 		{"192.168.1.10/32", false}, // api server
-		{"0.0.0.0/0", false},      // internet
+		{"0.0.0.0/0", false},       // internet
 	}
 	for _, tc := range cases {
 		if got := IsIpBlockLanAccess(block(tc.cidr)); got != tc.want {

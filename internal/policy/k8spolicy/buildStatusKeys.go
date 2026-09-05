@@ -1,13 +1,12 @@
 package k8spolicy
 
 import (
-	"graph/internal/models"
-	"graph/internal/policy"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
+	"alatyr/internal/utils"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
-
 
 // generatePolicyStatusAssignment returns the per-workload PolicyStatus and
 // per-workload list of selecting policies (NodePolicies). Both keyed by
@@ -95,8 +94,6 @@ func getNodePolicies(node models.WorkloadNode, policies []*networkingv1.NetworkP
 	return matches
 }
 
-
-
 // buildPolicyStatus accumulates raw policy signals for a single workload from
 // the NetworkPolicies that select it. Returned PolicyStatus is consumed by
 // status-key derivation. Assumes every namespace has the auto-injected
@@ -166,4 +163,3 @@ func buildPolicyStatus(policies []*networkingv1.NetworkPolicy) models.PolicyStat
 	}
 	return policyStatus
 }
-

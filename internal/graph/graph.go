@@ -1,25 +1,25 @@
 package graph
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	appsv1 "k8s.io/api/apps/v1"
 )
 
 type PolicyEdge struct {
 	ID           string            `json:"id"`
-	Source       string            `json:"source"`       // src workload/ns node id
-	Target       string            `json:"target"`       // dst workload/ns node id
+	Source       string            `json:"source"` // src workload/ns node id
+	Target       string            `json:"target"` // dst workload/ns node id
 	Direction    models.Direction  `json:"direction"`
 	PolicyName   string            `json:"policyName"`
 	Namespace    string            `json:"namespace"`
 	Level        models.EdgeLevel  `json:"level"`
 	Ports        []models.Port     `json:"ports,omitempty"`
-	PolicySource string            `json:"policySource"` // engine that produced this edge (e.g. "k8s", "istio")
+	PolicySource string            `json:"policySource"`        // engine that produced this edge (e.g. "k8s", "istio")
 	L7Matches    []models.L7Match  `json:"l7Matches,omitempty"` // accumulated L7 blocks; empty for pure-L3 edges
-	Action       models.RuleAction `json:"action"`       // 0 = Allow, 1 = Deny
+	Action       models.RuleAction `json:"action"`              // 0 = Allow, 1 = Deny
 	Coverage     models.Coverage   `json:"coverage,omitempty"`
 	// AggregatedFrom > 0 → this arrow stands in for that many per-workload rules
 	// folded into the namespace node (a cluster-wide policy's fan-out). Level
@@ -47,11 +47,11 @@ type Graph struct {
 
 // NsResources to build index for one on
 type NsResources struct {
-      Namespace    *corev1.Namespace
-      Pods         []*corev1.Pod
-      CronJobs     []*batchv1.CronJob
-      Jobs         []*batchv1.Job // live pods, not from this list
-      Deployments  []*appsv1.Deployment
-      StatefulSets []*appsv1.StatefulSet
-      DaemonSets   []*appsv1.DaemonSet
+	Namespace    *corev1.Namespace
+	Pods         []*corev1.Pod
+	CronJobs     []*batchv1.CronJob
+	Jobs         []*batchv1.Job // live pods, not from this list
+	Deployments  []*appsv1.Deployment
+	StatefulSets []*appsv1.StatefulSet
+	DaemonSets   []*appsv1.DaemonSet
 }

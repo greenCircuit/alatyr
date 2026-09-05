@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // meshConflictIssues extracts only the MeshConflicts entries so a test can
