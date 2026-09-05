@@ -125,7 +125,7 @@ build-binary:
         echo "Default branch + release-worthy commit — also publishing as 'latest'"
         curl --fail --silent --show-error \
           --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-          --upload-file graph \
+          --upload-file alatyr \
           "${UPLOAD_BASE}/latest/graph"
       fi
   artifacts:
