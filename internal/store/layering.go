@@ -8,7 +8,7 @@ package store
 import (
 	"context"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // candidatePair is one pod-granular path hiding under an ns-level block — a

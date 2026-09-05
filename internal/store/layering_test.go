@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Tests for layering classification — the ns-vs-pod granularity split. An

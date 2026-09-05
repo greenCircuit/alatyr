@@ -7,15 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"graph/internal/graph"
-	"graph/internal/k8s"
-	"graph/internal/mesh"
-	meshistio "graph/internal/mesh/istio"
-	"graph/internal/models"
-	"graph/internal/policy"
-	"graph/internal/policy/calico"
-	"graph/internal/policy/istio"
-	"graph/internal/policy/k8spolicy"
+	"alatyr/internal/graph"
+	"alatyr/internal/k8s"
+	"alatyr/internal/mesh"
+	meshistio "alatyr/internal/mesh/istio"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
+	"alatyr/internal/policy/calico"
+	"alatyr/internal/policy/istio"
+	"alatyr/internal/policy/k8spolicy"
 )
 
 // Builder owns the k8s client and the registered engine list + mesh source.
@@ -25,10 +25,10 @@ import (
 // and multi-mesh in one cluster is a construction that doesn't exist in prod.
 // May be nil if no mesh provider is configured.
 type Builder struct {
-	client      k8s.KubernetesClient
-	sources     []policy.PolicySource
-	meshSource  mesh.MeshSource
-	log         *slog.Logger
+	client     k8s.KubernetesClient
+	sources    []policy.PolicySource
+	meshSource mesh.MeshSource
+	log        *slog.Logger
 }
 
 func NewBuilder(client k8s.KubernetesClient, logger *slog.Logger) *Builder {
@@ -359,5 +359,3 @@ func stampStatuses(cache *models.Cache) {
 	// callers (node-info, layering) see the same Statuses metrics do.
 	cache.RebuildWorkloadIndex()
 }
-
-

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istioapitype "istio.io/api/type/v1beta1"
@@ -87,7 +87,7 @@ func TestBuildPolicyStatus_DenyAllShortCircuitKeepsL7(t *testing.T) {
 		nil,
 		[]*istioapi.Rule{
 			{To: []*istioapi.Rule_To{{Operation: &istioapi.Operation{Paths: []string{"/admin"}}}}}, // L7 rule processed first
-			{From: nil},                                                                            // wildcard source → short-circuit fires
+			{From: nil}, // wildcard source → short-circuit fires
 		},
 	)
 

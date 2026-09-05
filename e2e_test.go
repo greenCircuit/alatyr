@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // End-to-end coverage for the -f manifest path: the binary must produce a

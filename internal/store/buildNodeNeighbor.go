@@ -1,7 +1,7 @@
 package store
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // BuildNodeNeighbor returns a node's policy neighbors per engine: workloads the

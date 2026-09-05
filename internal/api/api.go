@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"sync"
 
+	"alatyr/internal/k8s"
+	"alatyr/internal/metrics"
+	"alatyr/internal/models"
+	"alatyr/internal/store"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"graph/internal/k8s"
-	"graph/internal/metrics"
-	"graph/internal/models"
-	"graph/internal/store"
 )
 
 type Server struct {

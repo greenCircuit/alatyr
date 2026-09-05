@@ -3,9 +3,10 @@ package k8spolicy
 import (
 	"time"
 
-	"graph/internal/models"
-	"graph/internal/policy"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
+	"alatyr/internal/utils"
+
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
@@ -25,7 +26,7 @@ func creationTime(np *networkingv1.NetworkPolicy) *time.Time {
 // one ns's rules without touching others. Third return is CIDR peer nodes
 // synthesized inline by expandPeerRules, deduped by ID across all policies.
 func buildAllowRulesByNs(index map[string]models.NSIndex, policiesByNS map[string][]*networkingv1.NetworkPolicy) (map[string][]models.Rule, map[string]models.NodeRules, map[string]models.WorkloadNode) {
-	policyMap := map[string]*models.NodeRules{}  // have pointer so don't reconstruct map every time update it
+	policyMap := map[string]*models.NodeRules{} // have pointer so don't reconstruct map every time update it
 	result := map[string][]models.Rule{}
 	cidrNodes := map[string]models.WorkloadNode{}
 	for ns, policies := range policiesByNS {
@@ -238,7 +239,6 @@ func expandIngressRules(networkPolicy *networkingv1.NetworkPolicy, index map[str
 	}
 	return out, cidrNodes
 }
-
 
 // expandPeerRules produces one rule per (peer-match) and, when the peer is an
 // ipBlock, the synthetic WorkloadNode(s) the rules point at. IDs for CIDR

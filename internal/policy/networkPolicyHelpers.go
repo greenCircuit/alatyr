@@ -3,8 +3,8 @@ package policy
 import (
 	"net"
 
-	"graph/internal/config"
-	"graph/internal/models"
+	"alatyr/internal/config"
+	"alatyr/internal/models"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )
@@ -82,7 +82,7 @@ func CidrContains(outerCIDR, innerCIDR string) bool {
 // still counts as covering a pod CIDR of 10.244.0.0/16.
 func CidrType(compareCIDR string) models.CidrType {
 	cfg := config.Get()
-	switch{
+	switch {
 	case CidrContains(compareCIDR, "0.0.0.0/0"):
 		return models.CIDRWan
 	case CidrContains(compareCIDR, cfg.PodCIDR):

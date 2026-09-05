@@ -3,7 +3,7 @@ package istio
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // testDstNs is the ambient-enrolled namespace every test dst lives in, so the
@@ -130,7 +130,7 @@ func allowRuleWithPolicy(direction models.Direction, dstID string, ports []int, 
 // Non-ambient workload: ValidateExternalRules has no opinion.
 func TestValidateExternalRules_NotInMesh(t *testing.T) {
 	membership := &models.MeshMembership{InMesh: false}
-	errors := ValidateExternalRules(testWorkload(), meshCache(),membership, policies(allowRule(models.DirectionEgress, "dst1", []int{8080})))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), membership, policies(allowRule(models.DirectionEgress, "dst1", []int{8080})))
 	if len(errors) != 0 {
 		t.Fatalf("expected no errors for non-mesh workload, got %v", errors)
 	}
@@ -138,7 +138,7 @@ func TestValidateExternalRules_NotInMesh(t *testing.T) {
 
 // Egress rule restricting to a non-HBONE port → flagged with the ztunnel port.
 func TestValidateExternalRules_EgressMissingHBONE(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{8080})))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{8080})))
 	if len(errors) == 0 {
 		t.Fatal("expected an egress error, got none")
 	}
@@ -149,7 +149,7 @@ func TestValidateExternalRules_EgressMissingHBONE(t *testing.T) {
 
 // Ingress rule restricting to a non-HBONE port → flagged on the ingress side.
 func TestValidateExternalRules_IngressMissingHBONE(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(allowRule(models.DirectionIngress, "dst1", []int{8080})))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(allowRule(models.DirectionIngress, "dst1", []int{8080})))
 	if !hasIssue(issueMessages(errors), "ingress") || !hasIssue(issueMessages(errors), "15008") {
 		t.Fatalf("error should mention ingress + 15008: %v", errors)
 	}
@@ -157,7 +157,7 @@ func TestValidateExternalRules_IngressMissingHBONE(t *testing.T) {
 
 // Port 0 = all ports open → ztunnel HBONE port is covered, no error.
 func TestValidateExternalRules_PortZeroAllowsAll(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{})))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{})))
 	if len(errors) != 0 {
 		t.Fatalf("port 0 opens all ports; expected no error, got %v", errors)
 	}
@@ -165,7 +165,7 @@ func TestValidateExternalRules_PortZeroAllowsAll(t *testing.T) {
 
 // A rule explicitly allowing the HBONE port → no error.
 func TestValidateExternalRules_HBONEPortAllowed(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{ZtunnelHBONEPort})))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(allowRule(models.DirectionEgress, "dst1", []int{ZtunnelHBONEPort})))
 	if len(errors) != 0 {
 		t.Fatalf("HBONE port allowed; expected no error, got %v", errors)
 	}
@@ -173,7 +173,7 @@ func TestValidateExternalRules_HBONEPortAllowed(t *testing.T) {
 
 // Ingress rule listing both 8080 and HBONE → no error (HBONE covered within the rule).
 func TestValidateExternalRules_MultiplePortsIngress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionIngress, "dst1", []int{8080, ZtunnelHBONEPort})),
 	)
 	if len(errors) != 0 {
@@ -183,7 +183,7 @@ func TestValidateExternalRules_MultiplePortsIngress(t *testing.T) {
 
 // Egress rule listing both 8080 and HBONE → no error.
 func TestValidateExternalRules_MultiplePortsEgress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionEgress, "dst1", []int{8080, ZtunnelHBONEPort})),
 	)
 	if len(errors) != 0 {
@@ -193,7 +193,7 @@ func TestValidateExternalRules_MultiplePortsEgress(t *testing.T) {
 
 // Same policy, both directions, HBONE present on each → no error.
 func TestValidateExternalRules_MultiplePortsMixedPass1(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(
 			allowRule(models.DirectionEgress, "dst1", []int{8080, ZtunnelHBONEPort}),
 			allowRule(models.DirectionIngress, "dst1", []int{ZtunnelHBONEPort}),
@@ -206,7 +206,7 @@ func TestValidateExternalRules_MultiplePortsMixedPass1(t *testing.T) {
 
 // Egress missing HBONE, ingress has HBONE → exactly 1 error (egress only).
 func TestValidateExternalRules_MultiplePortsMixedPass2(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(
 			allowRule(models.DirectionEgress, "dst1", []int{8080}),
 			allowRule(models.DirectionIngress, "dst1", []int{ZtunnelHBONEPort, 8080, 8443}),
@@ -219,7 +219,7 @@ func TestValidateExternalRules_MultiplePortsMixedPass2(t *testing.T) {
 
 // Single egress rule listing many ports including HBONE → no error.
 func TestValidateExternalRules_MultipleEgress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionEgress, "dst1", []int{8080, ZtunnelHBONEPort, 8443})),
 	)
 	if len(errors) != 0 {
@@ -229,7 +229,7 @@ func TestValidateExternalRules_MultipleEgress(t *testing.T) {
 
 // Single ingress rule listing many ports including HBONE → no error.
 func TestValidateExternalRules_MultipleIngress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionIngress, "dst1", []int{8080, ZtunnelHBONEPort, 8443})),
 	)
 	if len(errors) != 0 {
@@ -239,7 +239,7 @@ func TestValidateExternalRules_MultipleIngress(t *testing.T) {
 
 // Single ingress rule, no HBONE in port list → exactly 1 error.
 func TestValidateExternalRules_DedupErrorsIngress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionIngress, "dst1", []int{8080, 8443})),
 	)
 	if len(errors) != 1 {
@@ -249,7 +249,7 @@ func TestValidateExternalRules_DedupErrorsIngress(t *testing.T) {
 
 // Single egress rule, no HBONE in port list → exactly 1 error.
 func TestValidateExternalRules_DedupErrorsEgress(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRule(models.DirectionEgress, "dst1", []int{8080, 8443})),
 	)
 	if len(errors) != 1 {
@@ -260,7 +260,7 @@ func TestValidateExternalRules_DedupErrorsEgress(t *testing.T) {
 // Two ingress rules to different dsts, both missing HBONE → 2 errors.
 // Guards against bucket collapse across destinations.
 func TestValidateExternalRules_MultipleDestinations(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(
 			allowRule(models.DirectionIngress, "dst1", []int{8080}),
 			allowRule(models.DirectionIngress, "dst2", []int{8080}),
@@ -274,7 +274,7 @@ func TestValidateExternalRules_MultipleDestinations(t *testing.T) {
 // Two ingress rules from different policies, same dst, both missing HBONE → 2 errors.
 // Guards against collapse by dst alone (would lose per-policy attribution).
 func TestValidateExternalRules_MultiplePoliciesSameDst(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(
 			allowRuleWithPolicy(models.DirectionIngress, "dst1", []int{8080}, "k8s", "np-a", "ns-a"),
 			allowRuleWithPolicy(models.DirectionIngress, "dst1", []int{8080}, "k8s", "np-b", "ns-a"),
@@ -299,7 +299,7 @@ func TestValidateExternalRules_MultipleEngines(t *testing.T) {
 			allowRuleWithPolicy(models.DirectionIngress, "dst1", []int{8080}, "istio", "ap-istio", "ns-a"),
 		}},
 	}
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), nodePolicies)
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), nodePolicies)
 	if len(errors) != 2 {
 		t.Fatalf("expected 2 errors (one per engine), got %v", errors)
 	}
@@ -312,7 +312,7 @@ func TestValidateExternalRules_MultipleEngines(t *testing.T) {
 // on the side matching the rule's direction; message only keeps direction + HBONE
 // port. Guards against field swaps and wrong-side culprit stamping.
 func TestValidateExternalRules_ErrorAttribution(t *testing.T) {
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(allowRuleWithPolicy(models.DirectionEgress, "dst1", []int{8080}, "k8s", "np-attr", "ns-attr")),
 	)
 	if len(errors) != 1 {
@@ -362,7 +362,7 @@ func TestValidateExternalRules_OutOfMeshPeerNotFlagged(t *testing.T) {
 			} else {
 				rule.DstNamespace = tc.peerNs
 			}
-			errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(rule))
+			errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(rule))
 			if len(errors) != 0 {
 				t.Fatalf("out-of-mesh peer must not be flagged, got %v", errors)
 			}
@@ -375,7 +375,7 @@ func TestValidateExternalRules_OutOfMeshPeerNotFlagged(t *testing.T) {
 func TestValidateExternalRules_SystemNsDstFlagged(t *testing.T) {
 	rule := allowRule(models.DirectionEgress, "dst-root", []int{8080})
 	rule.DstNamespace = RootNamespace
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(), policies(rule))
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(), policies(rule))
 	if !hasIssue(issueMessages(errors), "egress") || !hasIssue(issueMessages(errors), "15008") {
 		t.Fatalf("system-ns dst missing HBONE should be flagged: %v", errors)
 	}
@@ -387,7 +387,7 @@ func TestValidateExternalRules_SystemNsDstFlagged(t *testing.T) {
 func TestValidateExternalRules_OnlyInMeshDstFlagged(t *testing.T) {
 	external := allowRule(models.DirectionEgress, "0.0.0.0/0", []int{443})
 	plain := allowRule(models.DirectionEgress, "dst-plain", []int{8080})
-	errors := ValidateExternalRules(testWorkload(), meshCache(),ambientMembership(),
+	errors := ValidateExternalRules(testWorkload(), meshCache(), ambientMembership(),
 		policies(
 			allowRule(models.DirectionEgress, "dst1", []int{8080}), // in mesh, no HBONE → flagged
 			external,

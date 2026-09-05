@@ -1,7 +1,7 @@
 package api
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 	"net/http"
 
 	"github.com/labstack/echo/v4"

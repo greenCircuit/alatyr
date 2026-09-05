@@ -1,6 +1,6 @@
 package metrics
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // Workload-derived metrics live here: the per-namespace census
 // (alatyr_workloads), status + exposure breakdowns, and every coverage gauge.

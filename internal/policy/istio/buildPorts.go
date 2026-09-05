@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // convertPorts converts Istio Operation.Ports (string slice, e.g. "8080")

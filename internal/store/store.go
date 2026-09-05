@@ -1,13 +1,13 @@
 package store
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // structs to figure out if 2 nodes have can talk to each other
 type ReachabilityResult struct {
-	Verdict string                            `json:"verdict"` // "allow" | "deny" | "partial"
-	Engines map[string]EngineVerdict          `json:"engines"` // "k8s" -> ..., "istio" -> ...
+	Verdict string                            `json:"verdict"`           // "allow" | "deny" | "partial"
+	Engines map[string]EngineVerdict          `json:"engines"`           // "k8s" -> ..., "istio" -> ...
 	Mesh    map[string]models.MeshVerdict     `json:"mesh,omitempty"`    // per mesh source — cross-node verdict
 	SrcMesh map[string]*models.MeshMembership `json:"srcMesh,omitempty"` // src workload's mesh state per source
 	DstMesh map[string]*models.MeshMembership `json:"dstMesh,omitempty"` // dst workload's mesh state per source
@@ -24,19 +24,19 @@ type EngineVerdict struct {
 }
 
 type DirectionVerdict struct {
-	DenyAllMatches 		[]models.NodeRule `json:"denyAllMatches,omitempty"`
-	OtherAllowMatches   []models.NodeRule `json:"allowOtherMatches,omitempty"`
-	AllowMatches   		[]models.NodeRule `json:"allowMatches,omitempty"`
-	DenyMatches    		[]models.NodeRule `json:"denyMatches,omitempty"`
+	DenyAllMatches    []models.NodeRule `json:"denyAllMatches,omitempty"`
+	OtherAllowMatches []models.NodeRule `json:"allowOtherMatches,omitempty"`
+	AllowMatches      []models.NodeRule `json:"allowMatches,omitempty"`
+	DenyMatches       []models.NodeRule `json:"denyMatches,omitempty"`
 	// ipBlock.except carve-outs. Kept out of DenyMatches so the reason and the
 	// remediation don't claim a deny object exists, but ranked above AllowMatches
 	// so the covering 0.0.0.0/0 allow can't win the peer back.
-	CarveOutMatches		[]models.NodeRule `json:"carveOutMatches,omitempty"`
-	Reason         		DirectionReason   `json:"reason"`
-	Culprits            []models.PolicyRef `json:"culprits,omitempty"` // what polices broke connection
-	Ports 				[]models.Port	  `json:"ports,omitempty"`
-	AllPorts			bool			  `json:"allPorts,omitempty"`
-}                                                                                                     
+	CarveOutMatches []models.NodeRule  `json:"carveOutMatches,omitempty"`
+	Reason          DirectionReason    `json:"reason"`
+	Culprits        []models.PolicyRef `json:"culprits,omitempty"` // what polices broke connection
+	Ports           []models.Port      `json:"ports,omitempty"`
+	AllPorts        bool               `json:"allPorts,omitempty"`
+}
 
 type NeighborRef struct {
 	Rule     models.Rule
@@ -44,8 +44,8 @@ type NeighborRef struct {
 }
 
 type NodeNeighbors struct {
-	In 		[]NeighborRef
-	Out		[]NeighborRef
+	In  []NeighborRef
+	Out []NeighborRef
 }
 
 // Canonical definitions live in models (models/reachability.go) so the Issue

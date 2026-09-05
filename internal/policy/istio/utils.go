@@ -1,7 +1,7 @@
 package istio
-import (
 
-	"graph/internal/models"
+import (
+	"alatyr/internal/models"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istioapitype "istio.io/api/type/v1beta1"

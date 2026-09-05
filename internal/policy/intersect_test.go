@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // Empty input → zero-value PolicyStatus.

@@ -1,13 +1,13 @@
 package calico
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // globalPolicy — normalized projectcalico.org/v3 GlobalNetworkPolicy. CRD
 // decoded into this shape once at the fetch boundary so resolve/status walks
 // never touch vendored types. selectorMatch/nsSelectorMatch parsed once (memo).
 type globalPolicy struct {
-	name  string
-	order float64 // math.MaxFloat64 when Spec.Order unset (sorts last)
+	name        string
+	order       float64 // math.MaxFloat64 when Spec.Order unset (sorts last)
 	tier        string
 	ingress     []calicoRule
 	egress      []calicoRule

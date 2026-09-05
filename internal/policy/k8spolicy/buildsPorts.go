@@ -1,10 +1,10 @@
 package k8spolicy
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 
-	"k8s.io/apimachinery/pkg/util/intstr"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // convertPorts translates rule-level NetworkPolicyPort entries into models.Port.

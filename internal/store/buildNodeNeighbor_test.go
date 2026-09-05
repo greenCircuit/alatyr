@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // BuildNodeNeighbor feeds the click-on-node detail panel: per-engine In/Out
@@ -23,9 +23,9 @@ func TestBuildNodeNeighbor_CrossNsBucketsInboundOutbound(t *testing.T) {
 		dstNs: {
 			{SrcID: srcID, DstID: dstID, Direction: models.DirectionEgress, Ports: []models.Port{{Port: 80, Protocol: "TCP"}}},  // Out, resolved
 			{SrcID: srcID, DstID: dstID, Direction: models.DirectionEgress, Ports: []models.Port{{Port: 443, Protocol: "TCP"}}}, // Out, SAME pair — no dedup
-			{SrcID: dstID, DstID: srcID, Direction: models.DirectionIngress},                                                     // In, resolved peer
-			{SrcID: srcID, DstID: srcID, Direction: models.DirectionEgress},                                                      // self-loop — skipped
-			{SrcID: srcID, DstID: cidrPeer, Direction: models.DirectionEgress},                                                   // Out, unresolved external
+			{SrcID: dstID, DstID: srcID, Direction: models.DirectionIngress},                                                    // In, resolved peer
+			{SrcID: srcID, DstID: srcID, Direction: models.DirectionEgress},                                                     // self-loop — skipped
+			{SrcID: srcID, DstID: cidrPeer, Direction: models.DirectionEgress},                                                  // Out, unresolved external
 		},
 	}
 	deny := map[string][]models.Rule{

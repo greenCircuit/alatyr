@@ -1,10 +1,9 @@
 package calico
 
 import (
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 )
-
 
 // buildNsSelection — full ns-level cache: nsSelector filter + bucket set +
 // per-bucket candidate list, for both directions. Called once per namespace

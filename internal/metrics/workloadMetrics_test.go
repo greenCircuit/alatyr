@@ -5,7 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // coverageCache builds a two-namespace cluster where a single cluster-scoped
@@ -58,9 +58,9 @@ func TestRecordWorkloads_UnpolicedExcludingGlobal(t *testing.T) {
 	recorder.recordWorkloads(cache, engines)
 
 	cases := []struct {
-		namespace                string
-		unpoliced, exclGlobal    float64
-		workloads                float64
+		namespace             string
+		unpoliced, exclGlobal float64
+		workloads             float64
 	}{
 		// checkout carries a namespace-local policy — covered under both readings.
 		{namespace: "shop", unpoliced: 0, exclGlobal: 0, workloads: 1},

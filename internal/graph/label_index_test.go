@@ -3,8 +3,8 @@ package graph
 import (
 	"testing"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 )
 
 // utils.IndexLabelMatch — exercised through the graph-built workload index

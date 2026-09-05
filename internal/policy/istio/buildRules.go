@@ -3,8 +3,8 @@ package istio
 import (
 	"time"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
@@ -81,45 +81,45 @@ func getSourceNodes(authzPolicy *istiosec.AuthorizationPolicy, index map[string]
 }
 
 // spec.rules: {}
-func expandBlanketRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule{
-		ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
-		// field is not even defined
-		var computedCoverage models.Coverage
-		if ruleAction == models.ActionAllow {
-			computedCoverage = models.CoverageDenyAll
-		} else {
-			computedCoverage = models.CoverageUnenforced
-		}
+func expandBlanketRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule {
+	ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
+	// field is not even defined
+	var computedCoverage models.Coverage
+	if ruleAction == models.ActionAllow {
+		computedCoverage = models.CoverageDenyAll
+	} else {
+		computedCoverage = models.CoverageUnenforced
+	}
 
-		rule := models.Rule{
-			Direction:   models.DirectionIngress,
-			Action:      ruleAction,
-			AllPorts:    true,
-			AllL7:       true,
-			Coverage:    computedCoverage,
-		}
-		return rule
+	rule := models.Rule{
+		Direction: models.DirectionIngress,
+		Action:    ruleAction,
+		AllPorts:  true,
+		AllL7:     true,
+		Coverage:  computedCoverage,
+	}
+	return rule
 }
 
 // spec.rules: - {}
-func expandCatchAllRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule{
-		ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
-		// field is not even defined
-		var computedCoverage models.Coverage
-		if ruleAction == models.ActionAllow {
-			computedCoverage = models.CoverageUnenforced
-		} else {
-			computedCoverage = models.CoverageDenyAll
-		}
+func expandCatchAllRule(authzPolicy *istiosec.AuthorizationPolicy) models.Rule {
+	ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
+	// field is not even defined
+	var computedCoverage models.Coverage
+	if ruleAction == models.ActionAllow {
+		computedCoverage = models.CoverageUnenforced
+	} else {
+		computedCoverage = models.CoverageDenyAll
+	}
 
-		rule := models.Rule{
-			Direction:   models.DirectionIngress,
-			Action:      ruleAction,
-			AllPorts:    true,
-			AllL7:       true,
-			Coverage:    computedCoverage,
-		}
-		return rule
+	rule := models.Rule{
+		Direction: models.DirectionIngress,
+		Action:    ruleAction,
+		AllPorts:  true,
+		AllL7:     true,
+		Coverage:  computedCoverage,
+	}
+	return rule
 }
 
 // spec.rules[to] = {}
@@ -150,7 +150,7 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 	if authzPolicy.Spec.Selector != nil && authzPolicy.Spec.Selector.MatchLabels != nil {
 		dstSelector.LabelSelector = authzPolicy.Spec.Selector.MatchLabels
 	}
-	
+
 	rules := authzPolicy.Spec.Rules
 	ruleAction := actionFromSpec(authzPolicy.Spec.Action) // allow vs deny
 
@@ -290,9 +290,9 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 				if len(rulePorts) == 0 {
 					allPorts = true
 				}
-				
+
 				// determine what type of coverage depending on node type
-				coverage := models.CoverageRestricted  // default
+				coverage := models.CoverageRestricted // default
 				if workload.Type == models.NodeTypeNamespace {
 					coverage = models.CoverageAllowAllNs
 				}
@@ -307,8 +307,8 @@ func expandRules(authzPolicy *istiosec.AuthorizationPolicy, index map[string]mod
 					AllL7:       allL7,
 					SrcSelector: srcSelector,
 					DstSelector: dstSelector,
-					Ports: 		 rulePorts,		
-					Coverage:    coverage,				
+					Ports:       rulePorts,
+					Coverage:    coverage,
 				})
 			}
 		}

@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"alatyr/internal/k8s"
+
 	"github.com/labstack/echo/v4"
-	"graph/internal/k8s"
 	calicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 	networkingv1 "k8s.io/api/networking/v1"

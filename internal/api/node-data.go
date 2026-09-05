@@ -3,17 +3,18 @@ package api
 import (
 	"net/http"
 
+	"alatyr/internal/models"
+	"alatyr/internal/store"
+
 	"github.com/labstack/echo/v4"
-	"graph/internal/models"
-	"graph/internal/store"
 )
 
 // NodeDetail bundles policy-engine + mesh-source results for one workload.
 // Returned by /api/node-info on node click. Cross-cutting misconfig findings
 // (ambient HBONE gaps, PA hygiene) live in /api/issues, not here.
 type NodeDetail struct {
-	PolicyNeighbors map[string]store.NodeNeighbors    `json:"neighbors"`
-	Mesh            models.MeshMembership `json:"mesh,omitempty"`
+	PolicyNeighbors map[string]store.NodeNeighbors `json:"neighbors"`
+	Mesh            models.MeshMembership          `json:"mesh,omitempty"`
 }
 
 // return all rules + mesh state touching given node; lazy-populate cache for
@@ -28,7 +29,7 @@ func (s *Server) getNodeInfo(c echo.Context) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	memberships := store.GetWorkloadMesh(s.cache,nodeId)
+	memberships := store.GetWorkloadMesh(s.cache, nodeId)
 	nodeNeighbors := store.BuildNodeNeighbor(s.cache, nodeId)
 
 	detail := NodeDetail{

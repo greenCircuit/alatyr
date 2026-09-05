@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // severityOrder ranks findings worst-first in the table. Table output is a
@@ -30,6 +30,7 @@ func renderTable(writer io.Writer, out report) error {
 		out.Counts.Workloads, out.Counts.Manifests, out.MeshCount.NsEnrolled)
 
 	renderCoverage(writer, out.Counts)
+	renderInternetExposure(writer, out.InternetExposure)
 	renderSeveritySummary(writer, out.IssuesCount)
 	renderFindings(writer, out.Issues)
 
@@ -45,6 +46,19 @@ func renderCoverage(writer io.Writer, counts reportCount) {
 	fmt.Fprintln(table, "COVERAGE\tCOVERED\tUNCOVERED")
 	fmt.Fprintf(table, "including global policies\t%d\t%d\n", counts.CoverageWithGlobal, counts.NoPolicyWithGlobals)
 	fmt.Fprintf(table, "excluding global policies\t%d\t%d\n", counts.CoverageWithoutGlobal, counts.NoPolicyWithoutGlobals)
+	table.Flush()
+	fmt.Fprintln(writer)
+}
+
+// renderInternetExposure prints the wan blast radius: how many workloads are
+// open to the internet and in which direction.
+func renderInternetExposure(writer io.Writer, exposure exposureCount) {
+	table := tabwriter.NewWriter(writer, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(table, "INTERNET EXPOSURE\tWORKLOADS")
+	fmt.Fprintf(table, "both directions (internet-full)\t%d\n", exposure.Full)
+	fmt.Fprintf(table, "inbound only (internet-ingress)\t%d\n", exposure.Ingress)
+	fmt.Fprintf(table, "outbound only (internet-egress)\t%d\n", exposure.Egress)
+	fmt.Fprintf(table, "total exposed\t%d\n", exposure.Total)
 	table.Flush()
 	fmt.Fprintln(writer)
 }

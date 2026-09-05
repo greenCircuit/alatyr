@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"graph/internal/config"
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/config"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 )
 
 // Tests for MissingDns — flags every workload whose egress is locked down but

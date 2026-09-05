@@ -3,8 +3,8 @@ package graph
 import (
 	"fmt"
 
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 )
 
 // Which endpoint of a rule holds the workload (the other one is the peer).

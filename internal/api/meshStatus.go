@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // MeshStatusResponse carries every workload's mesh membership from the cache.
@@ -23,4 +23,3 @@ func (s *Server) MeshStatuses(c echo.Context) error {
 	defer s.mu.RUnlock()
 	return c.JSON(http.StatusOK, MeshStatusResponse{Nodes: s.cache.MeshMembership})
 }
-

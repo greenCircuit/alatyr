@@ -1,6 +1,6 @@
 package policy
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // AllStatusKeys returns the full catalog of status keys any policy engine
 // may emit. Shared vocabulary across all engines (k8s NetworkPolicy, Istio

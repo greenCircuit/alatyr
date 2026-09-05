@@ -3,7 +3,7 @@ package istio
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // TestIsIstioComponent pins the control-plane / gateway detection contract:
@@ -14,10 +14,10 @@ import (
 // being mistaken for the control plane.
 func TestIsIstioComponent(t *testing.T) {
 	cases := []struct {
-		name     string
-		ns       string
-		labels   map[string]string
-		want     bool
+		name   string
+		ns     string
+		labels map[string]string
+		want   bool
 	}{
 		{"ingress gateway", IngressNamespace, map[string]string{istioSelector: gatewayVal}, true},
 		{"istiod", RootNamespace, map[string]string{istioSelector: istiodVal}, true},

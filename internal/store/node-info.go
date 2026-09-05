@@ -1,7 +1,7 @@
 package store
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // GetNodeData returns per-engine NodeInfo for the workload. In same ns only
