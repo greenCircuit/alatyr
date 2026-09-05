@@ -84,6 +84,8 @@ test-img:
 build-ui:
   image: docker.io/node:22-alpine
   stage: build
+  needs:
+  - ui-tests
   script: |
     cd ui
     npm ci
@@ -144,6 +146,7 @@ cli-test:
     entrypoint: [""]
   script:
     - echo "Testing image ${CI_REGISTRY_IMAGE}:${IMG_TAG}"
+    - alatyr -report -f ./test-data/scenarios/01-k8s-baseline 
     - alatyr -report -f ./test-data/scenarios/01-k8s-baseline -format json -output res.json
     - test -s res.json
     - cat res.json
