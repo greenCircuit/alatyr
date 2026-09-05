@@ -376,7 +376,7 @@ func startServer(t *testing.T, binary, manifestDir string) string {
 	for time.Now().Before(deadline) {
 		response, err := http.Get(baseURL + "/api/cluster-state")
 		if err == nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 			if response.StatusCode == http.StatusOK {
 				return baseURL
 			}
@@ -396,7 +396,7 @@ func getJSON(t *testing.T, url string, target any) {
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: status %d", url, response.StatusCode)
 	}
@@ -411,7 +411,7 @@ func freePort(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	_, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)

@@ -25,8 +25,8 @@ var severityOrder = map[models.IssueSeverity]int{
 // per-type breakdown, then one row per breaking finding. Info findings are
 // summarized only — they are expected layering, not work.
 func renderTable(writer io.Writer, out report) error {
-	fmt.Fprintf(writer, "\nmanifests scan %s\n", out.Target)
-	fmt.Fprintf(writer, "%d workloads, %d manifests, %d namespaces in mesh\n\n",
+	_, _ = fmt.Fprintf(writer, "\nmanifests scan %s\n", out.Target)
+	_, _ = fmt.Fprintf(writer, "%d workloads, %d manifests, %d namespaces in mesh\n\n",
 		out.Counts.Workloads, out.Counts.Manifests, out.MeshCount.NsEnrolled)
 
 	renderCoverage(writer, out.Counts)
@@ -34,7 +34,7 @@ func renderTable(writer io.Writer, out report) error {
 	renderSeveritySummary(writer, out.IssuesCount)
 	renderFindings(writer, out.Issues)
 
-	fmt.Fprintf(writer, "\n%d findings (%d actionable, %d informational)\n",
+	_, _ = fmt.Fprintf(writer, "\n%d findings (%d actionable, %d informational)\n",
 		out.IssuesCount.TotalIssues,
 		out.IssuesCount.TotalIssuesBreaking,
 		out.IssuesCount.TotalIssues-out.IssuesCount.TotalIssuesBreaking)
@@ -43,24 +43,24 @@ func renderTable(writer io.Writer, out report) error {
 
 func renderCoverage(writer io.Writer, counts reportCount) {
 	table := tabwriter.NewWriter(writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "COVERAGE\tCOVERED\tUNCOVERED")
-	fmt.Fprintf(table, "including global policies\t%d\t%d\n", counts.CoverageWithGlobal, counts.NoPolicyWithGlobals)
-	fmt.Fprintf(table, "excluding global policies\t%d\t%d\n", counts.CoverageWithoutGlobal, counts.NoPolicyWithoutGlobals)
-	table.Flush()
-	fmt.Fprintln(writer)
+	_, _ = fmt.Fprintln(table, "COVERAGE\tCOVERED\tUNCOVERED")
+	_, _ = fmt.Fprintf(table, "including global policies\t%d\t%d\n", counts.CoverageWithGlobal, counts.NoPolicyWithGlobals)
+	_, _ = fmt.Fprintf(table, "excluding global policies\t%d\t%d\n", counts.CoverageWithoutGlobal, counts.NoPolicyWithoutGlobals)
+	_ = table.Flush()
+	_, _ = fmt.Fprintln(writer)
 }
 
 // renderInternetExposure prints the wan blast radius: how many workloads are
 // open to the internet and in which direction.
 func renderInternetExposure(writer io.Writer, exposure exposureCount) {
 	table := tabwriter.NewWriter(writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "INTERNET EXPOSURE\tWORKLOADS")
-	fmt.Fprintf(table, "both directions (internet-full)\t%d\n", exposure.Full)
-	fmt.Fprintf(table, "inbound only (internet-ingress)\t%d\n", exposure.Ingress)
-	fmt.Fprintf(table, "outbound only (internet-egress)\t%d\n", exposure.Egress)
-	fmt.Fprintf(table, "total exposed\t%d\n", exposure.Total)
-	table.Flush()
-	fmt.Fprintln(writer)
+	_, _ = fmt.Fprintln(table, "INTERNET EXPOSURE\tWORKLOADS")
+	_, _ = fmt.Fprintf(table, "both directions (internet-full)\t%d\n", exposure.Full)
+	_, _ = fmt.Fprintf(table, "inbound only (internet-ingress)\t%d\n", exposure.Ingress)
+	_, _ = fmt.Fprintf(table, "outbound only (internet-egress)\t%d\n", exposure.Egress)
+	_, _ = fmt.Fprintf(table, "total exposed\t%d\n", exposure.Total)
+	_ = table.Flush()
+	_, _ = fmt.Fprintln(writer)
 }
 
 func renderSeveritySummary(writer io.Writer, counts issuesCount) {
@@ -71,7 +71,7 @@ func renderSeveritySummary(writer io.Writer, counts issuesCount) {
 	} {
 		parts = append(parts, fmt.Sprintf("%s: %d", severity, counts.BySeverity[severity]))
 	}
-	fmt.Fprintf(writer, "Findings — %s\n\n", strings.Join(parts, "  "))
+	_, _ = fmt.Fprintf(writer, "Findings — %s\n\n", strings.Join(parts, "  "))
 
 	types := make([]models.IssueType, 0, len(counts.ByType))
 	for issueType, count := range counts.ByType {
@@ -89,12 +89,12 @@ func renderSeveritySummary(writer io.Writer, counts issuesCount) {
 	})
 
 	table := tabwriter.NewWriter(writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "TYPE\tSEVERITY\tCOUNT")
+	_, _ = fmt.Fprintln(table, "TYPE\tSEVERITY\tCOUNT")
 	for _, issueType := range types {
-		fmt.Fprintf(table, "%s\t%s\t%d\n", issueType, models.SeverityForType(issueType), counts.ByType[issueType])
+		_, _ = fmt.Fprintf(table, "%s\t%s\t%d\n", issueType, models.SeverityForType(issueType), counts.ByType[issueType])
 	}
-	table.Flush()
-	fmt.Fprintln(writer)
+	_ = table.Flush()
+	_, _ = fmt.Fprintln(writer)
 }
 
 // renderFindings lists actionable findings only, worst-first, one line each.
@@ -122,12 +122,12 @@ func renderFindings(writer io.Writer, issues []models.Issue) {
 	})
 
 	table := tabwriter.NewWriter(writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "SEVERITY\tTYPE\tSCOPE\tENGINE\tCULPRITS")
+	_, _ = fmt.Fprintln(table, "SEVERITY\tTYPE\tSCOPE\tENGINE\tCULPRITS")
 	for _, issue := range breaking {
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
 			issue.Severity, issue.Type, issueScope(issue), issue.Engine, culpritList(issue))
 	}
-	table.Flush()
+	_ = table.Flush()
 }
 
 // issueScope renders the endpoint an operator has to go fix: src→dst for
