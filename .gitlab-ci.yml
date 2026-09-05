@@ -115,22 +115,22 @@ build-binary:
       else
         VERSION="${BUILD_VERSION}-${CI_COMMIT_REF_SLUG}"
       fi
-      UPLOAD_BASE="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/graph"
-      echo "Publishing graph @ ${VERSION}"
+      UPLOAD_BASE="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/alatyr"
+      echo "Publishing alatyr @ ${VERSION}"
       curl --fail --silent --show-error \
         --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-        --upload-file graph \
-        "${UPLOAD_BASE}/${VERSION}/graph"
+        --upload-file alatyr \
+        "${UPLOAD_BASE}/${VERSION}/alatyr"
       if [ "$CI_COMMIT_REF_NAME" = "$CI_DEFAULT_BRANCH" ] && [ "${MAKE_RELEASE:-FALSE}" = "TRUE" ]; then
         echo "Default branch + release-worthy commit — also publishing as 'latest'"
         curl --fail --silent --show-error \
           --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
           --upload-file alatyr \
-          "${UPLOAD_BASE}/latest/graph"
+          "${UPLOAD_BASE}/latest/alatyr"
       fi
   artifacts:
     paths:
-      - graph
+      - alatyr
     when: on_success
     expire_in: 10 days
 
@@ -181,7 +181,7 @@ smoke-tests:
         crd/authorizationpolicies.security.istio.io
         crd/peerauthentications.security.istio.io
         --timeout=30s
-    - chmod +x ./graph
+    - chmod +x ./alatyr
     - sleep 20
     - |
       cat > tests/results/test-config.yaml <<EOF
@@ -190,7 +190,7 @@ smoke-tests:
     - env -u DEMO_MODE
         KUBECONFIG=$KUBECONFIG
         CONFIG_PATH=$CI_PROJECT_DIR/tests/results/test-config.yaml
-        ./graph > tests/results/backend.log 2>&1 &
+        ./alatyr > tests/results/backend.log 2>&1 &
     - |
       for i in $(seq 1 30); do
         curl -fsS http://localhost:${BACKEND_PORT}/api/cluster-state >/dev/null 2>&1 && break
@@ -223,8 +223,8 @@ demo-site:
       - ui/node_modules/
   script:
     - apt-get update && apt-get install -y --no-install-recommends python3 curl
-    - chmod +x ./graph
-    - DEMO_MODE=true ./graph > demo-backend.log 2>&1 &
+    - chmod +x ./alatyr
+    - DEMO_MODE=true ./alatyr > demo-backend.log 2>&1 &
     - |
       for _ in $(seq 1 30); do
         curl -fsS http://localhost:8080/api/cluster-state >/dev/null 2>&1 && break
@@ -309,8 +309,8 @@ github-binary:
         --repo "$GITHUB_REPO" \
         --title "$CI_COMMIT_TITLE" \
         --notes "$CI_COMMIT_MESSAGE" \
-        --prerelease graph \
-      || gh release upload "$BUILD_VERSION" graph --repo "$GITHUB_REPO" --clobber
+        --prerelease alatyr \
+      || gh release upload "$BUILD_VERSION" alatyr --repo "$GITHUB_REPO" --clobber
   rules:
   - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
