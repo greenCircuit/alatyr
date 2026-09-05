@@ -85,7 +85,7 @@ build-ui:
   image: docker.io/node:22-alpine
   stage: build
   needs:
-  - ui-tests
+  - ui-test
   script: |
     cd ui
     npm ci
