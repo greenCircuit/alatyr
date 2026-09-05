@@ -1,3 +1,10 @@
+# branch pipelines only — no MR-only jobs, catalog jobs are branch-scoped
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - when: always
+
 variables:
   GITHUB_USER: "greenCircuit"
   GITHUB_REPO: "greenCircuit/alatyr"
