@@ -6,8 +6,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"graph/internal/k8s"
-	"graph/internal/models"
+	"alatyr/internal/k8s"
+	"alatyr/internal/models"
 
 	calicov3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	"github.com/projectcalico/api/pkg/lib/numorstring"

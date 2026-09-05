@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 func workload(id, namespace, label string, nodeType models.NodeType) models.WorkloadNode {
@@ -81,6 +81,32 @@ func TestCountCoverageEmptyPolicyListIsNotCoverage(t *testing.T) {
 
 // countIssues seeds every known type/severity at zero and separates breaking
 // from informational findings.
+// countInternetExposure must tally only real workloads, split by direction,
+// and ignore nodes carrying no internet key at all.
+func TestCountInternetExposure(t *testing.T) {
+	withStatuses := func(node models.WorkloadNode, statuses ...models.StatusKey) models.WorkloadNode {
+		node.Statuses = statuses
+		return node
+	}
+
+	nodes := []models.WorkloadNode{
+		withStatuses(workload("front/gateway", "front", "gateway", models.NodeTypeDeployment), models.StatusInternetFull),
+		withStatuses(workload("front/api", "front", "api", models.NodeTypeDeployment), models.StatusInternetIngress, models.StatusL7Applied),
+		withStatuses(workload("back/worker", "back", "worker", models.NodeTypeDeployment), models.StatusInternetEgress),
+		withStatuses(workload("back/db", "back", "db", models.NodeTypeStatefullSet), models.StatusIsolated),
+		// synthetic nodes carry internet keys too — they must not inflate the tally
+		withStatuses(workload("front", "front", "front", models.NodeTypeNamespace), models.StatusInternetFull),
+		withStatuses(workload("cidr/0.0.0.0-0", "", "0.0.0.0/0", models.NodeTypeCIDR), models.StatusInternetFull),
+		withStatuses(workload("external", "", "internet", models.NodeTypeExternal), models.StatusInternetFull),
+	}
+
+	counts := countInternetExposure(nodes)
+	want := exposureCount{Total: 3, Full: 1, Ingress: 1, Egress: 1}
+	if counts != want {
+		t.Errorf("countInternetExposure = %+v, want %+v", counts, want)
+	}
+}
+
 func TestCountIssues(t *testing.T) {
 	issues := []models.Issue{
 		{Type: models.NodeLockOut, Severity: models.IssueSeverityHigh},
@@ -224,9 +250,10 @@ func TestRenderTable(t *testing.T) {
 	source := workload("front/gateway", "front", "gateway", models.NodeTypeDeployment)
 
 	out := report{
-		Target:    "test-data/scenarios/01-k8s-baseline",
-		MeshCount: models.MeshMetrics{NsEnrolled: 1},
-		Counts:    reportCount{Workloads: 3, Manifests: 7, CoverageWithGlobal: 2, NoPolicyWithGlobals: 1},
+		Target:           "test-data/scenarios/01-k8s-baseline",
+		MeshCount:        models.MeshMetrics{NsEnrolled: 1},
+		Counts:           reportCount{Workloads: 3, Manifests: 7, CoverageWithGlobal: 2, NoPolicyWithGlobals: 1},
+		InternetExposure: exposureCount{Total: 3, Full: 1, Ingress: 1, Egress: 1},
 		Issues: []models.Issue{
 			{Type: models.IssuesPartial, Severity: models.IssueSeverityInfo, Node: &lockedOut},
 			{Type: models.NoDNSEgress, Severity: models.IssueSeverityWarning, Node: &lockedOut, Engine: "k8s"},
@@ -249,6 +276,9 @@ func TestRenderTable(t *testing.T) {
 		"3 workloads, 7 manifests, 1 namespaces in mesh",
 		"including global policies",
 		"excluding global policies",
+		"INTERNET EXPOSURE",
+		"both directions (internet-full)",
+		"total exposed",
 		"front/deny-all",
 		"3 findings (2 actionable, 1 informational)",
 	} {

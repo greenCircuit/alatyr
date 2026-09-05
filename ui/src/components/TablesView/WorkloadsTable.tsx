@@ -6,7 +6,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { WorkloadNode, PolicyEdge, StatusKey, Issue, MeshMembership, MtlsScope } from '../../data/policies';
 import { SEVERITY_COLOR, meshBadgeMeta } from '../../data/policies';
 import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
-import { issueTier, type IssueTier } from '../FilterPanel/parts/constants';
+import { issueTierOf, type IssueTier } from '../FilterPanel/parts/constants';
 import { useGraphStore } from '../../store/graphStore';
 import { EngineBadge } from '../../data/engineIcons';
 import { STATUS_CFG } from '../../data/policies';

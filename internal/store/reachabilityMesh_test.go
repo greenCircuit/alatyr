@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"graph/internal/mesh"
-	"graph/internal/models"
+	"alatyr/internal/mesh"
+	"alatyr/internal/models"
 )
 
 // stubMeshSource is a mesh.MeshSource that records CanReach calls and returns
@@ -13,12 +13,12 @@ import (
 // by IsEndpointsReachable or MeshReachabilityUsingNodes — the new call path
 // only touches CanReach + Name.
 type stubMeshSource struct {
-	name       string
-	verdict    models.MeshVerdict
-	canReachN  int
-	lastSrc    models.MeshMembership
-	lastDst    models.MeshMembership
-	lastPort   uint32
+	name      string
+	verdict   models.MeshVerdict
+	canReachN int
+	lastSrc   models.MeshMembership
+	lastDst   models.MeshMembership
+	lastPort  uint32
 }
 
 func (s *stubMeshSource) Name() string { return s.name }
@@ -94,9 +94,9 @@ func TestIsEndpointsReachable_MissingSrcSkipsMesh(t *testing.T) {
 // exact footgun the new comment calls out.
 func TestIsEndpointsReachable_NamespaceEndpointSkipsMesh(t *testing.T) {
 	cases := []struct {
-		name      string
-		srcType   models.NodeType
-		dstType   models.NodeType
+		name    string
+		srcType models.NodeType
+		dstType models.NodeType
 	}{
 		{"src is namespace", models.NodeTypeNamespace, models.NodeTypeDeployment},
 		{"dst is namespace", models.NodeTypeDeployment, models.NodeTypeNamespace},

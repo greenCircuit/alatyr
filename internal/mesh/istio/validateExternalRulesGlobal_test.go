@@ -3,7 +3,7 @@ package istio
 import (
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // allowAllPeerHBONE builds a NodeRule shaped like a k8s NetworkPolicy stanza

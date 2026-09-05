@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	calicoselector "graph/internal/thirdparty/calicoselector"
+	calicoselector "alatyr/internal/thirdparty/calicoselector"
 )
 
 // catchAllCIDR — bucket for a rule with empty nets ({}) or explicit 0.0.0.0/0.

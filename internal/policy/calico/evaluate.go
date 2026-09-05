@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"graph/internal/k8s"
-	"graph/internal/models"
+	"alatyr/internal/k8s"
+	"alatyr/internal/models"
 )
 
 const sourceName = "calico"
@@ -47,7 +47,7 @@ func (s *source) Evaluate(ctx context.Context, namespaces []string, index map[st
 		NodeRules:      map[string]models.NodeRules{},
 		Nodes:          map[string]models.WorkloadNode{},
 	}
-	
+
 	for _, ns := range namespaces {
 		var nsLabels map[string]string
 		if nsNode := index[ns].NSNode; nsNode != nil {

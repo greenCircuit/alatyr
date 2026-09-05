@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // mtls builds an MtlsState with just the verdict — enough for CanReach.

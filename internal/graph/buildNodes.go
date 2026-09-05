@@ -1,8 +1,8 @@
 package graph
 
 import (
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,7 +34,7 @@ func AssembleNsIndex(nsResources NsResources) models.NSIndex {
 		})
 	}
 
-	for _, obj := range nsResources.StatefulSets{
+	for _, obj := range nsResources.StatefulSets {
 		uid := string(obj.UID)
 		if seen[uid] {
 			continue
@@ -49,7 +49,7 @@ func AssembleNsIndex(nsResources NsResources) models.NSIndex {
 		})
 	}
 
-	for _, obj := range nsResources.DaemonSets{
+	for _, obj := range nsResources.DaemonSets {
 		uid := string(obj.UID)
 		if seen[uid] {
 			continue
@@ -63,7 +63,7 @@ func AssembleNsIndex(nsResources NsResources) models.NSIndex {
 			Labels:    obj.Spec.Template.Labels,
 		})
 	}
-	for _, obj := range nsResources.Deployments{
+	for _, obj := range nsResources.Deployments {
 		uid := string(obj.UID)
 		if seen[uid] {
 			continue
@@ -77,7 +77,6 @@ func AssembleNsIndex(nsResources NsResources) models.NSIndex {
 			Labels:    obj.Spec.Template.Labels,
 		})
 	}
-
 
 	jobsByUID := make(map[types.UID]*batchv1.Job, len(nsResources.Jobs))
 	for _, job := range nsResources.Jobs {

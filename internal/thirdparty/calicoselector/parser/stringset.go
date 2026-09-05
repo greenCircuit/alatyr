@@ -17,7 +17,7 @@ package parser
 import (
 	"sort"
 
-	"graph/internal/thirdparty/calicoselector/uniquestr"
+	"alatyr/internal/thirdparty/calicoselector/uniquestr"
 )
 
 type StringSet []uniquestr.Handle

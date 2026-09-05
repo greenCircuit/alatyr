@@ -3,8 +3,8 @@ package k8spolicy
 import (
 	"testing"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"

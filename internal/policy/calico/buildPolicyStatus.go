@@ -1,8 +1,8 @@
 package calico
 
 import (
-	"graph/internal/models"
-	"graph/internal/policy"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
 
 	networkingv1 "k8s.io/api/networking/v1"
 )

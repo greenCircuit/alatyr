@@ -4,7 +4,7 @@ Copied source, **not** a Go module dependency. Package name is `selector`
 (dir is `calicoselector` for provenance) — import it aliased:
 
 ```go
-import selector "graph/internal/thirdparty/calicoselector"
+import selector "alatyr/internal/thirdparty/calicoselector"
 
 sel, err := selector.Parse(`kubernetes.io/metadata.name in {"gitlab","kube-system"}`)
 match := sel.Evaluate(map[string]string{"kubernetes.io/metadata.name": "kube-system"}) // true

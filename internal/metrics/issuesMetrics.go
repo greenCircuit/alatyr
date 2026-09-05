@@ -1,6 +1,6 @@
 package metrics
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // Issue-derived metrics live here: alatyr_issues, alatyr_issues_by_engine,
 // alatyr_issues_by_policy, alatyr_workloads_with_issues,

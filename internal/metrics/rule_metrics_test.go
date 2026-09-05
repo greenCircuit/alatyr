@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // newTestRecorder builds a Recorder with default config for tests.

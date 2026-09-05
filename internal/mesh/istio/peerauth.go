@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )

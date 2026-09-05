@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"strings"
 
-	"graph/internal/config"
-	"graph/internal/logging"
-	"graph/internal/mesh"
-	"graph/internal/models"
-	"graph/internal/policy"
-	"graph/internal/utils"
+	"alatyr/internal/config"
+	"alatyr/internal/logging"
+	"alatyr/internal/mesh"
+	"alatyr/internal/models"
+	"alatyr/internal/policy"
+	"alatyr/internal/utils"
 )
 
 // GetIssues runs every issue detector over the cache and returns the combined
@@ -31,7 +31,6 @@ func GetIssues(ctx context.Context, data *models.Cache, meshSource mesh.MeshSour
 	}
 	return issues
 }
-
 
 func MissingDns(ctx context.Context, data *models.Cache) []models.Issue {
 	logger := logging.FromCtx(ctx)

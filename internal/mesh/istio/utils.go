@@ -4,7 +4,7 @@ import (
 	istioapi "istio.io/api/security/v1beta1"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 // isIstioComponent reports whether a workload is an Istio control-plane or

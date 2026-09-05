@@ -1,4 +1,4 @@
-# network-policy-visualizer
+# Alatyr 
 
 > **A Kubernetes policy reachability & gap analyzer.**
 > Resolves what your pods can actually reach across NetworkPolicy, Istio AuthorizationPolicy, Calico GlobalNetworkPolicy, and ambient-mesh mTLS — then shows the gaps and cross-engine conflicts. Read-only by design, runs as a single static binary.
@@ -29,9 +29,9 @@ Policy is written per-engine and per-namespace, but reachability is *emergent*. 
 Three ways to run it:
 
 ```bash
-KUBECONFIG=~/.kube/config ./graph           # live cluster  → UI on :8080
-./graph -f ./manifests                      # manifest dir  → UI on :8080, no cluster, 
-./graph -f ./manifests --report             # manifest dir  → report to stdout, exits
+KUBECONFIG=~/.kube/config ./alatyr           # live cluster  → UI on :8080
+./alatyr -f ./manifests                      # manifest dir  → UI on :8080, no cluster, 
+./alatyr -f ./manifests --report             # manifest dir  → report to stdout, exits
 ```
 
 ---

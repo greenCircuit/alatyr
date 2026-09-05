@@ -3,8 +3,8 @@ package graph
 import (
 	"testing"
 
-	"graph/internal/models"
-	"graph/internal/utils"
+	"alatyr/internal/models"
+	"alatyr/internal/utils"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
@@ -124,6 +124,7 @@ func TestExpandRules_Coverage_DenyCatchAllIsDenyAll(t *testing.T) {
 		}
 	}
 }
+
 // Allow + rules:[{}] allows everything
 func TestExpandRules_Coverage_AllowCatchAllIsUnenforced(t *testing.T) {
 	index := coverageFixture()
@@ -239,8 +240,8 @@ func TestExpandRules_Coverage_FromSingleNamespaceIsAllowAllNs(t *testing.T) {
 }
 
 // rules[to][operations]:
-	// methods: ["GET"]
-	// paths: ["/api/*"]
+// methods: ["GET"]
+// paths: ["/api/*"]
 func TestExpandRules_Coverage_L7OnlyIsRestricted(t *testing.T) {
 	index := coverageFixture()
 	policy := makePolicy("l7-only", "ns-a", istioapi.AuthorizationPolicy_ALLOW,

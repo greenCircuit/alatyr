@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"graph/internal/metrics"
-	"graph/internal/models"
-	"graph/internal/store"
+	"alatyr/internal/metrics"
+	"alatyr/internal/models"
+	"alatyr/internal/store"
 )
 
 // RefreshAll runs one full snapshot: fetch every namespace, evaluate every

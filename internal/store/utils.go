@@ -1,7 +1,7 @@
 package store
 
 import (
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models.NodeRule {
@@ -28,4 +28,3 @@ func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models
 	}
 	return view
 }
-

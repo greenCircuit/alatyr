@@ -3,7 +3,7 @@ package policy
 import (
 	"context"
 
-	"graph/internal/models"
+	"alatyr/internal/models"
 )
 
 type PolicySource interface {

@@ -1,6 +1,6 @@
 package metrics
 
-import "graph/internal/models"
+import "alatyr/internal/models"
 
 // Policy-layering metrics live here: alatyr_policy_layering,
 // alatyr_policy_layering_by_engine, alatyr_policy_layering_by_policy,

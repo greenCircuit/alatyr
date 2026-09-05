@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"graph/internal/k8s"
-	"graph/internal/models"
+	"alatyr/internal/k8s"
+	"alatyr/internal/models"
 
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
 )

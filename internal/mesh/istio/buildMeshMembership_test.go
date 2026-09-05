@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"graph/internal/k8s"
-	"graph/internal/models"
+	"alatyr/internal/k8s"
+	"alatyr/internal/models"
 
 	istioapi "istio.io/api/security/v1beta1"
 	istiosec "istio.io/client-go/pkg/apis/security/v1"
@@ -19,8 +19,8 @@ import (
 // return per-ns; errByNs seeds a fetch error per-ns (empty = success).
 type fakePAClient struct {
 	k8s.KubernetesClient
-	paByNs   map[string][]*istiosec.PeerAuthentication
-	errByNs  map[string]error
+	paByNs    map[string][]*istiosec.PeerAuthentication
+	errByNs   map[string]error
 	callsByNs map[string]int
 }
 

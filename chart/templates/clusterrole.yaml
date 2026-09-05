@@ -9,7 +9,10 @@ rules:
     resources: ["pods", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
-    resources: ["cronjobs"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch"]
   {{- if .Values.serviceAccount.k8s }}
   - apiGroups: ["networking.k8s.io"]
