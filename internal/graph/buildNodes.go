@@ -124,7 +124,7 @@ func AssembleNsIndex(nsResources NsResources) models.NSIndex {
 	nsNode := models.WorkloadNode{
 		ID:        "ns-" + nsResources.Namespace.Name,
 		Label:     nsResources.Namespace.Name,
-		Namespace: nsResources.Namespace.Namespace, // k8s Namespace objects are cluster-scoped; .Namespace is empty. Use .Name so tests + UI can address it as a ns.
+		Namespace: nsResources.Namespace.Name, // Namespace objects are cluster-scoped, so .Namespace is always empty
 		Type:      models.NodeTypeNamespace,
 		Labels:    nsResources.Namespace.Labels,
 	}

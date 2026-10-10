@@ -161,3 +161,35 @@ func TestOwnerUID_IgnoresNonControllerRef(t *testing.T) {
 		t.Errorf("OwnerUID with no controller ref: got %q, want pod-2", uid)
 	}
 }
+
+// The namespace node must carry the namespace name in its own Namespace field.
+// Namespace objects are cluster-scoped, so metadata.namespace is always empty —
+// reading it leaves every namespace node nameless, and store-side code that
+// groups nodes by namespace (issue layering, reachability) then matches nothing.
+func TestAssembleNsIndex_NamespaceNodeCarriesItsName(t *testing.T) {
+	resources := NsResources{
+		Namespace: &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+			Name:   "ns1",
+			Labels: map[string]string{"kubernetes.io/metadata.name": "ns1"},
+		}},
+		Pods: []*corev1.Pod{testPod("bare", "pod-bare", corev1.PodRunning)},
+	}
+
+	index := AssembleNsIndex(resources)
+	if index.NSNode == nil {
+		t.Fatal("NSNode: got nil, want the namespace node")
+	}
+	if index.NSNode.Namespace != "ns1" {
+		t.Errorf("NSNode.Namespace: got %q, want %q", index.NSNode.Namespace, "ns1")
+	}
+	if index.NSNode.Label != "ns1" || index.NSNode.ID != "ns-ns1" {
+		t.Errorf("NSNode identity: got id=%q label=%q, want id=%q label=%q",
+			index.NSNode.ID, index.NSNode.Label, "ns-ns1", "ns1")
+	}
+	// The same node also sits in Workloads — both copies must agree.
+	for _, node := range index.Workloads {
+		if node.Type == models.NodeTypeNamespace && node.Namespace != "ns1" {
+			t.Errorf("namespace node in Workloads: got namespace %q, want %q", node.Namespace, "ns1")
+		}
+	}
+}

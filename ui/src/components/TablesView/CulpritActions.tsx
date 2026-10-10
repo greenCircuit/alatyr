@@ -11,6 +11,7 @@ import { EngineBadge, EngineLogo } from '../../data/engineIcons';
 import { ManifestButton } from '../DetailPanel/shared/ManifestModal';
 import { MtlsChip } from '../DetailPanel/shared/MtlsChip';
 import { useManifestStore } from '../../store/manifestStore';
+import { isLayeringType } from '../FilterPanel/parts/constants';
 import s from '../DetailPanel/DetailPanel.module.css';
 
 type Direction = 'egress' | 'ingress';
@@ -349,7 +350,7 @@ export function CulpritActions({ issue, onOpen }: {
   const ingress   = issue.ingressCulprits ?? [];
   const egressAllowed  = issue.egressAllowed ?? [];
   const ingressAllowed = issue.ingressAllowed ?? [];
-  const layering = issue.type === 'partial access';
+  const layering = isLayeringType(issue.type);
   const cidrScope = issue.type === 'cidr scope mismatch';
   const meshConflict = issue.type === 'mesh conflict';
   const transportBlocked = issue.type === 'mesh transport blocked';
