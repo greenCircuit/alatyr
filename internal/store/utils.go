@@ -28,3 +28,20 @@ func toNodeRule(rule models.Rule, idIndex map[string]models.WorkloadNode) models
 	}
 	return view
 }
+
+// append refs not already present, by policy identity
+func mergePolicyRefs(base, extras []models.PolicyRef) []models.PolicyRef {
+	seen := map[string]bool{}
+	for _, ref := range base {
+		seen[policyIdentityKey(ref)] = true
+	}
+	for _, ref := range extras {
+		key := policyIdentityKey(ref)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		base = append(base, ref)
+	}
+	return base
+}

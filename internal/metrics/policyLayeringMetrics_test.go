@@ -213,3 +213,21 @@ func TestRecordPolicyLayering_ResetClearsStaleSeries(t *testing.T) {
 		t.Errorf("alatyr_workloads_with_policy_layering series after reset = %d, want 1", got)
 	}
 }
+
+// IssuesPolicyLayer is what the store emits today — must route like partial:
+// into the layering family, out of alatyr_issues.
+func TestPolicyLayerRoutedToLayeringFamily(t *testing.T) {
+	recorder := New(Config{}, nil)
+	issues := []models.Issue{
+		{Type: models.IssuesPolicyLayer, Engine: "k8spolicy", Src: &checkoutWorkload, Dst: &paymentsWorkload},
+	}
+	recorder.recordPolicyLayering(issues)
+	recorder.recordIssues(issues)
+
+	if got := testutil.ToFloat64(recorder.policyLayering.WithLabelValues("billing", string(models.IssuesPolicyLayer))); got != 1 {
+		t.Errorf("alatyr_policy_layering{billing,layer} = %v, want 1", got)
+	}
+	if got := testutil.CollectAndCount(recorder.issues); got != 0 {
+		t.Errorf("alatyr_issues series for layer input = %d, want 0", got)
+	}
+}

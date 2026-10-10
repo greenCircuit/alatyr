@@ -7,7 +7,7 @@ import type { Issue, IssueType, Severity, WorkloadNode } from '../../data/polici
 import { SEVERITY_COLOR, mergeIssuesByPair } from '../../data/policies';
 import { useGraphStore } from '../../store/graphStore';
 import { SortHeader, type SortState, nextSort } from './SortHeader';
-import { ISSUE_TYPE_LABEL, issueSeverity } from '../FilterPanel/parts/constants';
+import { ISSUE_TYPE_LABEL, issueSeverity, isLayeringType } from '../FilterPanel/parts/constants';
 import { CulpritActions } from './CulpritActions';
 import s from '../DetailPanel/DetailPanel.module.css';
 
@@ -57,11 +57,11 @@ export default function IssuesTable({ issues }: { issues: Issue[] }) {
         }
       });
     }
-    // Layering group holds only partial-access rows — other info-tier types
+    // Layering group holds only layering rows — other info-tier types
     // (mesh policy hygiene) are real findings, not expected layering.
     return {
-      findings: list.filter((row) => row.issue.type !== 'partial access'),
-      infoRows: list.filter((row) => row.issue.type === 'partial access'),
+      findings: list.filter((row) => !isLayeringType(row.issue.type)),
+      infoRows: list.filter((row) => isLayeringType(row.issue.type)),
     };
   }, [issues, sort]);
 

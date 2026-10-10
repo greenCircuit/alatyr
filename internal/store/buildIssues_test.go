@@ -129,12 +129,7 @@ func TestPolicyIssues_DedupesSamePair(t *testing.T) {
 }
 
 // Cross-engine peer-kind mismatch: Calico allows egress to the service CIDR
-// while the k8s netpol on the same workload names only namespaces. A ClusterIP
-// is DNAT'd to a backend pod before k8s policy runs, so k8s can never name that
-// range — its silence is overlapping scope, not disagreement. The finding must
-// land as partial access, and only for the cluster's own ranges: a WAN CIDR
-// destination is something k8s CAN name via ipBlock, so a block there is a real
-// conflict.
+// k8s allows everything
 func TestPolicyIssues_InternalCidrPeerIsPartialNotConflict(t *testing.T) {
 	installCIDRConfig(t)
 
@@ -163,8 +158,8 @@ func TestPolicyIssues_InternalCidrPeerIsPartialNotConflict(t *testing.T) {
 	if len(issues) != 1 {
 		t.Fatalf("svc CIDR peer: want 1 issue, got %d", len(issues))
 	}
-	if issues[0].Type != models.IssuesPartial {
-		t.Errorf("svc CIDR peer type: want %q (overlapping scope), got %q", models.IssuesPartial, issues[0].Type)
+	if issues[0].Type != models.IssuesPolicyLayer {
+		t.Errorf("svc CIDR peer type: want %q (overlapping scope), got %q", models.IssuesPolicyLayer, issues[0].Type)
 	}
 
 	wanIssues := PolicyIssues(context.Background(), cidrIssueCache(wanCidrID, models.CIDRWan), nil)
@@ -177,12 +172,6 @@ func TestPolicyIssues_InternalCidrPeerIsPartialNotConflict(t *testing.T) {
 }
 
 // `allow 0.0.0.0/0 except 10.96.0.0/12` is the standard "internet yes, cluster
-// traffic via selectors" egress policy. The except entry is scoping syntax, not
-// an access-control statement — there is no deny object, and pod-selector rules
-// elsewhere still govern the range — so a Calico allow to it is layering, same
-// as a blocker that never mentions the range at all. Both shapes stay partial
-// access; neither may present as a conflict telling the operator to remove a
-// deny that does not exist.
 func TestPolicyIssues_ClusterRangeBlockStaysPartial(t *testing.T) {
 	installCIDRConfig(t)
 
@@ -226,8 +215,8 @@ func TestPolicyIssues_ClusterRangeBlockStaysPartial(t *testing.T) {
 		Action: models.ActionDeny, Coverage: models.CoverageExcept, AllPorts: true,
 		Contributor: models.PolicyRef{Source: "k8s", Name: "internet-egress", Namespace: srcNs},
 	}), nil))
-	if excepted != models.IssuesPartial {
-		t.Errorf("except carve-out type: want %q (scoping syntax, not a deny), got %q", models.IssuesPartial, excepted)
+	if excepted != models.IssuesPolicyLayer {
+		t.Errorf("except carve-out type: want %q (scoping syntax, not a deny), got %q", models.IssuesPolicyLayer, excepted)
 	}
 
 	// Same shape, but the block is a bare default-deny naming no peer — the
@@ -237,8 +226,8 @@ func TestPolicyIssues_ClusterRangeBlockStaysPartial(t *testing.T) {
 		Action: models.ActionDeny, Coverage: models.CoverageDenyAll, AllPorts: true,
 		Contributor: models.PolicyRef{Source: "k8s", Name: "default-deny", Namespace: srcNs},
 	}), nil))
-	if unnamed != models.IssuesPartial {
-		t.Errorf("unnamed deny type: want %q (never named the range), got %q", models.IssuesPartial, unnamed)
+	if unnamed != models.IssuesPolicyLayer {
+		t.Errorf("unnamed deny type: want %q (never named the range), got %q", models.IssuesPolicyLayer, unnamed)
 	}
 }
 
@@ -285,8 +274,8 @@ func TestPolicyIssues_NsNodeSrcToClusterRangeStaysPartial(t *testing.T) {
 	if len(issues) != 1 {
 		t.Fatalf("issues: want 1, got %d", len(issues))
 	}
-	if issues[0].Type != models.IssuesPartial {
-		t.Errorf("ns-node src to pod CIDR: want %q (overlapping scope), got %q", models.IssuesPartial, issues[0].Type)
+	if issues[0].Type != models.IssuesPolicyLayer {
+		t.Errorf("ns-node src to pod CIDR: want %q (overlapping scope), got %q", models.IssuesPolicyLayer, issues[0].Type)
 	}
 }
 

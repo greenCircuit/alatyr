@@ -9,13 +9,10 @@ const (
 	PolicyConflicts  	  IssueType = "policy conflict"		   // multiple polices one allow other deny
 	MeshConflicts    	  IssueType = "mesh conflict"		   // have edge, but node outside mesh want to talk to node is strict mesh
 	NodeLockOut      	  IssueType = "node lockout"		   // no has all egress/ingress deny all policy so it can't really talk to anyone
-	IssuesPartial	 	  IssueType = "partial access"         // no has all egress/ingress deny all policy so it can't really talk to anyone
-	// One engine allows a CIDR strictly inside the range another engine allows
-	// (a /32 host under a /24). Scope layering, not deny-vs-allow — but the API
-	// objects can't say whether the narrowing was deliberate or a fat-fingered
-	// mask, so it stays visible and filterable instead of demoted to info.
-	IssuesCidrScope       IssueType = "cidr scope mismatch"
-	IssuesFailedToFetch   IssueType=  "failed to fetch"         // no has all egress/ingress deny all policy so it can't really talk to anyone
+	IssuesPartial	 	  IssueType = "partial access"         
+	IssuesPolicyLayer	  IssueType = "layer"			   // layering policy, some policy allow full ns and other one is targeted
+	IssuesCidrScope       IssueType = "cidr scope mismatch"	   // cird range between polices not same, might be intentional, but flagging in case fat finger cidr range
+	IssuesFailedToFetch   IssueType=  "failed to fetch"        // no has all egress/ingress deny all policy so it can't really talk to anyone
 )
 
 type IssueSeverity string
@@ -41,6 +38,7 @@ var SeverityByType = map[IssueType]IssueSeverity{
 	IssuesCidrScope:      IssueSeverityWarning,
 	// info
 	IssuesPartial:        IssueSeverityInfo,
+	IssuesPolicyLayer:    IssueSeverityInfo,
 	MeshMisconfig:        IssueSeverityInfo,
 }
 

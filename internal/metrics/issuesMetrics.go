@@ -53,7 +53,7 @@ func (r *Recorder) recordIssues(issues []models.Issue) {
 	distinctByNsType := map[[2]string]map[string]struct{}{}
 
 	for _, issue := range issues {
-		if issue.Type == models.IssuesPartial {
+		if isLayeringIssue(issue.Type) {
 			continue
 		}
 		namespace, workload := issueLocation(issue)

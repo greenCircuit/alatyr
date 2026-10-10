@@ -354,6 +354,7 @@ export type IssueType =
   | 'mesh transport blocked'
   | 'policy conflict'
   | 'partial access'
+  | 'layer'
   | 'mesh conflict'
   | 'node lockout'
   | 'cidr scope mismatch'
