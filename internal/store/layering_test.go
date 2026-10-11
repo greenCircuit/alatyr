@@ -7,29 +7,26 @@ import (
 	"alatyr/internal/models"
 )
 
-// Tests for layering classification — the ns-vs-pod granularity split. An
-// ns-level allow (istio seed) reads "deny" against k8s's pod-keyed rules
-// because the ns-node probe can't match pod-granular clauses. classifyLayering
-// must join the blocking culprit back to its compiled rules and probe the
-// pod-level srcNs→dstNs pairs those rules name:
-//   - a fine path verifies reachable → tiers composing → IssuesPartial
-//   - fine paths exist but all deny  → genuine block     → PolicyConflicts
-//   - no pod-level path names srcNs  → genuine block     → PolicyConflicts
-// There is no drop case: a deny verdict always emits; only the type changes.
-// Reuses srcID/dstNs/... constants and buildNodeRules from reachability_test.go.
+// Layering = one engine blocks at ns granularity while its OWN finer rules
+// allow the pair. isLayeredPolicy decides which of three outcomes:
+//
+//	finer clause on this ns pair + pair reachable -> IssuesPolicyLayer
+//	no finer clause on this ns pair               -> PolicyConflicts
+//	finer clause but its pair is denied           -> PolicyConflicts
+//
+// Driven through PolicyIssues, so these also pin the buildIssues.go wiring.
+// srcID/dstNs/otherDstID/buildNodeRules come from reachability_test.go.
 
 const (
 	dstMemberAID = "dst-ns/dst-a"
 	dstMemberBID = "dst-ns/dst-b"
 )
 
-// baselineRef is the culprit identity: every compiled rule of the fixture
-// baseline policy carries it, which is what the AllowByNs join matches on.
+// Shared culprit identity — the AllowByNs join matches on it.
 var baselineRef = models.PolicyRef{Source: "k8s", Name: "services-baseline", Namespace: dstNs}
 
-// baselineRule is one compiled clause of the baseline policy: an ingress allow
-// bucketed by DstID (ns-node bucket for the coarse block, member bucket for
-// the pod-granular tier), stamped with the shared Contributor.
+// One compiled clause of the baseline policy. Bucketed by dst: ns-node = the
+// coarse block, member pod = the finer tier.
 func baselineRule(dst, src string) models.Rule {
 	return models.Rule{
 		SrcID: src, DstID: dst,
@@ -39,19 +36,24 @@ func baselineRule(dst, src string) models.Rule {
 	}
 }
 
-// layeringCache wires the two-tier setup: istio seeds src→dst-ns at namespace
-// granularity (AllowByNs only — no NodeRules, so it has no opinion in
-// reachability), k8s holds the baseline policy's compiled rules in both
-// AllowByNs (the join target) and NodeRules (the enforcement the probes read).
-// istioDenyRules optionally give istio pod-level enforcement to kill fine paths.
-func layeringCache(k8sRules, istioDenyRules []models.Rule) *models.Cache {
-	srcPod := models.WorkloadNode{ID: srcID, Namespace: srcNs, Label: "src-pod"}
-	srcNsNode := &models.WorkloadNode{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace}
-	dstNsNode := &models.WorkloadNode{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace}
+// The coarse block: ns-node bucket admits a peer that is not srcID, so
+// srcID->dst-ns reads locked-no-match with the baseline as culprit.
+func nsBlock() models.Rule {
+	return baselineRule(dstNsID, otherDstID)
+}
+
+// Two tiers: istio allows src->dst-ns at ns granularity (AllowByNs only, so no
+// opinion in reachability), k8s holds the baseline clauses in AllowByNs (join
+// target) + NodeRules (what probes read). istioRules give istio pod-level
+// enforcement, to kill a finer path.
+func layeringCache(k8sRules, istioRules []models.Rule) *models.Cache {
 	dstWorkloads := []models.WorkloadNode{
 		{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace},
 		{ID: dstMemberAID, Namespace: dstNs, Label: "dst-a"},
 		{ID: dstMemberBID, Namespace: dstNs, Label: "dst-b"},
+		// must resolve, else clauses naming it fall out as unresolved endpoints
+		// and the namespace checks never run
+		{ID: otherDstID, Namespace: dstNs, Label: "other-pod"},
 	}
 	seed := []models.Rule{
 		{SrcID: srcID, DstID: dstNsID, Direction: models.DirectionEgress, Action: models.ActionAllow},
@@ -59,13 +61,19 @@ func layeringCache(k8sRules, istioDenyRules []models.Rule) *models.Cache {
 	}
 	cache := &models.Cache{
 		NsIndex: map[string]models.NSIndex{
-			srcNs: {NSNode: srcNsNode, Workloads: []models.WorkloadNode{srcPod}},
-			dstNs: {NSNode: dstNsNode, Workloads: dstWorkloads},
+			srcNs: {
+				NSNode:    &models.WorkloadNode{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace},
+				Workloads: []models.WorkloadNode{{ID: srcID, Namespace: srcNs, Label: "src-pod"}},
+			},
+			dstNs: {
+				NSNode:    &models.WorkloadNode{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace},
+				Workloads: dstWorkloads,
+			},
 		},
 		EvaluationResults: map[string]models.EvaluationResult{
 			"istio": {
 				AllowByNs: map[string][]models.Rule{dstNs: seed},
-				NodeRules: buildNodeRules(istioDenyRules),
+				NodeRules: buildNodeRules(istioRules),
 			},
 			"k8s": {
 				AllowByNs: map[string][]models.Rule{dstNs: k8sRules},
@@ -77,127 +85,190 @@ func layeringCache(k8sRules, istioDenyRules []models.Rule) *models.Cache {
 	return cache
 }
 
-// nsPairIssues filters to the ns-level pair under test — pod-level pairs from
-// the same sweep may legitimately emit their own conflicts (case: istio denies
-// a fine path), and those must not pollute the ns-pair assertion.
-func nsPairIssues(issues []models.Issue) []models.Issue {
+// Run the detector, keep the ns-level pair. Pod-level pairs in the same sweep
+// emit their own findings and must not pollute the assertion.
+func nsPairIssue(t *testing.T, cache *models.Cache) models.Issue {
+	t.Helper()
 	var filtered []models.Issue
-	for _, issue := range issues {
+	for _, issue := range PolicyIssues(context.Background(), cache, nil) {
 		if issue.Dst != nil && issue.Dst.ID == dstNsID {
 			filtered = append(filtered, issue)
 		}
 	}
-	return filtered
+	if len(filtered) != 1 {
+		t.Fatalf("ns-pair issues: want 1, got %d (%+v)", len(filtered), filtered)
+	}
+	return filtered[0]
 }
 
-// Baseline-only namespace: the policy's podSelector {} compiles its selected
-// side to the NS NODE, so the fine tier is pod→ns-node — one coarse end. The
-// coarse pair is ns→ns (istio names the src namespace, so SrcID is the src
-// ns-node, which can never match the baseline's pod-granular from-clause →
-// deny). The candidate filter must accept the one-coarse-end rule; requiring
-// pods on both ends re-phantoms every baseline-only namespace as a conflict.
+func assertIssueType(t *testing.T, issue models.Issue, want models.IssueType) {
+	t.Helper()
+	if issue.Type != want {
+		t.Errorf("type: want %q, got %q", want, issue.Type)
+	}
+}
+
+// podSelector {} compiles one policy into both buckets: ns-node (the block)
+// and pod (the allow). Evidence must be that baseline, never the istio
+// counterpart tier — the lookup reads the blocking engine only.
 func TestPolicyIssues_LayeringBaselineOnlyNamespace(t *testing.T) {
-	// the coarse tier: an ns-level istio allow (mirrors external-access)
 	coarseRef := models.PolicyRef{Source: "istio", Name: "external-access", Namespace: dstNs}
 	seed := []models.Rule{
 		{SrcID: srcNsID, DstID: dstNsID, Direction: models.DirectionEgress, Action: models.ActionAllow, Contributor: coarseRef},
 		{SrcID: srcNsID, DstID: dstNsID, Direction: models.DirectionIngress, Action: models.ActionAllow, Contributor: coarseRef},
 	}
-	// the baseline's compiled tier: ns-node bucket admits the src POD only
-	k8sRules := []models.Rule{baselineRule(dstNsID, srcID)}
-	cache := layeringCache(k8sRules, nil)
+	cache := layeringCache([]models.Rule{baselineRule(dstNsID, srcID)}, nil)
 	cache.EvaluationResults["istio"] = models.EvaluationResult{
 		AllowByNs: map[string][]models.Rule{dstNs: seed},
 		NodeRules: buildNodeRules(seed),
 	}
-	// the seed's SrcID is the src ns-node — it must resolve via WorkloadByID,
-	// so the ns-node joins the workload list like real caches have it
+	// seed SrcID is the src ns-node, so it has to resolve via WorkloadByID
 	srcIndex := cache.NsIndex[srcNs]
 	srcIndex.Workloads = append(srcIndex.Workloads,
 		models.WorkloadNode{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace})
 	cache.NsIndex[srcNs] = srcIndex
 	cache.RebuildWorkloadIndex()
 
-	issues := nsPairIssues(PolicyIssues(context.Background(), cache, nil))
-	if len(issues) != 1 {
-		t.Fatalf("ns-pair issues: want 1, got %d (%+v)", len(issues), issues)
+	issue := nsPairIssue(t, cache)
+	assertIssueType(t, issue, models.IssuesPolicyLayer)
+
+	if len(issue.IngressAllowed) != 1 {
+		t.Fatalf("ingressAllowed: want 1 ref, got %+v", issue.IngressAllowed)
 	}
-	if issues[0].Type != models.IssuesPartial {
-		t.Errorf("type: want %q, got %q", models.IssuesPartial, issues[0].Type)
-	}
-	// Layering evidence = the COUNTERPART tier only: the coarse istio allow
-	// rides on the issue; the row's own culprit (the baseline) must NOT echo
-	// as evidence — that duplication is the UI lying.
-	foundCoarse, foundBaseline := false, false
-	for _, ref := range issues[0].IngressAllowed {
-		if ref.Name == coarseRef.Name && ref.Source == coarseRef.Source {
-			foundCoarse = true
-		}
-		if ref.Name == baselineRef.Name && ref.Source == baselineRef.Source {
-			foundBaseline = true
-		}
-	}
-	if !foundCoarse {
-		t.Errorf("ingressAllowed: want coarse-tier ref %q, got %+v", coarseRef.Name, issues[0].IngressAllowed)
-	}
-	if foundBaseline {
-		t.Errorf("ingressAllowed: culprit %q echoed as evidence (duplication), got %+v", baselineRef.Name, issues[0].IngressAllowed)
+	if got := issue.IngressAllowed[0]; got.Source != baselineRef.Source || got.Name != baselineRef.Name {
+		t.Errorf("ingressAllowed: want %q/%q, got %+v", baselineRef.Source, baselineRef.Name, got)
 	}
 }
 
-// The ns-node bucket carries only a non-src clause, so the coarse probe reads
-// locked-no-match (deny) with the baseline as culprit. The join then decides
-// the type from the baseline's own pod-level clauses.
+// Same coarse block every case. Only the baseline's OTHER clauses vary.
 func TestPolicyIssues_LayeringClassification(t *testing.T) {
-	// coarse block: the ns-node bucket admits only a non-src peer
-	nsBlock := baselineRule(dstNsID, otherDstID)
-
 	cases := []struct {
-		name           string
-		k8sRules       []models.Rule
-		istioDenyRules []models.Rule
-		wantType       models.IssueType
+		name     string
+		k8sRules []models.Rule
+		wantType models.IssueType
 	}{
 		{
-			name:     "partial when a pod clause admits src and the path verifies",
-			k8sRules: []models.Rule{nsBlock, baselineRule(dstMemberAID, srcID)},
-			wantType: models.IssuesPartial,
+			name:     "finer clause names a pod of the source namespace",
+			k8sRules: []models.Rule{nsBlock(), baselineRule(dstMemberAID, srcID)},
+			wantType: models.IssuesPolicyLayer,
 		},
 		{
-			name:     "partial when every pod clause verifies — no drop, type still partial",
-			k8sRules: []models.Rule{nsBlock, baselineRule(dstMemberAID, srcID), baselineRule(dstMemberBID, srcID)},
-			wantType: models.IssuesPartial,
-		},
-		{
-			name:     "conflict when culprit has no pod-level clauses",
-			k8sRules: []models.Rule{nsBlock},
+			name:     "no finer clause at all",
+			k8sRules: []models.Rule{nsBlock()},
 			wantType: models.PolicyConflicts,
 		},
 		{
-			name:     "conflict when pod clauses admit only peers outside src ns",
-			k8sRules: []models.Rule{nsBlock, baselineRule(dstMemberAID, otherDstID)},
-			wantType: models.PolicyConflicts,
-		},
-		{
-			name:     "conflict when another engine denies the fine path",
-			k8sRules: []models.Rule{nsBlock, baselineRule(dstMemberAID, srcID)},
-			istioDenyRules: []models.Rule{
-				{SrcID: srcID, DstID: dstMemberAID, Direction: models.DirectionIngress, Action: models.ActionDeny},
-			},
+			// otherDstID is in dst-ns: describes dst-ns->dst-ns, explains nothing
+			name:     "finer clause names a peer outside the source namespace",
+			k8sRules: []models.Rule{nsBlock(), baselineRule(dstMemberAID, otherDstID)},
 			wantType: models.PolicyConflicts,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cache := layeringCache(tc.k8sRules, tc.istioDenyRules)
-			issues := nsPairIssues(PolicyIssues(context.Background(), cache, nil))
-			if len(issues) != 1 {
-				t.Fatalf("ns-pair issues: want 1, got %d (%+v)", len(issues), issues)
+			assertIssueType(t, nsPairIssue(t, layeringCache(tc.k8sRules, nil)), tc.wantType)
+		})
+	}
+}
+
+// Finer clause exists but istio denies that exact pod pair, so nothing can
+// talk. Must stay a conflict, not get filed under info as "expected layering".
+func TestPolicyIssues_LayeringRequiresReachableFinePath(t *testing.T) {
+	istioDeny := models.Rule{
+		SrcID: srcID, DstID: dstMemberAID,
+		Direction: models.DirectionIngress, Action: models.ActionDeny,
+	}
+	cache := layeringCache(
+		[]models.Rule{nsBlock(), baselineRule(dstMemberAID, srcID)},
+		[]models.Rule{istioDeny},
+	)
+	assertIssueType(t, nsPairIssue(t, cache), models.PolicyConflicts)
+}
+
+const otherSrcID = "other-ns/other-pod"
+
+// Namespace on the SOURCE end: istio allows src-ns -> dst-a, k8s baseline
+// clauses sit on dst-a. Coarse pair denies because an ns-node source cannot
+// match a pod-granular from-clause.
+func nsSourceCache(baselineClauses []models.Rule) *models.Cache {
+	coarseRef := models.PolicyRef{Source: "istio", Name: "external-access", Namespace: dstNs}
+	seed := []models.Rule{
+		{SrcID: srcNsID, DstID: dstMemberAID, Direction: models.DirectionEgress, Action: models.ActionAllow, Contributor: coarseRef},
+		{SrcID: srcNsID, DstID: dstMemberAID, Direction: models.DirectionIngress, Action: models.ActionAllow, Contributor: coarseRef},
+	}
+	cache := &models.Cache{
+		NsIndex: map[string]models.NSIndex{
+			srcNs: {
+				NSNode: &models.WorkloadNode{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace},
+				Workloads: []models.WorkloadNode{
+					{ID: srcNsID, Namespace: srcNs, Type: models.NodeTypeNamespace},
+					{ID: srcID, Namespace: srcNs, Label: "src-pod"},
+				},
+			},
+			dstNs: {
+				NSNode: &models.WorkloadNode{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace},
+				Workloads: []models.WorkloadNode{
+					{ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace},
+					{ID: dstMemberAID, Namespace: dstNs, Label: "dst-a"},
+				},
+			},
+			"other-ns": {
+				NSNode: &models.WorkloadNode{ID: "ns/other-ns", Namespace: "other-ns", Type: models.NodeTypeNamespace},
+				Workloads: []models.WorkloadNode{
+					{ID: "ns/other-ns", Namespace: "other-ns", Type: models.NodeTypeNamespace},
+					{ID: otherSrcID, Namespace: "other-ns", Label: "other-pod"},
+				},
+			},
+		},
+		EvaluationResults: map[string]models.EvaluationResult{
+			"istio": {
+				AllowByNs: map[string][]models.Rule{dstNs: seed},
+				NodeRules: buildNodeRules(seed),
+			},
+			"k8s": {
+				AllowByNs: map[string][]models.Rule{dstNs: baselineClauses},
+				NodeRules: buildNodeRules(baselineClauses),
+			},
+		},
+	}
+	cache.RebuildWorkloadIndex()
+	return cache
+}
+
+// Other cases all put the namespace on the dst end. Here it is the src end, so
+// the join must key on the namespace each side belongs to (an ns node belongs
+// to itself) instead of two blank namespace fields agreeing.
+func TestPolicyIssues_LayeringNamespaceOnSourceEnd(t *testing.T) {
+	cases := []struct {
+		name     string
+		clauses  []models.Rule
+		wantType models.IssueType
+	}{
+		{
+			name:     "baseline admits a pod of the source namespace",
+			clauses:  []models.Rule{baselineRule(dstMemberAID, srcID)},
+			wantType: models.IssuesPolicyLayer,
+		},
+		{
+			name:     "baseline admits only pods of another namespace",
+			clauses:  []models.Rule{baselineRule(dstMemberAID, otherSrcID)},
+			wantType: models.PolicyConflicts,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var coarse []models.Issue
+			for _, issue := range PolicyIssues(context.Background(), nsSourceCache(tc.clauses), nil) {
+				if issue.Src != nil && issue.Src.ID == srcNsID && issue.Dst != nil && issue.Dst.ID == dstMemberAID {
+					coarse = append(coarse, issue)
+				}
 			}
-			if issues[0].Type != tc.wantType {
-				t.Errorf("type: want %q, got %q", tc.wantType, issues[0].Type)
+			if len(coarse) != 1 {
+				t.Fatalf("coarse-pair issues: want 1, got %d (%+v)", len(coarse), coarse)
 			}
+			assertIssueType(t, coarse[0], tc.wantType)
 		})
 	}
 }

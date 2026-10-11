@@ -11,12 +11,25 @@ import { CulpritActions } from '../../TablesView/CulpritActions';
 import { useGraphStore } from '../../../store/graphStore';
 import s from '../DetailPanel.module.css';
 
+// Namespace nodes carry no namespace of their own — label alone identifies them.
+const endpointName = (node: Issue['src']): string => {
+  if (!node) return '';
+  return node.namespace ? `${node.namespace}/${node.label}` : node.label;
+};
+
 // Per-row: type chip suppressed — group header already names the type.
+// Pair line names both endpoints. Message and culprits are peer-free, so several
+// findings on one node render identically without it.
 function IssueRow({ issue }: { issue: Issue }) {
   const showReachability  = useGraphStore((store) => store.showReachability);
   const selectPolicyByRef = useGraphStore((store) => store.selectPolicyByRef);
   return (
     <div className="d-flex flex-column gap-1">
+      {issue.src && issue.dst && (
+        <div className={`${s.smallText} ${s.mono} ${s.dim}`}>
+          {endpointName(issue.src)} → {endpointName(issue.dst)}
+        </div>
+      )}
       <div className={s.policyMetaRow}>
         <span className={`${s.body} ${s.flexFill}`}>{issue.message}</span>
         {issue.src && issue.dst && (

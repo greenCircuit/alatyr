@@ -268,7 +268,7 @@ func TestDecideDirectionVerdict_Precedence(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, _ := decideDirectionVerdict(testCase.verdict)
+			got, _ := decideDirectionVerdict(testCase.verdict, srcID, srcNsID)
 			if got != testCase.want {
 				t.Errorf("reason: want %q, got %q", testCase.want, got)
 			}
@@ -818,5 +818,160 @@ func TestIsNodesReachable_CalicoAllowInternalNetsThenDenyAll(t *testing.T) {
 	gotLan := PoliciesCanReach(context.Background(), lanCache, srcID, srcNs, dstID, dstNs)
 	if gotLan.Verdict != "deny" {
 		t.Errorf("LAN-only allow: want deny for internal dst, got %q (reason=%q)", gotLan.Verdict, gotLan.Reason)
+	}
+}
+
+// One policy, two egress rules: a named allow to the peer pod, and an allow to
+// 0.0.0.0/0:443 excepting the pod and service CIDRs. The excepts trim only the
+// second rule, so the named allow still gets through. Runs the whole chain —
+// collectToSide, collectFromSide, decideDirectionVerdict.
+func TestIsNodesReachable_NamedAllowSurvivesSamePolicyExcept(t *testing.T) {
+	installCIDRConfig(t)
+
+	openReaderPolicy := models.PolicyRef{Source: "k8s", Name: "open-reader-policy", Namespace: srcNs}
+	withPolicy := func(rule models.Rule) models.Rule {
+		rule.Contributor = openReaderPolicy
+		return rule
+	}
+	namedAllow := withPolicy(egressTo(dstID))
+	wideAllow := withPolicy(withPorts(egressToCIDR("0.0.0.0/0"), tcpPort(443)))
+	exceptRule := func(cidr string) models.Rule {
+		return withPolicy(models.Rule{
+			SrcID: srcID, DstID: models.CIDRIDPrefix + cidr,
+			Direction: models.DirectionEgress, Action: models.ActionDeny,
+			Coverage: models.CoverageExcept, Ports: []models.Port{tcpPort(443)},
+		})
+	}
+
+	cache := buildCache("k8s",
+		namedAllow, wideAllow,
+		exceptRule(config.Get().PodCIDR), exceptRule(config.Get().SvcCIDR),
+		ingressFrom(srcID),
+	)
+	// Pod node so the named allow gets a workload peer kind.
+	seedWorkload(cache, models.WorkloadNode{ID: dstID, Namespace: dstNs, Type: models.NodeTypeDeployment})
+	got := PoliciesCanReach(context.Background(), cache, srcID, srcNs, dstID, dstNs)
+
+	if got.Verdict != "allow" {
+		t.Errorf("verdict: want allow (named allow is a different rule than the excepted ipBlock), got %q (reason=%q)", got.Verdict, got.Reason)
+	}
+	egress := got.Engines["k8s"].Egress
+	if egress.Reason != ReasonPermitted {
+		t.Errorf("egress reason: want %q, got %q (culprits=%v)", ReasonPermitted, egress.Reason, egress.Culprits)
+	}
+	// Excepts still land in their own bucket — panel shows them.
+	if len(egress.CarveOutMatches) != 2 {
+		t.Errorf("egress carve-out matches: want 2 (pod + svc except), got %d", len(egress.CarveOutMatches))
+	}
+	// Same policy, no named allow: the excepts alone must still block.
+	blockedCache := buildCache("k8s",
+		wideAllow, exceptRule(config.Get().PodCIDR), exceptRule(config.Get().SvcCIDR),
+		ingressFrom(srcID),
+	)
+	blocked := PoliciesCanReach(context.Background(), blockedCache, srcID, srcNs, dstID, dstNs)
+	if blocked.Engines["k8s"].Egress.Reason != ReasonCarvedOut {
+		t.Errorf("no named allow: want %q, got %q", ReasonCarvedOut, blocked.Engines["k8s"].Egress.Reason)
+	}
+
+	// Two ipBlock rules in one policy: the second allows the pod CIDR on every
+	// port, so the 443 except of the first does not speak for it.
+	twoBlocksCache := buildCache("k8s",
+		wideAllow, exceptRule(config.Get().PodCIDR),
+		withPolicy(egressToCIDR(config.Get().PodCIDR)),
+		ingressFrom(srcID),
+	)
+	twoBlocks := PoliciesCanReach(context.Background(), twoBlocksCache, srcID, srcNs, dstID, dstNs)
+	if reason := twoBlocks.Engines["k8s"].Egress.Reason; reason != ReasonPermitted {
+		t.Errorf("second ipBlock rule: want %q, got %q", ReasonPermitted, reason)
+	}
+}
+
+// An except only cuts a hole in its own rule. It blocks when the only allow is
+// a wide CIDR, but a rule that names the peer still lets traffic through.
+func TestDecideDirectionVerdict_CarveOutVsAllow(t *testing.T) {
+	installCIDRConfig(t)
+
+	// Peer kind decides which allow an except can trim — fixtures need the index.
+	idIndex := map[string]models.WorkloadNode{
+		dstID:   {ID: dstID, Namespace: dstNs, Type: models.NodeTypeDeployment},
+		srcID:   {ID: srcID, Namespace: srcNs, Type: models.NodeTypeDeployment},
+		dstNsID: {ID: dstNsID, Namespace: dstNs, Type: models.NodeTypeNamespace},
+		models.CIDRIDPrefix + "0.0.0.0/0": {
+			ID: models.CIDRIDPrefix + "0.0.0.0/0", Label: "0.0.0.0/0", Type: models.NodeTypeCIDR,
+		},
+	}
+
+	// Same policy as the broad allow it trims.
+	carveOut := []models.NodeRule{toNodeRule(models.Rule{
+		SrcID:       srcID,
+		DstID:       models.CIDRIDPrefix + config.Get().PodCIDR,
+		Direction:   models.DirectionEgress,
+		Action:      models.ActionDeny,
+		Coverage:    models.CoverageExcept,
+		Contributor: models.PolicyRef{Source: "k8s", Name: "egress-cidr", Namespace: srcNs},
+	}, idIndex)}
+
+	broadAllow := toNodeRule(egressToCIDR("0.0.0.0/0"), idIndex)
+	namedPod := toNodeRule(egressTo(dstID), idIndex)
+	namedNs := toNodeRule(egressTo(dstNsID), idIndex)
+
+	ingressCarveOut := []models.NodeRule{toNodeRule(models.Rule{
+		SrcID: models.CIDRIDPrefix + config.Get().PodCIDR, DstID: dstID,
+		Direction: models.DirectionIngress, Action: models.ActionDeny,
+		Coverage:    models.CoverageExcept,
+		Contributor: models.PolicyRef{Source: "k8s", Name: "ingress-cidr", Namespace: dstNs},
+	}, idIndex)}
+	broadIngress := toNodeRule(ingressFromCIDR("0.0.0.0/0"), idIndex)
+	namedSrc := toNodeRule(ingressFrom(srcID), idIndex)
+
+	cases := []struct {
+		name     string
+		verdict  DirectionVerdict
+		peerID   string
+		peerNsID string
+		want     DirectionReason
+	}{
+		{
+			name:    "egress: wide allow only, except blocks",
+			verdict: DirectionVerdict{AllowMatches: []models.NodeRule{broadAllow}, CarveOutMatches: carveOut},
+			peerID:  dstID, peerNsID: dstNsID, want: ReasonCarvedOut,
+		},
+		{
+			name:    "egress: a rule names the pod",
+			verdict: DirectionVerdict{AllowMatches: []models.NodeRule{broadAllow, namedPod}, CarveOutMatches: carveOut},
+			peerID:  dstID, peerNsID: dstNsID, want: ReasonPermitted,
+		},
+		{
+			name:    "egress: a rule names the peer namespace",
+			verdict: DirectionVerdict{AllowMatches: []models.NodeRule{broadAllow, namedNs}, CarveOutMatches: carveOut},
+			peerID:  dstID, peerNsID: dstNsID, want: ReasonPermitted,
+		},
+		{
+			name:    "egress: deny wins over a rule naming the pod",
+			verdict: DirectionVerdict{DenyMatches: []models.NodeRule{namedPod}, AllowMatches: []models.NodeRule{namedPod}, CarveOutMatches: carveOut},
+			peerID:  dstID, peerNsID: dstNsID, want: ReasonExplicitDeny,
+		},
+		{
+			name:    "ingress: wide allow only, except blocks",
+			verdict: DirectionVerdict{AllowMatches: []models.NodeRule{broadIngress}, CarveOutMatches: ingressCarveOut},
+			peerID:  srcID, peerNsID: srcNsID, want: ReasonCarvedOut,
+		},
+		{
+			name:    "ingress: a rule names the src pod",
+			verdict: DirectionVerdict{AllowMatches: []models.NodeRule{broadIngress, namedSrc}, CarveOutMatches: ingressCarveOut},
+			peerID:  srcID, peerNsID: srcNsID, want: ReasonPermitted,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fmt.Println("allow: ", testCase.verdict.AllowMatches)
+			fmt.Println("carveOuts: ", testCase.verdict.CarveOutMatches)
+			fmt.Println("-------------------")
+			got, _ := decideDirectionVerdict(testCase.verdict, testCase.peerID, testCase.peerNsID)
+
+			if got != testCase.want {
+				t.Errorf("reason: want %q, got %q", testCase.want, got)
+			}
+		})
 	}
 }

@@ -7,13 +7,18 @@ import "alatyr/internal/models"
 // alatyr_workloads_with_policy_layering,
 // alatyr_workloads_with_policy_layering_by_type.
 //
-// The layering family exists because IssuesPartial fires on an expected
+// The layering family exists because IssuesPartial / IssuesPolicyLayer fire on an expected
 // wide+narrow policy stack (coarse rule blocks, fine rule allows verified
 // paths). Counting it under alatyr_issues inflates finding counts with
 // non-findings. Split family = one metric per truth.
 //
 // Shape mirrors alatyr_issues by design so dashboard panels can be
 // duplicated with a single metric-name swap.
+
+// layering types, routed to policy_layering family, kept out of alatyr_issues
+func isLayeringIssue(issueType models.IssueType) bool {
+	return issueType == models.IssuesPartial || issueType == models.IssuesPolicyLayer
+}
 
 // resetPolicyLayeringVecs clears every layering gauge before repopulation.
 // Same reset-then-repopulate contract as the issue family: a layering event
@@ -28,7 +33,7 @@ func (r *Recorder) resetPolicyLayeringVecs() {
 	}
 }
 
-// recordPolicyLayering fans layering findings (IssuesPartial today) into the
+// recordPolicyLayering fans layering findings (isLayeringIssue) into the
 // layering gauge family. Ignores every other issue type — recordIssues owns
 // those. Same location + culprit fan-out semantics as recordIssues so the
 // families are safe to compare 1:1 on a dashboard.
@@ -41,7 +46,7 @@ func (r *Recorder) recordPolicyLayering(issues []models.Issue) {
 	distinctByNsType := map[[2]string]map[string]struct{}{}
 
 	for _, issue := range issues {
-		if issue.Type != models.IssuesPartial {
+		if !isLayeringIssue(issue.Type) {
 			continue
 		}
 		namespace, workload := issueLocation(issue)

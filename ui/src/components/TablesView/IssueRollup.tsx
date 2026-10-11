@@ -25,7 +25,7 @@ const ISSUE_ENGINE: Partial<Record<IssueType, string>> = {
 // severity-desc sort. Info-class (partial access) trails last.
 const TYPE_ORDER: IssueType[] = [
   'policy conflict', 'mesh conflict', 'mesh transport blocked', 'node lockout',
-  'cidr scope mismatch', 'mesh policy', 'no dns', 'partial access',
+  'cidr scope mismatch', 'mesh policy', 'no dns', 'partial access', 'layer',
 ];
 
 interface IssueRollupProps {

@@ -11,6 +11,7 @@ import type { MeshFilterValue } from '../../../store/filters';
 export const TYPE_SEVERITY: Record<IssueType, Severity> = {
   'policy conflict':        'high',
   'partial access':         'info',
+  'layer':                  'info',
   'mesh conflict':          'high',
   'mesh transport blocked': 'high',
   'node lockout':           'high',
@@ -48,6 +49,7 @@ export const ISSUE_TYPE_LABEL: Record<IssueType, string> = {
   'mesh transport blocked': 'Mesh transport blocked',
   'policy conflict':        'Policy conflict',
   'partial access':         'Partial access',
+  'layer':                  'Policy layering',
   'mesh conflict':          'Mesh conflict',
   'node lockout':           'Node lockout',
   'cidr scope mismatch':    'CIDR scope mismatch',
@@ -64,7 +66,13 @@ export const ALL_ISSUE_TYPES: IssueType[] = [
   'mesh policy',
   'no dns',
   'partial access',
+  'layer',
 ];
+
+// Expected two-tier composition, not a fault. Backend emits 'layer'; older
+// payloads (demo, CLI reports) still carry 'partial access'.
+export const isLayeringType = (type: IssueType): boolean =>
+  type === 'partial access' || type === 'layer';
 
 export const STATUS_LABELS: Record<StatusKey, string> = {
   'air-gapped':        'Air-gapped (deny-all)',
